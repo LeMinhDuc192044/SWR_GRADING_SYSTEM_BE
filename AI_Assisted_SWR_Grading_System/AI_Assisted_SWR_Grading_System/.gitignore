@@ -1,0 +1,86 @@
+# =========================
+# Build folders
+# =========================
+bin/
+obj/
+out/
+artifacts/
+
+# =========================
+# Visual Studio
+# =========================
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# Rider / JetBrains
+# =========================
+.idea/
+
+# =========================
+# NuGet
+# =========================
+*.nupkg
+packages/
+*.nuget.dgspec.json
+project.assets.json
+project.nuget.cache
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Entity Framework
+# =========================
+*.dbmdl
+*.jfm
+
+# =========================
+# Generated cache files
+# =========================
+*.cache
+*.metadata
+*.vsidx
+FileContentIndex/
+
+# =========================
+# OS files
+# =========================
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# =========================
+# Environment files
+# =========================
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+
+# =========================
+# Test Results
+# =========================
+TestResults/
+
+# =========================
+# Publish output
+# =========================
+publish/
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
