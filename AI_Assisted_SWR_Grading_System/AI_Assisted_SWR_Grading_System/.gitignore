@@ -1,0 +1,95 @@
+# =========================
+# Build output
+# =========================
+bin/
+obj/
+out/
+artifacts/
+publish/
+
+# =========================
+# Visual Studio
+# =========================
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# Rider / JetBrains
+# =========================
+.idea/
+
+# =========================
+# NuGet
+# =========================
+*.nupkg
+*.snupkg
+packages/
+*.nuget.dgspec.json
+project.assets.json
+project.nuget.cache
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Entity Framework / Local DB
+# =========================
+*.dbmdl
+*.jfm
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Generated cache files
+# =========================
+*.cache
+*.metadata
+*.vsidx
+FileContentIndex/
+
+# =========================
+# OS files
+# =========================
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+appsettings.Development.json
+
+# =========================
+# Test Results
+# =========================
+TestResults/
+*.trx
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# User-specific files
+# =========================
+*.pidb
+*.userprefs
