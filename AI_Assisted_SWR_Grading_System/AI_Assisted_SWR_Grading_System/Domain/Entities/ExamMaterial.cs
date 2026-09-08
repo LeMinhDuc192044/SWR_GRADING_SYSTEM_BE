@@ -4,8 +4,8 @@
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 public class ExamMaterial
 {
-    public Guid Id { get; set; }
-
+    public Guid ExamMaterialId { get; set; } = Guid.NewGuid();
+    public string ExamMaterialName { get; set; } = string.Empty;
     public string? FileDocs { get; set; }
     public string? FileRubric { get; set; }
     public string? FileAnswerTemplate { get; set; }

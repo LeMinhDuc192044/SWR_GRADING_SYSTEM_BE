@@ -5,7 +5,7 @@ namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 public class Grading
 {
     public Guid Id { get; set; }
-
+    public string GradingCode { get; set; } = string.Empty;
     public decimal? AiScore { get; set; }
     public decimal? LecturerScore { get; set; }
     public string? AiLogs { get; set; }
