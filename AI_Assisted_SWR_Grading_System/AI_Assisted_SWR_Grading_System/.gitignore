@@ -1,11 +1,27 @@
 # =========================
-# Build output
+# .NET Build output
 # =========================
 bin/
 obj/
 out/
 artifacts/
 publish/
+
+# =========================
+# Node.js / Next.js
+# =========================
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.turbo/
+.vercel/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # =========================
 # Visual Studio
@@ -93,3 +109,20 @@ temp/
 # =========================
 *.pidb
 *.userprefs
+
+# =========================
+# Next.js / Node.js
+# =========================
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+.vercel/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
