@@ -109,3 +109,20 @@ temp/
 # =========================
 *.pidb
 *.userprefs
+
+# =========================
+# Next.js / Node.js
+# =========================
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+.vercel/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
