@@ -1,22 +1,56 @@
-﻿using AI_Assisted_SWR_Grading_System.Domain.Enums;
-
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using AI_Assisted_SWR_Grading_System.Domain.Enums;
 
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
+
+[Table("exam_materials")]
 public class ExamMaterial
 {
+    [Key]
+    [Column("exam_material_id")]
     public Guid ExamMaterialId { get; set; } = Guid.NewGuid();
+
+    [Required]
+    [MaxLength(20)]
+    [Column("exam_material_code")]
     public string ExamMaterialCode { get; set; } = string.Empty;
-    public string? FileDocs { get; set; }
-    public string? FileRubric { get; set; }
+
+    [Column("file_question_docs")]
+    public string? FileQuestionDocs { get; set; }
+
+    [Column("file_answer_rubric")]
+    public string? FileAnswerRubric { get; set; }
+
+    [Column("file_answer_template")]
     public string? FileAnswerTemplate { get; set; }
+
+    [Required]
+    [Column("created_date")]
     public DateTime CreatedDate { get; set; }
+
+    [Required]
+    [Column("updated_date")]
     public DateTime UpdatedDate { get; set; }
+
+    [Column("is_deleted")]
     public bool IsDeleted { get; set; }
+
+    [Required]
+    [Column("status")]
     public ExamMaterialStatus Status { get; set; }
 
+    [Required]
+    [Column("create_by_id")]
+    [ForeignKey(nameof(CreateBy))]
     public Guid CreateById { get; set; }
+
     public Lecturer CreateBy { get; set; } = null!;
 
+    [Required]
+    [Column("examination_id")]
+    [ForeignKey(nameof(Examination))]
     public Guid ExaminationId { get; set; }
+
     public Examination Examination { get; set; } = null!;
 }

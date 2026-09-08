@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AI_Assisted_SWR_Grading_System.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260908122330_InitialCreate")]
+    [Migration("20260908170142_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -29,38 +29,50 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 {
                     b.Property<Guid>("ExamMaterialId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("exam_material_id");
 
                     b.Property<Guid>("CreateById")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("create_by_id");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_date");
 
                     b.Property<string>("ExamMaterialCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("exam_material_code");
 
                     b.Property<Guid>("ExaminationId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("examination_id");
+
+                    b.Property<string>("FileAnswerRubric")
+                        .HasColumnType("text")
+                        .HasColumnName("file_answer_rubric");
 
                     b.Property<string>("FileAnswerTemplate")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("file_answer_template");
 
-                    b.Property<string>("FileDocs")
-                        .HasColumnType("text");
-
-                    b.Property<string>("FileRubric")
-                        .HasColumnType("text");
+                    b.Property<string>("FileQuestionDocs")
+                        .HasColumnType("text")
+                        .HasColumnName("file_question_docs");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
 
                     b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_date");
 
                     b.HasKey("ExamMaterialId");
 
@@ -68,172 +80,221 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.HasIndex("ExaminationId");
 
-                    b.ToTable("ExamMaterials");
+                    b.ToTable("exam_materials");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Examination", b =>
                 {
                     b.Property<Guid>("ExaminationId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("examination_id");
 
                     b.Property<int>("BeforeTimeMinutes")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("before_time_minutes");
 
                     b.Property<int>("DurationMinutes")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_minutes");
 
                     b.Property<string>("ExaminationCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("examination_code");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
 
                     b.Property<string>("Note")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
 
                     b.Property<Guid>("SemesterId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("semester_id");
 
                     b.Property<DateTime>("StartDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
 
                     b.Property<TimeSpan>("StartTime")
-                        .HasColumnType("interval");
+                        .HasColumnType("interval")
+                        .HasColumnName("start_time");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
 
                     b.HasKey("ExaminationId");
 
                     b.HasIndex("SemesterId");
 
-                    b.ToTable("Examinations");
+                    b.ToTable("examinations");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Grading", b =>
                 {
                     b.Property<Guid>("GradingId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("grading_id");
 
                     b.Property<string>("AiLogs")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("ai_logs");
 
                     b.Property<decimal?>("AiScore")
-                        .HasColumnType("numeric");
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("ai_score");
 
                     b.Property<string>("Comment")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("comment");
 
                     b.Property<DateTime>("CreateDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("create_date");
 
                     b.Property<decimal?>("FinalScore")
-                        .HasColumnType("numeric");
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("final_score");
 
                     b.Property<string>("GradingCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("grading_code");
 
                     b.Property<decimal?>("LecturerScore")
-                        .HasColumnType("numeric");
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("lecturer_score");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
 
                     b.Property<Guid>("SubmissionId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
 
                     b.Property<DateTime>("UpdateDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("update_date");
 
                     b.HasKey("GradingId");
 
                     b.HasIndex("SubmissionId");
 
-                    b.ToTable("Gradings");
+                    b.ToTable("gradings");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Semester", b =>
                 {
                     b.Property<Guid>("SemesterId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("semester_id");
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("code");
 
                     b.Property<DateTime>("EndDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
 
                     b.Property<string>("SemesterCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("semester_code");
 
                     b.Property<DateTime>("StartDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
 
                     b.HasKey("SemesterId");
 
-                    b.ToTable("Semesters");
+                    b.ToTable("semesters");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Submission", b =>
                 {
                     b.Property<Guid>("SubmissionId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_date");
 
                     b.Property<string>("Folder")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("folder");
 
                     b.Property<Guid>("LecturerId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("lecturer_id");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
 
                     b.Property<string>("SubmissionName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("submission_name");
 
                     b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_date");
 
                     b.HasKey("SubmissionId");
 
                     b.HasIndex("LecturerId");
 
-                    b.ToTable("Submissions");
+                    b.ToTable("submissions");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<DateTime>("Birthday")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("date")
+                        .HasColumnName("birthday");
 
                     b.Property<string>("Cccd")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cccd");
 
                     b.Property<string>("Discriminator")
                         .IsRequired()
@@ -242,24 +303,30 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("password_hash");
 
                     b.Property<int>("Role")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("role");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Users");
+                    b.ToTable("users");
 
                     b.HasDiscriminator<string>("Discriminator").HasValue("User");
 
@@ -272,11 +339,17 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.Property<string>("LecturerCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("lecturer_code");
 
                     b.Property<string>("Subject")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("subject");
+
+                    b.ToTable("users");
 
                     b.HasDiscriminator().HasValue("Lecturer");
                 });
@@ -287,11 +360,17 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.Property<string>("Major")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("major");
 
                     b.Property<string>("StundentCode")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("student_code");
+
+                    b.ToTable("users");
 
                     b.HasDiscriminator().HasValue("Student");
                 });
