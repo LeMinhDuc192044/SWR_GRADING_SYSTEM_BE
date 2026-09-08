@@ -4,8 +4,8 @@
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 public class Semester
 {
-    public Guid Id { get; set; }
-
+    public Guid SemesterId { get; set; } = Guid.NewGuid();
+    public string SemesterCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }

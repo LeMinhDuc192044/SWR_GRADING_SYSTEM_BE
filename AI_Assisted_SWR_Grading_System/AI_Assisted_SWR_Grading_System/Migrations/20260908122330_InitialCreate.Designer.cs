@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AI_Assisted_SWR_Grading_System.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260907171000_UpdateUserModel")]
-    partial class UpdateUserModel
+    [Migration("20260908122330_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -27,18 +27,19 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.ExamMaterial", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("ExamMaterialId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("CreateById1")
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExamMaterialCode")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid>("ExaminationId")
                         .HasColumnType("uuid");
@@ -61,9 +62,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<DateTime>("UpdatedDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("Id");
+                    b.HasKey("ExamMaterialId");
 
-                    b.HasIndex("CreateById1");
+                    b.HasIndex("CreateById");
 
                     b.HasIndex("ExaminationId");
 
@@ -72,7 +73,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Examination", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("ExaminationId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -81,6 +82,10 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ExaminationCode")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -101,7 +106,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.HasKey("ExaminationId");
 
                     b.HasIndex("SemesterId");
 
@@ -110,7 +115,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Grading", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("GradingId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -129,6 +134,10 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<decimal?>("FinalScore")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("GradingCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<decimal?>("LecturerScore")
                         .HasColumnType("numeric");
 
@@ -141,7 +150,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<DateTime>("UpdateDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("Id");
+                    b.HasKey("GradingId");
 
                     b.HasIndex("SubmissionId");
 
@@ -150,7 +159,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Semester", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("SemesterId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -165,13 +174,17 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("SemesterCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.HasKey("SemesterId");
 
                     b.ToTable("Semesters");
                 });
@@ -192,26 +205,28 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<Guid>("LecturerId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("LecturerId1")
-                        .HasColumnType("text");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("SubmissionName")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("SubmissionId");
 
-                    b.HasIndex("LecturerId1");
+                    b.HasIndex("LecturerId");
 
                     b.ToTable("Submissions");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.User", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("Birthday")
                         .HasColumnType("timestamp with time zone");
@@ -242,10 +257,6 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
-                    b.Property<string>("UserName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.HasKey("Id");
 
                     b.ToTable("Users");
@@ -258,6 +269,10 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", b =>
                 {
                     b.HasBaseType("AI_Assisted_SWR_Grading_System.Domain.Entities.User");
+
+                    b.Property<string>("LecturerCode")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Subject")
                         .IsRequired()
@@ -274,6 +289,10 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("StundentCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasDiscriminator().HasValue("Student");
                 });
 
@@ -281,7 +300,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 {
                     b.HasOne("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", "CreateBy")
                         .WithMany("ExamMaterialsCreated")
-                        .HasForeignKey("CreateById1");
+                        .HasForeignKey("CreateById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("AI_Assisted_SWR_Grading_System.Domain.Entities.Examination", "Examination")
                         .WithMany("ExamMaterials")
@@ -320,7 +341,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 {
                     b.HasOne("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", "Lecturer")
                         .WithMany("Submissions")
-                        .HasForeignKey("LecturerId1");
+                        .HasForeignKey("LecturerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Lecturer");
                 });

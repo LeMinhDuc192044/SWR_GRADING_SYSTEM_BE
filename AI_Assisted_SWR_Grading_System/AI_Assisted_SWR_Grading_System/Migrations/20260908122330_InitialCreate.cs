@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AI_Assisted_SWR_Grading_System.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateUserModel : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,7 +15,8 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 name: "Semesters",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    SemesterId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SemesterCode = table.Column<string>(type: "text", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     Code = table.Column<string>(type: "text", nullable: false),
                     StartDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
@@ -24,15 +25,14 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Semesters", x => x.Id);
+                    table.PrimaryKey("PK_Semesters", x => x.SemesterId);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "text", nullable: false),
-                    UserName = table.Column<string>(type: "text", nullable: false),
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
                     FullName = table.Column<string>(type: "text", nullable: false),
                     Birthday = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     PasswordHash = table.Column<string>(type: "text", nullable: false),
@@ -41,7 +41,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     Discriminator = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
+                    LecturerCode = table.Column<string>(type: "text", nullable: true),
                     Subject = table.Column<string>(type: "text", nullable: true),
+                    StundentCode = table.Column<string>(type: "text", nullable: true),
                     Major = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
@@ -53,7 +55,8 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 name: "Examinations",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ExaminationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ExaminationCode = table.Column<string>(type: "text", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     StartDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     StartTime = table.Column<TimeSpan>(type: "interval", nullable: false),
@@ -65,12 +68,12 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Examinations", x => x.Id);
+                    table.PrimaryKey("PK_Examinations", x => x.ExaminationId);
                     table.ForeignKey(
                         name: "FK_Examinations_Semesters_SemesterId",
                         column: x => x.SemesterId,
                         principalTable: "Semesters",
-                        principalColumn: "Id",
+                        principalColumn: "SemesterId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -79,28 +82,30 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 columns: table => new
                 {
                     SubmissionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SubmissionName = table.Column<string>(type: "text", nullable: false),
                     Folder = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<int>(type: "integer", nullable: false),
                     CreatedDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LecturerId = table.Column<Guid>(type: "uuid", nullable: false),
-                    LecturerId1 = table.Column<string>(type: "text", nullable: true)
+                    LecturerId = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Submissions", x => x.SubmissionId);
                     table.ForeignKey(
-                        name: "FK_Submissions_Users_LecturerId1",
-                        column: x => x.LecturerId1,
+                        name: "FK_Submissions_Users_LecturerId",
+                        column: x => x.LecturerId,
                         principalTable: "Users",
-                        principalColumn: "Id");
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
                 name: "ExamMaterials",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ExamMaterialId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ExamMaterialCode = table.Column<string>(type: "text", nullable: false),
                     FileDocs = table.Column<string>(type: "text", nullable: true),
                     FileRubric = table.Column<string>(type: "text", nullable: true),
                     FileAnswerTemplate = table.Column<string>(type: "text", nullable: true),
@@ -109,30 +114,31 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
                     Status = table.Column<int>(type: "integer", nullable: false),
                     CreateById = table.Column<Guid>(type: "uuid", nullable: false),
-                    CreateById1 = table.Column<string>(type: "text", nullable: true),
                     ExaminationId = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_ExamMaterials", x => x.Id);
+                    table.PrimaryKey("PK_ExamMaterials", x => x.ExamMaterialId);
                     table.ForeignKey(
                         name: "FK_ExamMaterials_Examinations_ExaminationId",
                         column: x => x.ExaminationId,
                         principalTable: "Examinations",
-                        principalColumn: "Id",
+                        principalColumn: "ExaminationId",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_ExamMaterials_Users_CreateById1",
-                        column: x => x.CreateById1,
+                        name: "FK_ExamMaterials_Users_CreateById",
+                        column: x => x.CreateById,
                         principalTable: "Users",
-                        principalColumn: "Id");
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
                 name: "Gradings",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    GradingId = table.Column<Guid>(type: "uuid", nullable: false),
+                    GradingCode = table.Column<string>(type: "text", nullable: false),
                     AiScore = table.Column<decimal>(type: "numeric", nullable: true),
                     LecturerScore = table.Column<decimal>(type: "numeric", nullable: true),
                     AiLogs = table.Column<string>(type: "text", nullable: true),
@@ -145,7 +151,7 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Gradings", x => x.Id);
+                    table.PrimaryKey("PK_Gradings", x => x.GradingId);
                     table.ForeignKey(
                         name: "FK_Gradings_Submissions_SubmissionId",
                         column: x => x.SubmissionId,
@@ -160,9 +166,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 column: "SemesterId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ExamMaterials_CreateById1",
+                name: "IX_ExamMaterials_CreateById",
                 table: "ExamMaterials",
-                column: "CreateById1");
+                column: "CreateById");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ExamMaterials_ExaminationId",
@@ -175,9 +181,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 column: "SubmissionId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Submissions_LecturerId1",
+                name: "IX_Submissions_LecturerId",
                 table: "Submissions",
-                column: "LecturerId1");
+                column: "LecturerId");
         }
 
         /// <inheritdoc />

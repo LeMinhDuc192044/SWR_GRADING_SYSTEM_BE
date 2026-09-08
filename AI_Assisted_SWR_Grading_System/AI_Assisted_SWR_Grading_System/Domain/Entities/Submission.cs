@@ -4,8 +4,8 @@
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 public class Submission
 {
-    public Guid SubmissionId { get; set; }
-
+    public Guid SubmissionId { get; set; } = Guid.NewGuid();
+    public string SubmissionName { get; set; } = string.Empty;
     public string Folder { get; set; } = string.Empty;
     public SubmissionStatus Status { get; set; }
     public DateTime CreatedDate { get; set; }

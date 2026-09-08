@@ -3,8 +3,8 @@
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 public class Examination
 {
-    public Guid Id { get; set; }
-
+    public Guid ExaminationId { get; set; }
+    public string ExaminationCode { get; set; } = string.Empty; 
     public string Name { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
     public TimeSpan StartTime { get; set; }
