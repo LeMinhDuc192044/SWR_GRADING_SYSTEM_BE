@@ -18,10 +18,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false),
                     semester_code = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    code = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     start_date = table.Column<DateTime>(type: "date", nullable: false),
                     end_date = table.Column<DateTime>(type: "date", nullable: false),
-                    status = table.Column<int>(type: "integer", nullable: false)
+                    status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -179,6 +178,12 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                 name: "IX_gradings_submission_id",
                 table: "gradings",
                 column: "submission_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_semesters_semester_code",
+                table: "semesters",
+                column: "semester_code",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_submissions_lecturer_id",

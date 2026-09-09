@@ -1,7 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+﻿using AI_Assisted_SWR_Grading_System.Application.Common.Interfaces;
 using AI_Assisted_SWR_Grading_System.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
 
 namespace AI_Assisted_SWR_Grading_System.Infrastructure.Configurations;
 
@@ -14,6 +14,9 @@ public static class DatabaseService
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection")));
+
+        services.AddScoped<IApplicationDbContext>(provider =>
+            provider.GetRequiredService<AppDbContext>());
 
         return services;
     }
