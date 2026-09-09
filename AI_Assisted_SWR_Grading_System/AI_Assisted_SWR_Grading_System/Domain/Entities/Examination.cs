@@ -1,6 +1,6 @@
-﻿using AI_Assisted_SWR_Grading_System.Domain.Enums;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using AI_Assisted_SWR_Grading_System.Domain.Enums;
 
 
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
@@ -16,11 +16,16 @@ public class Examination
     [MaxLength(20)]
     [Column("examination_code")]
     public string ExaminationCode { get; set; } = string.Empty;
-
+        
     [Required]
     [MaxLength(200)]
     [Column("name")]
     public string Name { get; set; } = string.Empty;
+
+
+    [Required]
+    [Column("examination_type")]
+    public ExaminationType ExaminationType { get; set; }
 
     [Required]
     [Column("start_date", TypeName = "date")]
