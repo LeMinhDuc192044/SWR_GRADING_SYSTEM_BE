@@ -3,6 +3,7 @@ using System;
 using AI_Assisted_SWR_Grading_System.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AI_Assisted_SWR_Grading_System.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909140138_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -292,6 +295,11 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("cccd");
 
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -319,7 +327,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
 
                     b.ToTable("users");
 
-                    b.UseTptMappingStrategy();
+                    b.HasDiscriminator<string>("Discriminator").HasValue("User");
+
+                    b.UseTphMappingStrategy();
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", b =>
@@ -338,7 +348,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("subject");
 
-                    b.ToTable("lecturers");
+                    b.ToTable("users");
+
+                    b.HasDiscriminator().HasValue("Lecturer");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Student", b =>
@@ -357,7 +369,9 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("student_code");
 
-                    b.ToTable("students");
+                    b.ToTable("users");
+
+                    b.HasDiscriminator().HasValue("Student");
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.ExamMaterial", b =>
@@ -410,24 +424,6 @@ namespace AI_Assisted_SWR_Grading_System.Migrations
                         .IsRequired();
 
                     b.Navigation("Lecturer");
-                });
-
-            modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", b =>
-                {
-                    b.HasOne("AI_Assisted_SWR_Grading_System.Domain.Entities.User", null)
-                        .WithOne()
-                        .HasForeignKey("AI_Assisted_SWR_Grading_System.Domain.Entities.Lecturer", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Student", b =>
-                {
-                    b.HasOne("AI_Assisted_SWR_Grading_System.Domain.Entities.User", null)
-                        .WithOne()
-                        .HasForeignKey("AI_Assisted_SWR_Grading_System.Domain.Entities.Student", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("AI_Assisted_SWR_Grading_System.Domain.Entities.Examination", b =>

@@ -22,11 +22,6 @@ public class Semester
     public string Name { get; set; } = string.Empty;
 
     [Required]
-    [MaxLength(20)]
-    [Column("code")]
-    public string Code { get; set; } = string.Empty;
-
-    [Required]
     [Column("start_date", TypeName = "date")]
     public DateTime StartDate { get; set; }
 

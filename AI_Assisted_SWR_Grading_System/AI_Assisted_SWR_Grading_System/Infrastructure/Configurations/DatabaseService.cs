@@ -1,8 +1,7 @@
 ﻿using AI_Assisted_SWR_Grading_System.Application.Common.Interfaces;
 using AI_Assisted_SWR_Grading_System.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+
 
 namespace AI_Assisted_SWR_Grading_System.Infrastructure.Configurations;
 

@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AI_Assisted_SWR_Grading_System.Domain.Entities;
 
+[Table("students")]
 public class Student : User
 {
     [Required]

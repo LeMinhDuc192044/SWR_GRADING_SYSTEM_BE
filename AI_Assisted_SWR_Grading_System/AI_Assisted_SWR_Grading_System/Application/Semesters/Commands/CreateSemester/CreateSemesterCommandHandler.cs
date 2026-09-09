@@ -1,13 +1,15 @@
-﻿using MediatR;
-using Microsoft.EntityFrameworkCore;
-using AI_Assisted_SWR_Grading_System.Application.Common.Interfaces;
+﻿// Application/Semesters/Commands/CreateSemester/CreateSemesterCommandHandler.cs
 using AI_Assisted_SWR_Grading_System.Application.Common.Exceptions;
-using AI_Assisted_SWR_Grading_System.Domain.Common;
+using AI_Assisted_SWR_Grading_System.Application.Common.Interfaces;
+using AI_Assisted_SWR_Grading_System.Application.Semesters;
+using AI_Assisted_SWR_Grading_System.Application.Semesters.DTOs;
 using AI_Assisted_SWR_Grading_System.Domain.Entities;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 
 namespace AI_Assisted_SWR_Grading_System.Application.Semesters.Commands.CreateSemester;
 
-public class CreateSemesterCommandHandler : IRequestHandler<CreateSemesterCommand, Guid>
+public class CreateSemesterCommandHandler : IRequestHandler<CreateSemesterCommand, SemesterDTO>
 {
     private readonly IApplicationDbContext _context;
 
@@ -16,29 +18,55 @@ public class CreateSemesterCommandHandler : IRequestHandler<CreateSemesterComman
         _context = context;
     }
 
-    public async Task<Guid> Handle(CreateSemesterCommand request, CancellationToken cancellationToken)
+    public async Task<SemesterDTO> Handle(CreateSemesterCommand request, CancellationToken cancellationToken)
     {
-        var semesterCode = SemesterCodeGenerator.Generate(request.StartDate);
-
+        // 1. Duplicate code check
         var codeExists = await _context.Semesters
-            .AnyAsync(s => s.SemesterCode == semesterCode, cancellationToken);
+            .AnyAsync(s => s.SemesterCode == request.SemesterCode, cancellationToken);
 
         if (codeExists)
-            throw new ConflictException($"A semester for '{semesterCode}' already exists.");
+            throw new ConflictException($"A semester with code '{request.SemesterCode}' already exists.");
+
+        // 2. Overlap check — new range must not intersect any existing semester's range,
+        //    and must not exactly match an existing range either (covered by the same condition).
+        var overlaps = await _context.Semesters
+            .AnyAsync(s =>
+                    s.StartDate < request.EndDate &&
+                    s.EndDate > request.StartDate,
+                cancellationToken);
+
+        if (overlaps)
+            throw new ConflictException(
+                "The given start/end date range overlaps with an existing semester.");
 
         var semester = new Semester
         {
-            SemesterCode = semesterCode,
+            SemesterCode = request.SemesterCode,
             Name = request.Name,
-            Code = request.Code,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             Status = request.Status
         };
 
         _context.Semesters.Add(semester);
-        await _context.SaveChangesAsync(cancellationToken);
 
-        return semester.SemesterId;
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+        {
+            throw new ConflictException($"A semester with code '{request.SemesterCode}' already exists.");
+        }
+
+        return new SemesterDTO
+        {
+            SemesterId = semester.SemesterId,
+            SemesterCode = semester.SemesterCode,
+            Name = semester.Name,
+            StartDate = semester.StartDate,
+            EndDate = semester.EndDate,
+            Status = semester.Status
+        };
     }
 }
