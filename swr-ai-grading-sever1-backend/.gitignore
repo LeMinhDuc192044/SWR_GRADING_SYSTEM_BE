@@ -1,0 +1,133 @@
+# ============================================================
+# .NET / Visual Studio
+# ============================================================
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+bld/
+[Ll]og/
+[Ll]ogs/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.lock.json
+*.pidb
+*.pdb
+*.binlog
+*.userosscache
+*.sln.docstates
+*.nuget.props
+*.nuget.targets
+
+# Visual Studio Code
+.vscode/
+
+# Rider
+.idea/
+
+# ============================================================
+# ASP.NET Core / API
+# ============================================================
+appsettings.*.Local.json
+appsettings.*.Development.json
+appsettings.*.Production.json
+appsettings.Development.json
+appsettings.Production.json
+secrets.json
+
+# ============================================================
+# Secrets & Environment — TUYỆT ĐỐI KHÔNG PUSH
+# ============================================================
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+credentials.json
+service-account.json
+*.secret.json
+
+# ============================================================
+# Build outputs
+# ============================================================
+publish/
+TestResults/
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+coverage*.xml
+coverage*.json
+
+# ============================================================
+# Node / npm (cho frontend nếu có)
+# ============================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+.next/
+
+# ============================================================
+# OS files
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================
+# Logs & temp
+# ============================================================
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# ============================================================
+# Project-specific — Server 1
+# ============================================================
+/storage/
+/uploads/
+/wwwroot/uploads/
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.pdf
+*.zip
+!docs/**/*.docx
+!docs/**/*.pdf
+
+# ============================================================
+# Migration backups
+# ============================================================
+*.bak.sql
+*.dump
+
+# ============================================================
+# Claude / Cursor / AI tools
+# ============================================================
+.cursor/
+.claude/
+.aider*
+*.pyc
+__pycache__/
