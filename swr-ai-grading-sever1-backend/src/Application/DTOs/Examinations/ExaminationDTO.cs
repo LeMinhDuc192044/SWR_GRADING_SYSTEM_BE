@@ -15,6 +15,7 @@ public class ExaminationDTO
     public string? Note { get; set; }
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
+    public Guid? ExamMaterialId { get; set; }
 }
 
 public class CreateExaminationRequest
@@ -28,6 +29,7 @@ public class CreateExaminationRequest
     public string? Note { get; set; }
     public ExaminationStatus Status { get; set; } = ExaminationStatus.Draft;
     public Guid SemesterId { get; set; }
+    public Guid ExamMaterialId { get; set; }
 }
 
 public class UpdateExaminationRequest
@@ -41,4 +43,5 @@ public class UpdateExaminationRequest
     public string? Note { get; set; }
     public ExaminationStatus? Status { get; set; }
     public Guid? SemesterId { get; set; }
+    public Guid? ExamMaterialId { get; set; }
 }

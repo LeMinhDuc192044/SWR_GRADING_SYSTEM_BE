@@ -9,13 +9,17 @@ public interface IExamMaterialService
     Task<PagedResult<ExamMaterialMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
     Task<Result<ExamMaterialDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(
-        Guid examinationId,
+        Guid semesterId,
+        Guid? examinationId,
+        string description,
+        int totalQuestions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
         CancellationToken ct = default);
     Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateManyAsync(
-        Guid examinationId,
-        IReadOnlyList<IReadOnlyList<MaterialFileUpload>> materials,
+        Guid semesterId,
+        Guid? examinationId,
+        IReadOnlyList<CreateExamMaterialInput> materials,
         Guid createdById,
         CancellationToken ct = default);
     Task<Result<ExamMaterialDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);

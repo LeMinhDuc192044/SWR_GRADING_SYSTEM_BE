@@ -1,6 +1,6 @@
-using Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Domain.Enums;
 
 namespace Domain.Entities;
 
@@ -15,6 +15,13 @@ public class ExamMaterial
     [MaxLength(20)]
     [Column("exam_material_code")]
     public string ExamMaterialCode { get; set; } = string.Empty;
+
+    [Column("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [Required]
+    [Column("total_questions")]
+    public int TotalQuestions { get; set; }
 
     [Column("file_question_docs")]
     public string? FileQuestionDocs { get; set; }
@@ -44,12 +51,18 @@ public class ExamMaterial
     [Column("status")]
     public ExamMaterialStatus Status { get; set; }
 
-    [Required]
     [Column("examination_id")]
     [ForeignKey(nameof(Examination))]
-    public Guid ExaminationId { get; set; }
+    public Guid? ExaminationId { get; set; }
 
     public Examination Examination { get; set; } = null!;
+
+    [Required]
+    [Column("semester_id")]
+    [ForeignKey(nameof(Semester))]
+    public Guid SemesterId { get; set; }
+
+    public Semester Semester { get; set; } = null!;
 
     [Required]
     [Column("create_by_id")]

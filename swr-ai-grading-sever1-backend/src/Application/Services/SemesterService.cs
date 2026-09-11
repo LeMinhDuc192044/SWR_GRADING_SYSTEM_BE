@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.DTOs.Examinations;
 using Application.DTOs.Semesters;
 using Application.Interfaces;
 using Domain.Entities;
@@ -9,11 +10,15 @@ namespace Application.Services;
 public class SemesterService : ISemesterService
 {
 	private readonly ISemesterRepository _repository;
+	private readonly IExaminationRepository _examinationRepository;
+	private readonly IExamMaterialRepository _examMaterialRepository;
 	private readonly IUnitOfWork _unitOfWork;
 
-	public SemesterService(ISemesterRepository repository, IUnitOfWork unitOfWork)
+	public SemesterService(ISemesterRepository repository, IExaminationRepository examinationRepository, IExamMaterialRepository examMaterialRepository, IUnitOfWork unitOfWork)
 	{
 		_repository = repository;
+		_examinationRepository = examinationRepository;
+		_examMaterialRepository = examMaterialRepository;
 		_unitOfWork = unitOfWork;
 	}
 
@@ -37,12 +42,12 @@ public class SemesterService : ISemesterService
 		};
 	}
 
-	public async Task<Result<SemesterDTO>> GetByIdAsync(Guid id, CancellationToken ct = default)
+	public async Task<Result<SemesterDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default)
 	{
 		var semester = await _repository.GetByIdAsync(id, ct);
 		return semester is null
-			? Result<SemesterDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND")
-			: Result<SemesterDTO>.Success(ToDto(semester));
+			? Result<SemesterDetailDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND")
+			: Result<SemesterDetailDTO>.Success(await ToDetailDtoAsync(semester, ct));
 	}
 
 	public async Task<Result<SemesterDTO>> CreateAsync(CreateSemesterRequest request, CancellationToken ct = default)
@@ -152,4 +157,49 @@ public class SemesterService : ISemesterService
 		EndDate = semester.EndDate,
 		Status = semester.Status
 	};
+
+	private async Task<SemesterDetailDTO> ToDetailDtoAsync(Semester semester, CancellationToken ct)
+	{
+		var examinations = await _examinationRepository.FindAsync(e => e.SemesterId == semester.SemesterId, ct);
+		var materials = await _examMaterialRepository.FindAsync(m => m.SemesterId == semester.SemesterId && !m.IsDeleted, ct);
+
+		return new SemesterDetailDTO
+		{
+			SemesterId = semester.SemesterId,
+			SemesterCode = semester.SemesterCode,
+			Name = semester.Name,
+			StartDate = semester.StartDate,
+			EndDate = semester.EndDate,
+			Status = semester.Status,
+			Examinations = examinations.OrderBy(e => e.StartDate).ThenBy(e => e.StartTime).Select(e => new ExaminationDTO
+			{
+				ExaminationId = e.ExaminationId,
+				ExaminationCode = e.ExaminationCode,
+				Name = e.Name,
+				ExaminationType = e.ExaminationType,
+				StartDate = e.StartDate,
+				StartTime = e.StartTime,
+				DurationMinutes = e.DurationMinutes,
+				BeforeTimeMinutes = e.BeforeTimeMinutes,
+				Note = e.Note,
+				Status = e.Status,
+				SemesterId = e.SemesterId,
+				ExamMaterialId = materials.FirstOrDefault(m => m.ExaminationId == e.ExaminationId)?.ExamMaterialId
+			}).ToList(),
+			ExamMaterials = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterExamMaterialDTO
+			{
+				ExamMaterialId = m.ExamMaterialId,
+				ExamMaterialCode = m.ExamMaterialCode,
+				Description = m.Description,
+				TotalQuestions = m.TotalQuestions,
+				Status = m.Status,
+				ExaminationId = m.ExaminationId,
+				CreatedDate = m.CreatedDate,
+				UpdatedDate = m.UpdatedDate,
+				FileQuestionDocs = m.FileQuestionDocs,
+				FileAnswerRubric = m.FileAnswerRubric,
+				FileAnswerTemplate = m.FileAnswerTemplate
+			}).ToList()
+		};
+	}
 }

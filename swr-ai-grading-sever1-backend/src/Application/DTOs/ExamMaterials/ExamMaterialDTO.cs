@@ -8,9 +8,12 @@ public class ExamMaterialMetadataDTO
 {
     public Guid ExamMaterialId { get; set; }
     public string ExamMaterialCode { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int TotalQuestions { get; set; }
     public IReadOnlyList<ExamMaterialFileDTO> Files { get; set; } = [];
     public ExamMaterialStatus Status { get; set; }
-    public Guid ExaminationId { get; set; }
+    public Guid? ExaminationId { get; set; }
+    public Guid SemesterId { get; set; }
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
 }
@@ -30,6 +33,10 @@ public sealed class ExamMaterialDetailDTO : ExamMaterialMetadataDTO
 
 public sealed class UpdateExamMaterialRequest
 {
+    public string? Description { get; set; }
+    public int? TotalQuestions { get; set; }
+    public Guid? SemesterId { get; set; }
+    public Guid? ExaminationId { get; set; }
     public ExamMaterialStatus? Status { get; set; }
 }
 
@@ -51,7 +58,10 @@ public class AddExamMaterialFilesRequest
 
 public class CreateExamMaterialRequest
 {
-    public Guid ExaminationId { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int TotalQuestions { get; set; }
+    public Guid SemesterId { get; set; }
+    public Guid? ExaminationId { get; set; }
     public IFormFile? Question { get; set; }
     public IFormFile? AnswerRubric { get; set; }
     public IFormFile? AnswerTemplate { get; set; }
@@ -59,13 +69,25 @@ public class CreateExamMaterialRequest
 
 public sealed class CreateExamMaterialsRequest
 {
-    public Guid ExaminationId { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int TotalQuestions { get; set; }
+    public Guid SemesterId { get; set; }
+    public Guid? ExaminationId { get; set; }
     public List<CreateExamMaterialItemRequest> Materials { get; set; } = new();
 }
 
 public sealed class CreateExamMaterialItemRequest
 {
+    public string Description { get; set; } = string.Empty;
+    public int TotalQuestions { get; set; }
     public IFormFile? Question { get; set; }
     public IFormFile? AnswerRubric { get; set; }
     public IFormFile? AnswerTemplate { get; set; }
+}
+
+public sealed class CreateExamMaterialInput
+{
+    public required string Description { get; init; }
+    public int TotalQuestions { get; init; }
+    public required IReadOnlyList<MaterialFileUpload> Files { get; init; }
 }

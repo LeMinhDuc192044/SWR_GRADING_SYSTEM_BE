@@ -1,6 +1,6 @@
-using Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Domain.Enums;
 
 namespace Domain.Entities;
 
@@ -34,4 +34,5 @@ public class Semester
     public SemesterStatus Status { get; set; }
 
     public ICollection<Examination> Examinations { get; set; } = new List<Examination>();
+    public ICollection<ExamMaterial> ExamMaterials { get; set; } = new List<ExamMaterial>();
 }
