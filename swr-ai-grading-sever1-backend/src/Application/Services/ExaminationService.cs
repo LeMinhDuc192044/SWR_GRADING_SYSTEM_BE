@@ -11,28 +11,30 @@ public class ExaminationService : IExaminationService
     private const string DefaultCourseCode = "SWR302";
     private readonly IExaminationRepository _repository;
     private readonly ISemesterRepository _semesterRepository;
+    private readonly IExamMaterialRepository _examMaterialRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public ExaminationService(
         IExaminationRepository repository,
         ISemesterRepository semesterRepository,
+        IExamMaterialRepository examMaterialRepository,
         IUnitOfWork unitOfWork)
     {
         _repository = repository;
         _semesterRepository = semesterRepository;
+        _examMaterialRepository = examMaterialRepository;
         _unitOfWork = unitOfWork;
     }
 
     public async Task<PagedResult<ExaminationDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
     {
         var examinations = await _repository.GetAllAsync(ct);
-        var items = examinations
+        var items = await Task.WhenAll(examinations
             .OrderByDescending(e => e.StartDate)
             .ThenBy(e => e.StartTime)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(ToDto)
-            .ToList();
+            .Select(ToDtoAsync));
 
         return new PagedResult<ExaminationDTO>
         {
@@ -48,7 +50,7 @@ public class ExaminationService : IExaminationService
         var examination = await _repository.GetByIdAsync(id, ct);
         return examination is null
             ? Result<ExaminationDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND")
-            : Result<ExaminationDTO>.Success(ToDto(examination));
+            : Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
     }
 
     public async Task<Result<ExaminationDTO>> CreateAsync(CreateExaminationRequest request, CancellationToken ct = default)
@@ -60,6 +62,11 @@ public class ExaminationService : IExaminationService
         var semester = await _semesterRepository.GetByIdAsync(request.SemesterId, ct);
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+        var material = await _examMaterialRepository.GetByIdAsync(request.ExamMaterialId, ct);
+        var materialValidation = ValidateMaterial(material, request.SemesterId);
+        if (materialValidation is not null)
+            return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
 
         var code = await GenerateCodeAsync(semester.SemesterCode, request.ExaminationType, ct);
         var examination = new Examination
@@ -76,9 +83,14 @@ public class ExaminationService : IExaminationService
             SemesterId = request.SemesterId
         };
 
+        material!.ExaminationId = examination.ExaminationId;
+        material.Status = ExamMaterialStatus.InUse;
+        material.UpdatedDate = DateTime.UtcNow;
+        _examMaterialRepository.Update(material);
+
         await _repository.AddAsync(examination, ct);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<ExaminationDTO>.Success(ToDto(examination));
+        return Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
     }
 
     public async Task<Result<ExaminationDTO>> UpdateAsync(Guid id, UpdateExaminationRequest request, CancellationToken ct = default)
@@ -100,6 +112,28 @@ public class ExaminationService : IExaminationService
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
+        var linkedMaterials = await _examMaterialRepository.FindAsync(
+            material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
+            ct);
+        if (linkedMaterials.Any(material => material.SemesterId != semesterId))
+            return Result<ExaminationDTO>.Failure(
+                "Examination semester must match the semester of its exam material.",
+                "EXAM_MATERIAL_SEMESTER_MISMATCH");
+
+        var materialId = request.ExamMaterialId;
+        if (materialId.HasValue)
+        {
+            var material = await _examMaterialRepository.GetByIdAsync(materialId.Value, ct);
+            var materialValidation = ValidateMaterial(material, semesterId);
+            if (materialValidation is not null)
+                return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
+
+            material!.ExaminationId = examination.ExaminationId;
+            material.Status = ExamMaterialStatus.InUse;
+            material.UpdatedDate = DateTime.UtcNow;
+            _examMaterialRepository.Update(material);
+        }
+
         if (semesterId != examination.SemesterId || type != examination.ExaminationType)
             examination.ExaminationCode = await GenerateCodeAsync(semester.SemesterCode, type, ct);
 
@@ -117,7 +151,7 @@ public class ExaminationService : IExaminationService
 
         _repository.Update(examination);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<ExaminationDTO>.Success(ToDto(examination));
+        return Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
     }
 
     public async Task<Result> DeleteAsync(Guid id, CancellationToken ct = default)
@@ -166,8 +200,11 @@ public class ExaminationService : IExaminationService
         return null;
     }
 
-    private static ExaminationDTO ToDto(Examination examination) => new()
+    private async Task<ExaminationDTO> ToDtoAsync(Examination examination)
     {
+        var material = (await _examMaterialRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
+        return new ExaminationDTO
+        {
         ExaminationId = examination.ExaminationId,
         ExaminationCode = examination.ExaminationCode,
         Name = examination.Name,
@@ -178,6 +215,17 @@ public class ExaminationService : IExaminationService
         BeforeTimeMinutes = examination.BeforeTimeMinutes,
         Note = examination.Note,
         Status = examination.Status,
-        SemesterId = examination.SemesterId
-    };
+        SemesterId = examination.SemesterId,
+        ExamMaterialId = material?.ExamMaterialId
+        };
+    }
+
+    private static (string Message, string Code)? ValidateMaterial(ExamMaterial? material, Guid semesterId)
+    {
+        if (material is null || material.IsDeleted)
+            return ("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
+        if (material.SemesterId != semesterId)
+            return ("Exam material does not belong to the selected semester.", "EXAM_MATERIAL_SEMESTER_MISMATCH");
+        return null;
+    }
 }

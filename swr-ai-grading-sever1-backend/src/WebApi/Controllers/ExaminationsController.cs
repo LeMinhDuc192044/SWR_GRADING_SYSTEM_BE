@@ -37,7 +37,7 @@ public class ExaminationsController : ControllerBase
         var result = await _service.CreateAsync(request, ct);
         if (result.IsSuccess)
             return CreatedAtAction(nameof(GetById), new { id = result.Data!.ExaminationId }, result.Data);
-        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
+        if (result.ErrorCode is "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
             return NotFound(result);
         return BadRequest(result);
     }
@@ -51,7 +51,7 @@ public class ExaminationsController : ControllerBase
         var result = await _service.UpdateAsync(id, request, ct);
         if (result.IsSuccess)
             return Ok(result.Data);
-        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND")
+        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
             return NotFound(result);
         return BadRequest(result);
     }

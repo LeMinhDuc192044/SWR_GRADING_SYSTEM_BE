@@ -1,9 +1,9 @@
+using System.Security.Claims;
 using Application.Common;
 using Application.DTOs.ExamMaterials;
 using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers;
@@ -50,10 +50,10 @@ public sealed class ExamMaterialsController : ControllerBase
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
-        var result = await _service.CreateAsync(request.ExaminationId, uploads, userId, ct);
+        var result = await _service.CreateAsync(request.SemesterId, request.ExaminationId, request.Description, request.TotalQuestions, uploads, userId, ct);
 
         if (result.IsSuccess) return Ok(result.Data);
-        if (result.ErrorCode == "EXAMINATION_NOT_FOUND") return NotFound(result);
+        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND") return NotFound(result);
         if (result.ErrorCode == "LECTURER_REQUIRED") return Forbid();
         return BadRequest(result);
     }
@@ -67,58 +67,27 @@ public sealed class ExamMaterialsController : ControllerBase
        CancellationToken ct)
     {
        var materials = request.Materials
-           .Select(item => (IReadOnlyList<MaterialFileUpload>)BuildUploads(item.Question, item.AnswerRubric, item.AnswerTemplate))
+           .Select(item => new CreateExamMaterialInput
+           {
+               Description = item.Description,
+               TotalQuestions = item.TotalQuestions,
+               Files = BuildUploads(item.Question, item.AnswerRubric, item.AnswerTemplate)
+           })
            .ToList();
 
-         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
-         var result = await _service.CreateManyAsync(request.ExaminationId, materials, userId, ct);
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+            var result = await _service.CreateManyAsync(request.SemesterId, request.ExaminationId, materials, userId, ct);
 
-       if (result.IsSuccess) return Ok(result.Data);
-       if (result.ErrorCode == "EXAMINATION_NOT_FOUND") return NotFound(result);
-         if (result.ErrorCode == "LECTURER_REQUIRED") return Forbid();
-       return BadRequest(result);
+        if (result.IsSuccess)
+            return Ok(result.Data);
+        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND")
+            return NotFound(result);
+        if (result.ErrorCode == "LECTURER_REQUIRED")
+            return Forbid();
+        return BadRequest(result);
     }
 
-    // [HttpPost("batch")]
-    // [RequestSizeLimit(524_288_000)]
-    // [Consumes("multipart/form-data")]
-    // public async Task<ActionResult<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateMany(
-    // [FromForm] Guid examinationId,
-    // [FromForm] List<IFormFile> questions,
-    // [FromForm] List<IFormFile> answerRubrics,
-    // [FromForm] List<IFormFile> answerTemplates,
-    // CancellationToken ct)
-    // {
-    //     if (questions.Count != answerRubrics.Count ||
-    //         questions.Count != answerTemplates.Count)
-    //     {
-    //         return BadRequest(
-    //             "Each question must have exactly one rubric and one answer template.");
-    //     }
-
-    //     var materials = new List<IReadOnlyList<MaterialFileUpload>>();
-
-    //     for (var i = 0; i < questions.Count; i++)
-    //     {
-    //         materials.Add(BuildUploads(
-    //             questions[i],
-    //             answerRubrics[i],
-    //             answerTemplates[i]));
-    //     }
-
-    //     var result = await _service.CreateManyAsync(
-    //         examinationId,
-    //         materials,
-    //         ct);
-
-    //     if (result.IsSuccess)
-    //         return Ok(result.Data);
-
-    //     if (result.ErrorCode == "EXAMINATION_NOT_FOUND")
-    //         return NotFound(result);
-
-    //     return BadRequest(result);
-    // }
+    
 
     [HttpPost("{id:guid}/files")]
     [RequestSizeLimit(524_288_000)]
