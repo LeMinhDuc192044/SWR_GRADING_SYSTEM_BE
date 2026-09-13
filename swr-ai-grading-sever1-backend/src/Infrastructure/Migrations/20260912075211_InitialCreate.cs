@@ -117,6 +117,8 @@ namespace Infrastructure.Migrations
                 {
                     exam_material_id = table.Column<Guid>(type: "uuid", nullable: false),
                     exam_material_code = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    description = table.Column<string>(type: "text", nullable: false),
+                    total_questions = table.Column<int>(type: "integer", nullable: false),
                     file_question_docs = table.Column<string>(type: "text", nullable: true),
                     file_answer_rubric = table.Column<string>(type: "text", nullable: true),
                     file_answer_template = table.Column<string>(type: "text", nullable: true),
