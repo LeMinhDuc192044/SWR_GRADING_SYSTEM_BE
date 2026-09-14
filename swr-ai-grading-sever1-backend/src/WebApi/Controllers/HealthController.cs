@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using WebApi;
 
 namespace WebApi.Controllers;
 
@@ -10,10 +11,10 @@ namespace WebApi.Controllers;
 public class HealthController : ControllerBase
 {
     [HttpGet]
-    public IActionResult Get() => Ok(new
+    public IActionResult Get() => Ok(ApiResponse.Success(new
     {
         status = "healthy",
         server = "Backend.Server1",
         time = DateTime.UtcNow
-    });
+    }));
 }

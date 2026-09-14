@@ -17,43 +17,43 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<ExaminationDTO>>> GetAll(
+    public async Task<IActionResult> GetAll(
         [FromQuery] PagedRequest request,
         CancellationToken ct)
-        => Ok(await _service.GetPagedAsync(request, ct));
+        => Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<ExaminationDTO>> GetById(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Data) : NotFound(result);
+        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
     [HttpPost]
-    public async Task<ActionResult<ExaminationDTO>> Create(
+    public async Task<IActionResult> Create(
         [FromBody] CreateExaminationRequest request,
         CancellationToken ct)
     {
         var result = await _service.CreateAsync(request, ct);
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetById), new { id = result.Data!.ExaminationId }, result.Data);
+            return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode is "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
-            return NotFound(result);
-        return BadRequest(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<ExaminationDTO>> Update(
+    public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateExaminationRequest request,
         CancellationToken ct)
     {
         var result = await _service.UpdateAsync(id, request, ct);
         if (result.IsSuccess)
-            return Ok(result.Data);
+            return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
-            return NotFound(result);
-        return BadRequest(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpDelete("{id:guid}")]
@@ -61,11 +61,11 @@ public class ExaminationsController : ControllerBase
     {
         var result = await _service.DeleteAsync(id, ct);
         if (result.IsSuccess)
-            return NoContent();
+            return Ok(ApiResponse.Success(null));
         if (result.ErrorCode == "EXAMINATION_NOT_FOUND")
-            return NotFound(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "EXAMINATION_HAS_MATERIALS")
-            return Conflict(result);
-        return BadRequest(result);
+            return Conflict(ApiResponse.Failure(409, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 }
