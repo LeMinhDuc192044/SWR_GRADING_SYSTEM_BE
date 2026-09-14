@@ -8,7 +8,9 @@ using Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Configurations;
+using WebApi;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -90,6 +92,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(401, "Unauthorized."));
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(403, "Forbidden."));
+            }
+        };
     });
 
 builder.Services.AddScoped<ISemesterService, SemesterService>();
@@ -108,6 +124,19 @@ builder.Services.AddScoped<ISupabaseStorage>(sp =>
 
 // Controllers
 builder.Services.AddControllers();
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var message = string.Join(" ", context.ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(error => error.ErrorMessage)
+            .Where(message => !string.IsNullOrWhiteSpace(message)));
+
+        return new BadRequestObjectResult(
+            ApiResponse.Failure(400, string.IsNullOrWhiteSpace(message) ? "Dữ liệu không hợp lệ." : message));
+    };
+});
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddFluentValidationClientsideAdapters();
@@ -184,20 +213,13 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", () => Results.Ok(ApiResponse.Success(new
 {
     status = "healthy",
     server = "Backend.Server1",
     time = DateTime.UtcNow
-}));
+})));
 
 app.Run();
-
-app.MapGet("/health", () => Results.Ok(new
-{
-    status = "healthy",
-    server = "Backend.Server1",
-    time = DateTime.UtcNow
-}));
 
 app.Run();

@@ -17,46 +17,46 @@ public class SemestersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<SemesterDTO>>> GetAll(
+    public async Task<IActionResult> GetAll(
         [FromQuery] PagedRequest request,
         CancellationToken ct)
-        => Ok(await _service.GetPagedAsync(request, ct));
+        => Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<SemesterDTO>> GetById(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Data) : NotFound(result);
+        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
     [HttpPost]
-    public async Task<ActionResult<SemesterDTO>> Create(
+    public async Task<IActionResult> Create(
         [FromBody] CreateSemesterRequest request,
         CancellationToken ct)
     {
         var result = await _service.CreateAsync(request, ct);
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetById), new { id = result.Data!.SemesterId }, result.Data);
+            return Ok(ApiResponse.Success(result.Data));
 
         return result.ErrorCode == "SEMESTER_CODE_EXISTS"
-            ? Conflict(result)
-            : BadRequest(result);
+            ? Conflict(ApiResponse.Failure(409, result.Error!))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<SemesterDTO>> Update(
+    public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateSemesterRequest request,
         CancellationToken ct)
     {
         var result = await _service.UpdateAsync(id, request, ct);
         if (result.IsSuccess)
-            return Ok(result.Data);
+            return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "SEMESTER_CODE_EXISTS")
-            return Conflict(result);
-        return BadRequest(result);
+            return Conflict(ApiResponse.Failure(409, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpDelete("{id:guid}")]
@@ -64,25 +64,25 @@ public class SemestersController : ControllerBase
     {
         var result = await _service.DeleteAsync(id, ct);
         if (result.IsSuccess)
-            return NoContent();
+            return Ok(ApiResponse.Success(null));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "SEMESTER_HAS_EXAMINATIONS")
-            return Conflict(result);
-        return BadRequest(result);
+            return Conflict(ApiResponse.Failure(409, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<ActionResult<SemesterDTO>> UpdateStatus(
+    public async Task<IActionResult> UpdateStatus(
         Guid id,
         [FromBody] UpdateSemesterStatusRequest request,
         CancellationToken ct)
     {
         var result = await _service.UpdateStatusAsync(id, request, ct);
         if (result.IsSuccess)
-            return Ok(result.Data);
+            return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(result);
-        return BadRequest(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 }

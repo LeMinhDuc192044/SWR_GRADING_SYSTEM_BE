@@ -39,7 +39,7 @@ public sealed class AuthController : ControllerBase
             string.IsNullOrWhiteSpace(request.Password) ||
             !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
-            return Unauthorized(new { message = "Invalid credentials." });
+            return Unauthorized(ApiResponse.Failure(401, "Invalid credentials."));
         }
 
         var token = _tokens.GenerateToken(
@@ -48,13 +48,13 @@ public sealed class AuthController : ControllerBase
             (int)user.Role,
             user.Role.ToString());
 
-        return Ok(new
+        return Ok(ApiResponse.Success(new
         {
             accessToken = token,
             tokenType = "Bearer",
             expiresInMinutes = _settings.ExpirationMinutes,
             user = new { user.Id, user.FullName, role = user.Role.ToString() }
-        });
+        }));
     }
 
     [HttpPost("register")]
@@ -75,46 +75,37 @@ public sealed class AuthController : ControllerBase
             request.Birthday == default ||
             !Enum.IsDefined(typeof(UserRole), request.Role))
         {
-            return BadRequest(new
-            {
-                message = "FullName, Email, CCCD, Password, Birthday, and a valid Role are required."
-            });
+            return BadRequest(ApiResponse.Failure(400, "FullName, Email, CCCD, Password, Birthday, and a valid Role are required."));
         }
 
         if (request.Password.Length < 8)
-            return BadRequest(new { message = "Password must be at least 8 characters." });
+            return BadRequest(ApiResponse.Failure(400, "Password must be at least 8 characters."));
 
         if (request.Role == (int)UserRole.Student &&
             (string.IsNullOrWhiteSpace(studentCode) || string.IsNullOrWhiteSpace(major)))
         {
-            return BadRequest(new
-            {
-                message = "StudentCode and Major are required for Student accounts."
-            });
+            return BadRequest(ApiResponse.Failure(400, "StudentCode and Major are required for Student accounts."));
         }
 
         if (request.Role == (int)UserRole.Lecturer &&
             (string.IsNullOrWhiteSpace(lecturerCode) || string.IsNullOrWhiteSpace(subject)))
         {
-            return BadRequest(new
-            {
-                message = "LecturerCode and Subject are required for Lecturer accounts."
-            });
+            return BadRequest(ApiResponse.Failure(400, "LecturerCode and Subject are required for Lecturer accounts."));
         }
 
         if (await _users.IsEmailExistsAsync(email, ct))
-            return Conflict(new { message = "An account with this email already exists." });
+            return Conflict(ApiResponse.Failure(409, "An account with this email already exists."));
 
         if (!string.IsNullOrWhiteSpace(studentCode) &&
             await _users.IsStudentCodeExistsAsync(studentCode, ct))
         {
-            return Conflict(new { message = "An account with this student code already exists." });
+            return Conflict(ApiResponse.Failure(409, "An account with this student code already exists."));
         }
 
         if (!string.IsNullOrWhiteSpace(lecturerCode) &&
             await _users.IsLecturerCodeExistsAsync(lecturerCode, ct))
         {
-            return Conflict(new { message = "An account with this lecturer code already exists." });
+            return Conflict(ApiResponse.Failure(409, "An account with this lecturer code already exists."));
         }
 
         var user = new Domain.Entities.User
@@ -171,13 +162,13 @@ public sealed class AuthController : ControllerBase
             (int)user.Role,
             user.Role.ToString());
 
-        return Created("api/Auth/login", new
+        return Ok(ApiResponse.Success(new
         {
             accessToken = token,
             tokenType = "Bearer",
             expiresInMinutes = _settings.ExpirationMinutes,
             user = new { user.Id, user.FullName, role = user.Role.ToString() }
-        });
+        }));
     }
 }
 

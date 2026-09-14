@@ -20,23 +20,23 @@ public sealed class ExamMaterialsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<ExamMaterialMetadataDTO>>> GetMetadata(
+    public async Task<IActionResult> GetMetadata(
         [FromQuery] PagedRequest request,
         CancellationToken ct) =>
-        Ok(await _service.GetPagedAsync(request, ct));
+        Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<ExamMaterialDetailDTO>> GetDetail(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Data) : NotFound(result);
+        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
     [HttpGet("{id:guid}/content")]
     public async Task<IActionResult> GetContent(Guid id, [FromQuery] ExamMaterialFileType fileType, CancellationToken ct)
     {
         var result = await _service.DownloadAsync(id, fileType, ct);
-        if (!result.IsSuccess) return NotFound(result);
+        if (!result.IsSuccess) return NotFound(ApiResponse.Failure(404, result.Error!));
         return File(result.Data!.Content, result.Data.ContentType, result.Data.FileName);
     }
 
@@ -44,25 +44,25 @@ public sealed class ExamMaterialsController : ControllerBase
     [Authorize]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<IReadOnlyList<ExamMaterialMetadataDTO>>> Create(
+    public async Task<IActionResult> Create(
         [FromForm] CreateExamMaterialRequest request,
         CancellationToken ct)
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
-        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
         var result = await _service.CreateAsync(request.SemesterId, request.ExaminationId, request.Description, request.TotalQuestions, uploads, userId, ct);
 
-        if (result.IsSuccess) return Ok(result.Data);
-        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND") return NotFound(result);
-        if (result.ErrorCode == "LECTURER_REQUIRED") return Forbid();
-        return BadRequest(result);
+        if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
+        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND") return NotFound(ApiResponse.Failure(404, result.Error!));
+        if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPost("batch")]
     [Authorize]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateMany(
+    public async Task<IActionResult> CreateMany(
        [FromForm] CreateExamMaterialsRequest request,
        CancellationToken ct)
     {
@@ -75,16 +75,16 @@ public sealed class ExamMaterialsController : ControllerBase
            })
            .ToList();
 
-        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
             var result = await _service.CreateManyAsync(request.SemesterId, request.ExaminationId, materials, userId, ct);
 
         if (result.IsSuccess)
-            return Ok(result.Data);
+            return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND")
-            return NotFound(result);
+            return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "LECTURER_REQUIRED")
-            return Forbid();
-        return BadRequest(result);
+            return StatusCode(403, ApiResponse.Failure(403, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     
@@ -92,7 +92,7 @@ public sealed class ExamMaterialsController : ControllerBase
     [HttpPost("{id:guid}/files")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<ExamMaterialDetailDTO>> AddFiles(
+    public async Task<IActionResult> AddFiles(
         Guid id,
         [FromForm] AddExamMaterialFilesRequest request,
         CancellationToken ct)
@@ -102,20 +102,20 @@ public sealed class ExamMaterialsController : ControllerBase
             BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate),
             ct);
 
-        if (result.IsSuccess) return Ok(result.Data);
-        return result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(result) : BadRequest(result);
+        if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
+        return result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<ExamMaterialDetailDTO>> Update(
+    public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateExamMaterialRequest request,
         CancellationToken ct)
     {
         var result = await _service.UpdateAsync(id, request, ct);
         return result.IsSuccess
-            ? Ok(result.Data)
-            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(result) : BadRequest(result);
+            ? Ok(ApiResponse.Success(result.Data))
+            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpDelete("{id:guid}")]
@@ -123,8 +123,8 @@ public sealed class ExamMaterialsController : ControllerBase
     {
         var result = await _service.DeleteAsync(id, ct);
         return result.IsSuccess
-            ? NoContent()
-            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(result) : BadRequest(result);
+            ? Ok(ApiResponse.Success(null))
+            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     private static List<MaterialFileUpload> BuildUploads(
