@@ -70,4 +70,5 @@ public class ExamMaterial
     public Guid CreateById { get; set; }
 
     public Lecturer CreateBy { get; set; } = null!;
+    public ICollection<Question> Questions { get; set; } = new List<Question>();
 }

@@ -50,10 +50,10 @@ public sealed class ExamMaterialsController : ControllerBase
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.CreateAsync(request.SemesterId, request.ExaminationId, request.Description, request.TotalQuestions, uploads, userId, ct);
+        var result = await _service.CreateAsync(request.SemesterId, request.Description, request.Questions.Select(ToQuestionInput).ToList(), uploads, userId, ct);
 
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND") return NotFound(ApiResponse.Failure(404, result.Error!));
+        if (result.ErrorCode == "SEMESTER_NOT_FOUND") return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
@@ -70,17 +70,17 @@ public sealed class ExamMaterialsController : ControllerBase
            .Select(item => new CreateExamMaterialInput
            {
                Description = item.Description,
-               TotalQuestions = item.TotalQuestions,
+               Questions = item.Questions.Select(ToQuestionInput).ToList(),
                Files = BuildUploads(item.Question, item.AnswerRubric, item.AnswerTemplate)
            })
            .ToList();
 
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-            var result = await _service.CreateManyAsync(request.SemesterId, request.ExaminationId, materials, userId, ct);
+            var result = await _service.CreateManyAsync(request.SemesterId, materials, userId, ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND")
+        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
             return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "LECTURER_REQUIRED")
             return StatusCode(403, ApiResponse.Failure(403, result.Error!));
@@ -150,6 +150,13 @@ public sealed class ExamMaterialsController : ControllerBase
                 ContentType = file.ContentType,
                 Length = file.Length
             };
+
+    private static CreateQuestionInput ToQuestionInput(CreateQuestionRequest question) => new()
+    {
+        Title = question.Title,
+        Content = question.Content,
+        Point = question.Point
+    };
 
     private bool TryGetCurrentUserId(out Guid userId)
         => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);

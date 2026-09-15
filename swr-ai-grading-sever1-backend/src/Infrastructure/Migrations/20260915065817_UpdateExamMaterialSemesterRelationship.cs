@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class UpdateExamMaterialSemesterRelationship : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -177,6 +177,26 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "questions",
+                columns: table => new
+                {
+                    question_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    content = table.Column<string>(type: "text", nullable: false),
+                    exam_material_id = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_questions", x => x.question_id);
+                    table.ForeignKey(
+                        name: "FK_questions_exam_materials_exam_material_id",
+                        column: x => x.exam_material_id,
+                        principalTable: "exam_materials",
+                        principalColumn: "exam_material_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "gradings",
                 columns: table => new
                 {
@@ -235,6 +255,11 @@ namespace Infrastructure.Migrations
                 column: "submission_id");
 
             migrationBuilder.CreateIndex(
+                name: "IX_questions_exam_material_id",
+                table: "questions",
+                column: "exam_material_id");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_semesters_semester_code",
                 table: "semesters",
                 column: "semester_code",
@@ -250,25 +275,28 @@ namespace Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "exam_materials");
+                name: "gradings");
 
             migrationBuilder.DropTable(
-                name: "gradings");
+                name: "questions");
 
             migrationBuilder.DropTable(
                 name: "students");
 
             migrationBuilder.DropTable(
-                name: "examinations");
-
-            migrationBuilder.DropTable(
                 name: "submissions");
 
             migrationBuilder.DropTable(
-                name: "semesters");
+                name: "exam_materials");
+
+            migrationBuilder.DropTable(
+                name: "examinations");
 
             migrationBuilder.DropTable(
                 name: "lecturers");
+
+            migrationBuilder.DropTable(
+                name: "semesters");
 
             migrationBuilder.DropTable(
                 name: "users");

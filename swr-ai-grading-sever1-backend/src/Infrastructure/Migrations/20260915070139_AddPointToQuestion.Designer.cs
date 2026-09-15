@@ -12,15 +12,15 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260912075211_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260915070139_AddPointToQuestion")]
+    partial class AddPointToQuestion
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.31")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -223,6 +223,39 @@ namespace Infrastructure.Migrations
                     b.HasIndex("SubmissionId");
 
                     b.ToTable("gradings");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Question", b =>
+                {
+                    b.Property<Guid>("QuestionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("question_id");
+
+                    b.Property<Guid>("ExamMaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("exam_material_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("Title");
+
+                    b.Property<string>("content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<decimal>("point")
+                        .HasColumnType("numeric")
+                        .HasColumnName("point");
+
+                    b.HasKey("QuestionId");
+
+                    b.HasIndex("ExamMaterialId");
+
+                    b.ToTable("questions");
                 });
 
             modelBuilder.Entity("Domain.Entities.Semester", b =>
@@ -446,6 +479,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("Submission");
                 });
 
+            modelBuilder.Entity("Domain.Entities.Question", b =>
+                {
+                    b.HasOne("Domain.Entities.ExamMaterial", "ExamMaterial")
+                        .WithMany("Questions")
+                        .HasForeignKey("ExamMaterialId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExamMaterial");
+                });
+
             modelBuilder.Entity("Domain.Entities.Submission", b =>
                 {
                     b.HasOne("Domain.Entities.Lecturer", "Lecturer")
@@ -473,6 +517,11 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("Domain.Entities.Student", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.ExamMaterial", b =>
+                {
+                    b.Navigation("Questions");
                 });
 
             modelBuilder.Entity("Domain.Entities.Examination", b =>
