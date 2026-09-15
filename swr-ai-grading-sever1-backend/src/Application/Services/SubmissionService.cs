@@ -87,8 +87,14 @@ public sealed class SubmissionService : ISubmissionService
         if (lecturer is null)
             return Result<SubmissionDTO>.Failure("Lecturer not found.", "LECTURER_NOT_FOUND");
 
-        // Upload file lên Supabase Storage trước khi tạo DB row.
+        // Upload file lên Supabase Storage (nếu có) TRƯỚC khi tạo DB row.
         // Nếu upload fail → không có row orphan.
+        //
+        // QUAN TRỌNG: SubmissionId phải được generate trước (không đợi EF tự assign),
+        // để upload thẳng vào folder "submissions/{submissionId}/..." chỉ 1 lần duy nhất.
+        // Tránh bug stream-position: stream đã đọc đến cuối ở upload 1, nếu re-upload lần 2
+        // (kiểu cũ: upload rồi đổi path) thì upload 2 sẽ đọc 0 byte.
+        var submissionId = Guid.NewGuid();
         string? storagePath = null;
         if (request.File is not null && request.File.Length > 0)
         {
@@ -97,7 +103,7 @@ public sealed class SubmissionService : ISubmissionService
 
             try
             {
-                storagePath = await UploadSubmissionFileAsync(Guid.Empty, request.File, ct);
+                storagePath = await UploadSubmissionFileAsync(submissionId, request.File, ct);
             }
             catch (Exception ex)
             {
@@ -110,8 +116,11 @@ public sealed class SubmissionService : ISubmissionService
         var now = DateTime.UtcNow;
         var submission = new Submission
         {
+            SubmissionId = submissionId, // gán ID đã generate từ trước
             SubmissionName = request.SubmissionName.Trim(),
-            Folder = request.Folder.Trim(),
+            Folder = request.File is not null && storagePath is not null
+                ? storagePath
+                : request.Folder.Trim(), // không có file → lưu folder name thuần
             Status = SubmissionStatus.Draft,
             CreatedDate = now,
             UpdatedDate = now,
@@ -119,17 +128,6 @@ public sealed class SubmissionService : ISubmissionService
         };
 
         await _submissionRepository.AddAsync(submission, ct);
-
-        // Patch lại path với SubmissionId thật (đơn giản, an toàn)
-        if (storagePath is not null && request.File is not null)
-        {
-            var finalPath = await UploadSubmissionFileAsync(submission.SubmissionId, request.File, ct);
-            try { await _storage.DeleteAsync(storagePath, CancellationToken.None); }
-            catch { /* không chặn flow nếu xóa placeholder fail */ }
-            submission.Folder = finalPath;
-            _submissionRepository.Update(submission);
-        }
-
         await _unitOfWork.SaveChangesAsync(ct);
         return Result<SubmissionDTO>.Success(await ToDtoAsync(submission, ct));
     }
@@ -280,7 +278,9 @@ public sealed class SubmissionService : ISubmissionService
 
     private async Task<string> UploadSubmissionFileAsync(Guid submissionId, SubmissionFileUpload file, CancellationToken ct)
     {
-        var path = $"{StorageBasePath}/{(submissionId == Guid.Empty ? "pending" : submissionId.ToString())}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
+        // submissionId luôn được generate bởi caller (CreateAsync) trước khi upload,
+        // nên path được tạo chính xác ngay từ đầu — không có bước re-upload.
+        var path = $"{StorageBasePath}/{submissionId}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
         await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
         return path;
     }
