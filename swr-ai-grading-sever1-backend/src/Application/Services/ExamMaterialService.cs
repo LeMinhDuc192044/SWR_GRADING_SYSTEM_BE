@@ -32,14 +32,14 @@ public sealed class ExamMaterialService : IExamMaterialService
         return material is null ? Result<ExamMaterialDetailDTO>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND") : Result<ExamMaterialDetailDTO>.Success(await ToDetailAsync(material));
     }
 
-    public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(Guid semesterId, Guid? examinationId, string description, int totalQuestions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
         if (files.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
-        var relationshipResult = await ValidateRelationshipAsync(semesterId, examinationId, ct);
-        if (!relationshipResult.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(relationshipResult.Error!, relationshipResult.ErrorCode);
+        var questionValidation = ValidateQuestions(questions);
+        if (!questionValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
+        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Only a lecturer can create exam materials.", "LECTURER_REQUIRED");
-        if (totalQuestions < 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Total questions cannot be negative.", "INVALID_TOTAL_QUESTIONS");
-        var materialResult = await CreateMaterialAsync(semesterId, examinationId, description, totalQuestions, files, createdById, ct);
+        var materialResult = await CreateMaterialAsync(semesterId, description, questions, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
         await _repository.AddAsync(materialResult.Data!, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -48,16 +48,14 @@ public sealed class ExamMaterialService : IExamMaterialService
 
     public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateManyAsync(
         Guid semesterId,
-        Guid? examinationId,
         IReadOnlyList<CreateExamMaterialInput> materials,
         Guid createdById,
         CancellationToken ct = default)
     {
         if (materials.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one material is required.", "MATERIALS_REQUIRED");
         if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
-        if (materials.Any(material => material.TotalQuestions < 0)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Total questions cannot be negative.", "INVALID_TOTAL_QUESTIONS");
-        var relationshipResult = await ValidateRelationshipAsync(semesterId, examinationId, ct);
-        if (!relationshipResult.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(relationshipResult.Error!, relationshipResult.ErrorCode);
+        if (materials.Any(material => !ValidateQuestions(material.Questions).IsSuccess)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Only a lecturer can create exam materials.", "LECTURER_REQUIRED");
 
         var created = new List<ExamMaterial>();
@@ -65,7 +63,7 @@ public sealed class ExamMaterialService : IExamMaterialService
         {
             foreach (var materialInput in materials)
             {
-                var materialResult = await CreateMaterialAsync(semesterId, examinationId, materialInput.Description, materialInput.TotalQuestions, materialInput.Files, createdById, ct);
+                var materialResult = await CreateMaterialAsync(semesterId, materialInput.Description, materialInput.Questions, materialInput.Files, createdById, ct);
                 if (!materialResult.IsSuccess)
                     return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
 
@@ -93,14 +91,16 @@ public sealed class ExamMaterialService : IExamMaterialService
 
     private async Task<Result<ExamMaterial>> CreateMaterialAsync(
         Guid semesterId,
-        Guid? examinationId,
         string description,
-        int totalQuestions,
+        IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
         CancellationToken ct)
     {
-        var material = new ExamMaterial { ExamMaterialCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = totalQuestions, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = ExamMaterialStatus.Ready, ExaminationId = examinationId, SemesterId = semesterId, CreateById = createdById };
+        var material = new ExamMaterial { ExamMaterialCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = questions.Count, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = ExamMaterialStatus.Ready, SemesterId = semesterId, CreateById = createdById };
+        material.Questions = questions
+            .Select(question => new Question { Title = question.Title.Trim(), content = question.Content.Trim(), point = question.Point, ExamMaterial = material })
+            .ToList();
         var uploadResult = await UploadFilesAsync(material, files, ct);
         if (!uploadResult.IsSuccess) return Result<ExamMaterial>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
         return Result<ExamMaterial>.Success(material);
@@ -194,6 +194,16 @@ public sealed class ExamMaterialService : IExamMaterialService
     }
 
     private async Task<ExamMaterial?> FindAsync(Guid id, CancellationToken ct) { var material = await _repository.GetByIdAsync(id, ct); return material is null || material.IsDeleted ? null : material; }
+    private static Result ValidateQuestions(IReadOnlyList<CreateQuestionInput> questions)
+    {
+        return questions.Count > 0 && questions.All(question =>
+            !string.IsNullOrWhiteSpace(question.Title) &&
+            !string.IsNullOrWhiteSpace(question.Content) &&
+            question.Point >= 0)
+            ? Result.Success()
+            : Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+    }
+
     private async Task<Result> ValidateRelationshipAsync(Guid semesterId, Guid? examinationId, CancellationToken ct)
     {
         if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null)
@@ -223,12 +233,12 @@ public sealed class ExamMaterialService : IExamMaterialService
     private async Task<ExamMaterialMetadataDTO> ToMetadataAsync(ExamMaterial material)
     {
         var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new ExamMaterialFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new ExamMaterialMetadataDTO { ExamMaterialId = material.ExamMaterialId, ExamMaterialCode = material.ExamMaterialCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        return new ExamMaterialMetadataDTO { ExamMaterialId = material.ExamMaterialId, ExamMaterialCode = material.ExamMaterialCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new ExamMaterialQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
     }
 
     private async Task<ExamMaterialDetailDTO> ToDetailAsync(ExamMaterial material)
     {
         var metadata = await ToMetadataAsync(material);
-        return new ExamMaterialDetailDTO { ExamMaterialId = metadata.ExamMaterialId, ExamMaterialCode = metadata.ExamMaterialCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
+        return new ExamMaterialDetailDTO { ExamMaterialId = metadata.ExamMaterialId, ExamMaterialCode = metadata.ExamMaterialCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
     }
 }

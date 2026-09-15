@@ -10,15 +10,13 @@ public interface IExamMaterialService
     Task<Result<ExamMaterialDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(
         Guid semesterId,
-        Guid? examinationId,
         string description,
-        int totalQuestions,
+        IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
         CancellationToken ct = default);
     Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateManyAsync(
         Guid semesterId,
-        Guid? examinationId,
         IReadOnlyList<CreateExamMaterialInput> materials,
         Guid createdById,
         CancellationToken ct = default);
