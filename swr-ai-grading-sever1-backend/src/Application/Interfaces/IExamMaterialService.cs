@@ -23,7 +23,7 @@ public interface IExamMaterialService
     Task<Result<ExamMaterialDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);
     Task<Result<ExamMaterialDetailDTO>> UpdateAsync(Guid id, UpdateExamMaterialRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
-    Task<Result<StoredFileDownload>> DownloadAsync(Guid id, ExamMaterialFileType fileType, CancellationToken ct = default);
+    Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default);
 }
 
 public sealed class StoredFileDownload

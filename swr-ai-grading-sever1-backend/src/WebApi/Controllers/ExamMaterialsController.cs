@@ -33,9 +33,9 @@ public sealed class ExamMaterialsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/content")]
-    public async Task<IActionResult> GetContent(Guid id, [FromQuery] ExamMaterialFileType fileType, CancellationToken ct)
+    public async Task<IActionResult> GetContent(Guid id, CancellationToken ct)
     {
-        var result = await _service.DownloadAsync(id, fileType, ct);
+        var result = await _service.DownloadAsync(id, ct);
         if (!result.IsSuccess) return NotFound(ApiResponse.Failure(404, result.Error!));
         return File(result.Data!.Content, result.Data.ContentType, result.Data.FileName);
     }

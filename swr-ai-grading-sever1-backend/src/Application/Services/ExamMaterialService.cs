@@ -3,6 +3,7 @@ using Application.DTOs.ExamMaterials;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
+using System.IO.Compression;
 
 namespace Application.Services;
 
@@ -153,14 +154,46 @@ public sealed class ExamMaterialService : IExamMaterialService
         _repository.Update(material); await _unitOfWork.SaveChangesAsync(ct); return Result.Success();
     }
 
-    public async Task<Result<StoredFileDownload>> DownloadAsync(Guid id, ExamMaterialFileType fileType, CancellationToken ct = default)
+    public async Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
         if (material is null) return Result<StoredFileDownload>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
         var paths = GetPaths(material);
-        if (!paths.TryGetValue(fileType, out var path)) return Result<StoredFileDownload>.Failure("File type is not uploaded.", "FILE_NOT_FOUND");
-        var metadata = await _storage.GetMetadataAsync(path, ct);
-        return Result<StoredFileDownload>.Success(await _storage.DownloadAsync(path, metadata.FileName, ct));
+        if (paths.Count == 0) return Result<StoredFileDownload>.Failure("No files are uploaded.", "FILE_NOT_FOUND");
+
+        var downloads = await Task.WhenAll(paths.Select(async pair =>
+        {
+            var metadata = await _storage.GetMetadataAsync(pair.Value, ct);
+            var download = await _storage.DownloadAsync(pair.Value, metadata.FileName, ct);
+            return (Type: pair.Key, Download: download);
+        }));
+
+        var archive = new MemoryStream();
+        var entryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var item in downloads)
+            {
+                await using var content = item.Download.Content;
+                var entryName = Path.GetFileName(item.Download.FileName);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    entryName = GetTypeCode(item.Type);
+                if (!entryNames.Add(entryName))
+                    entryName = $"{GetTypeCode(item.Type)}_{entryName}";
+
+                var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+                await using var entryStream = entry.Open();
+                await content.CopyToAsync(entryStream, ct);
+            }
+        }
+
+        archive.Position = 0;
+        return Result<StoredFileDownload>.Success(new StoredFileDownload
+        {
+            Content = archive,
+            ContentType = "application/zip",
+            FileName = $"{material.ExamMaterialCode}.zip"
+        });
     }
 
     private async Task<Result> UploadFilesAsync(ExamMaterial material, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct)
