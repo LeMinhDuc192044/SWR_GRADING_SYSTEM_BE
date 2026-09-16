@@ -117,6 +117,7 @@ builder.Services.AddScoped<IExamMaterialRepository, ExamMaterialRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<IGradingRepository, GradingRepository>();
+builder.Services.AddScoped<IGradingDiaryRepository, GradingDiaryRepository>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 
 builder.Services.AddScoped<ISupabaseStorage>(sp =>

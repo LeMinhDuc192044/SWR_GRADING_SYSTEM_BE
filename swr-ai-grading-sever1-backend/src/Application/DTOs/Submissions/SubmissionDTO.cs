@@ -5,8 +5,8 @@ namespace Application.DTOs.Submissions;
 /// <summary>
 /// DTO chi tiết của một Submission (trả về cho client).
 /// Mapping 1:1 với entity Submission, thêm 2 field tiện ích:
-///   - LecturerName: hiển thị cho UI không phải lookup thêm
-///   - GradingCount:  số Grading hiện có của submission
+///   - GradingDiaryName: hiển thị cho UI không phải lookup thêm
+///   - GradingCount:     số Grading hiện có của submission
 /// </summary>
 public class SubmissionDTO
 {
@@ -16,8 +16,10 @@ public class SubmissionDTO
     public SubmissionStatus Status { get; set; }
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
-    public Guid LecturerId { get; set; }
-    public string? LecturerName { get; set; }
+    public Guid DiaryId { get; set; }
+    public string? GradingDiaryName { get; set; }
+    public Guid? LecturerId { get; set; }               // optional: lấy từ GradingDiary.CreateById để FE tiện
+    public string? LecturerName { get; set; }            // optional: từ GradingDiary.CreateBy.FullName
     public int GradingCount { get; set; }
 }
 
@@ -30,7 +32,7 @@ public class SubmissionSummaryDTO
     public string SubmissionName { get; set; } = string.Empty;
     public SubmissionStatus Status { get; set; }
     public DateTime CreatedDate { get; set; }
-    public Guid LecturerId { get; set; }
+    public Guid DiaryId { get; set; }
     public int GradingCount { get; set; }
 }
 
@@ -48,27 +50,27 @@ public sealed class SubmissionFileUpload
 
 /// <summary>
 /// Request body cho POST /api/submissions (upload file).
-/// LecturerId lấy từ JWT claim hiện không có → client gửi kèm.
-/// File ở dạng SubmissionFileUpload (đã map từ IFormFile ở Controller).
+/// DiaryId bắt buộc — diễn giải: submission gắn vào 1 sổ chấm (GradingDiary) do Lecturer tạo.
+/// Lecturerr sẽ được suy ra từ GradingDiary.CreateById.
 /// </summary>
 public class CreateSubmissionRequest
 {
     public string SubmissionName { get; set; } = string.Empty;
     public string Folder { get; set; } = string.Empty;
-    public Guid LecturerId { get; set; }
+    public Guid DiaryId { get; set; }
     public SubmissionFileUpload? File { get; set; }
 }
 
 /// <summary>
 /// Request body cho PUT /api/submissions/{id} (cập nhật metadata).
-/// Status: nếu null giữ nguyên; LecturerId: chỉ Admin được đổi (sẽ check ở Service).
+/// Status: nếu null giữ nguyên; DiaryId: chỉ Admin hoặc Lecturer sở hữu được đổi.
 /// </summary>
 public class UpdateSubmissionRequest
 {
     public string? SubmissionName { get; set; }
     public string? Folder { get; set; }
     public SubmissionStatus? Status { get; set; }
-    public Guid? LecturerId { get; set; }
+    public Guid? DiaryId { get; set; }
 }
 
 /// <summary>

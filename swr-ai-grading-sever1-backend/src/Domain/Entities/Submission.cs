@@ -33,12 +33,14 @@ public class Submission
     [Column("updated_date")]
     public DateTime UpdatedDate { get; set; }
 
+    // FK tới GradingDiary (KHÔNG FK trực tiếp tới Lecturer).
+    // Giữ nguyên theo schema DB thật: submissions.diary_id → grading_diary.grading_diary_id.
     [Required]
-    [Column("lecturer_id")]
-    [ForeignKey(nameof(Lecturer))]
-    public Guid LecturerId { get; set; }
+    [Column("diary_id")]
+    [ForeignKey(nameof(GradingDiary))]
+    public Guid DiaryId { get; set; }
 
-    public Lecturer Lecturer { get; set; } = null!;
+    public GradingDiary GradingDiary { get; set; } = null!;
 
     public ICollection<Grading> Gradings { get; set; } = new List<Grading>();
 }

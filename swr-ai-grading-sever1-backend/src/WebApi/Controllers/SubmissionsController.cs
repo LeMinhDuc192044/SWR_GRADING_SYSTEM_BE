@@ -62,7 +62,7 @@ public class SubmissionsController : ControllerBase
         {
             SubmissionName = form.SubmissionName ?? string.Empty,
             Folder = form.Folder ?? string.Empty,
-            LecturerId = form.LecturerId,
+            DiaryId = form.DiaryId,
             File = form.File is null ? null : new SubmissionFileUpload
             {
                 Content = form.File.OpenReadStream(),
@@ -134,7 +134,7 @@ public class SubmissionsController : ControllerBase
     {
         public string? SubmissionName { get; set; }
         public string? Folder { get; set; }
-        public Guid LecturerId { get; set; }
+        public Guid DiaryId { get; set; }
         public IFormFile? File { get; set; }
     }
 
@@ -144,7 +144,7 @@ public class SubmissionsController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         // 404 cho các lỗi "không tìm thấy"
-        if (result.ErrorCode is "SUBMISSION_NOT_FOUND" or "LECTURER_NOT_FOUND" or "FILE_NOT_FOUND")
+        if (result.ErrorCode is "SUBMISSION_NOT_FOUND" or "GRADING_DIARY_NOT_FOUND" or "FILE_NOT_FOUND")
             return NotFound(ApiResponse.Failure(404, result.Error!));
 
         // 400 cho phần còn lại

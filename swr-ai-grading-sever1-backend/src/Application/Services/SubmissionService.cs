@@ -7,7 +7,7 @@ using Domain.Enums;
 namespace Application.Services;
 
 /// <summary>
-/// Service nghiệp vụ Submission & Grading.
+/// Service nghiệp vụ Submission &amp; Grading.
 ///
 /// Tuân thủ pattern codebase:
 ///   - Validate input → check FK → mutate → SaveChangesAsync → return Result&lt;T&gt;.
@@ -18,9 +18,9 @@ namespace Application.Services;
 ///   - Grading:    CreateGradingAsync (sinh record Grading khi bắt đầu chấm AI).
 ///   - File:       DownloadFileAsync.
 ///
-/// KHÔNG làm trong Plan B (defer):
-///   - Lecturer_Review / Finalize logic (sẽ làm ở Plan sau khi có bài review).
-///   - Sửa 3 bug entity đã biết (app.Run() duplicate, Question.cs lowercase, Student.cs typo).
+/// Cập nhật Plan B+ (theo DB schema thật):
+///   - Submission FK tới GradingDiary (không trực tiếp Lecturer).
+///   - Lecturer lấy gián tiếp qua GradingDiary.CreateBy.
 /// </summary>
 public sealed class SubmissionService : ISubmissionService
 {
@@ -28,20 +28,20 @@ public sealed class SubmissionService : ISubmissionService
 
     private readonly ISubmissionRepository _submissionRepository;
     private readonly IGradingRepository _gradingRepository;
-    private readonly IUserRepository _userRepository;
+    private readonly IGradingDiaryRepository _gradingDiaryRepository;
     private readonly ISupabaseStorage _storage;
     private readonly IUnitOfWork _unitOfWork;
 
     public SubmissionService(
         ISubmissionRepository submissionRepository,
         IGradingRepository gradingRepository,
-        IUserRepository userRepository,
+        IGradingDiaryRepository gradingDiaryRepository,
         ISupabaseStorage storage,
         IUnitOfWork unitOfWork)
     {
         _submissionRepository = submissionRepository;
         _gradingRepository = gradingRepository;
-        _userRepository = userRepository;
+        _gradingDiaryRepository = gradingDiaryRepository;
         _storage = storage;
         _unitOfWork = unitOfWork;
     }
@@ -49,7 +49,7 @@ public sealed class SubmissionService : ISubmissionService
     // ====================== GET LIST (PAGED) ======================
     public async Task<PagedResult<SubmissionSummaryDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
     {
-        var all = await _submissionRepository.ListWithLecturerAsync(ct);
+        var all = await _submissionRepository.ListWithDiaryAsync(ct);
         var ordered = all
             .OrderByDescending(s => s.CreatedDate)
             .Skip((request.Page - 1) * request.PageSize)
@@ -78,14 +78,14 @@ public sealed class SubmissionService : ISubmissionService
     // ====================== CREATE (upload file) ======================
     public async Task<Result<SubmissionDTO>> CreateAsync(CreateSubmissionRequest request, CancellationToken ct = default)
     {
-        var validation = Validate(request.SubmissionName, request.Folder, request.LecturerId);
+        var validation = Validate(request.SubmissionName, request.Folder, request.DiaryId);
         if (validation is not null)
             return Result<SubmissionDTO>.Failure(validation, "INVALID_SUBMISSION");
 
-        // Check FK: Lecturer phải tồn tại
-        var lecturer = await _userRepository.GetLecturerByIdAsync(request.LecturerId, ct);
-        if (lecturer is null)
-            return Result<SubmissionDTO>.Failure("Lecturer not found.", "LECTURER_NOT_FOUND");
+        // Check FK: GradingDiary phải tồn tại
+        var diary = await _gradingDiaryRepository.GetByIdAsync(request.DiaryId, ct);
+        if (diary is null)
+            return Result<SubmissionDTO>.Failure("Grading diary not found.", "GRADING_DIARY_NOT_FOUND");
 
         // Upload file lên Supabase Storage (nếu có) TRƯỚC khi tạo DB row.
         // Nếu upload fail → không có row orphan.
@@ -116,15 +116,15 @@ public sealed class SubmissionService : ISubmissionService
         var now = DateTime.UtcNow;
         var submission = new Submission
         {
-            SubmissionId = submissionId, // gán ID đã generate từ trước
+            SubmissionId = submissionId,
             SubmissionName = request.SubmissionName.Trim(),
             Folder = request.File is not null && storagePath is not null
                 ? storagePath
-                : request.Folder.Trim(), // không có file → lưu folder name thuần
+                : request.Folder.Trim(),
             Status = SubmissionStatus.Draft,
             CreatedDate = now,
             UpdatedDate = now,
-            LecturerId = request.LecturerId,
+            DiaryId = request.DiaryId,   // ← Lecturer FK gián tiếp qua Diary.CreateById
         };
 
         await _submissionRepository.AddAsync(submission, ct);
@@ -145,13 +145,17 @@ public sealed class SubmissionService : ISubmissionService
             submission.Folder = request.Folder.Trim();
         if (request.Status.HasValue && Enum.IsDefined(request.Status.Value))
             submission.Status = request.Status.Value;
-        if (request.LecturerId.HasValue && request.LecturerId.Value != submission.LecturerId)
+
+        // Đổi Diary: check FK mới tồn tại.
+        // (Lưu ý: chưa check quyền Lecturer-owns-diary — sẽ làm khi có authz.)
+        if (request.DiaryId.HasValue && request.DiaryId.Value != submission.DiaryId)
         {
-            var lecturer = await _userRepository.GetLecturerByIdAsync(request.LecturerId.Value, ct);
-            if (lecturer is null)
-                return Result<SubmissionDTO>.Failure("Lecturer not found.", "LECTURER_NOT_FOUND");
-            submission.LecturerId = request.LecturerId.Value;
+            var diary = await _gradingDiaryRepository.GetByIdAsync(request.DiaryId.Value, ct);
+            if (diary is null)
+                return Result<SubmissionDTO>.Failure("Grading diary not found.", "GRADING_DIARY_NOT_FOUND");
+            submission.DiaryId = request.DiaryId.Value;
         }
+
         submission.UpdatedDate = DateTime.UtcNow;
 
         _submissionRepository.Update(submission);
@@ -169,7 +173,6 @@ public sealed class SubmissionService : ISubmissionService
         if (await _submissionRepository.HasGradingsAsync(id, ct))
             return Result.Failure("Cannot delete a submission that has gradings.", "SUBMISSION_HAS_GRADINGS");
 
-        // Xóa file trên storage nếu Folder chứa path hợp lệ
         if (IsStoragePath(submission.Folder))
         {
             try { await _storage.DeleteAsync(submission.Folder, ct); }
@@ -250,14 +253,14 @@ public sealed class SubmissionService : ISubmissionService
 
     // ====================== HELPERS ======================
 
-    private static string? Validate(string name, string folder, Guid lecturerId)
+    private static string? Validate(string name, string folder, Guid diaryId)
     {
         if (string.IsNullOrWhiteSpace(name))
             return "Submission name is required.";
         if (string.IsNullOrWhiteSpace(folder))
             return "Folder is required.";
-        if (lecturerId == Guid.Empty)
-            return "Lecturer is required.";
+        if (diaryId == Guid.Empty)
+            return "Grading diary is required.";
         if (name.Length > 200)
             return "Submission name must be 200 characters or fewer.";
         if (folder.Length > 500)
@@ -268,7 +271,6 @@ public sealed class SubmissionService : ISubmissionService
     private static bool IsValidFileName(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return false;
-        // Không cho path traversal
         return !fileName.Contains("..") && !fileName.Contains('/') && !fileName.Contains('\\');
     }
 
@@ -278,8 +280,6 @@ public sealed class SubmissionService : ISubmissionService
 
     private async Task<string> UploadSubmissionFileAsync(Guid submissionId, SubmissionFileUpload file, CancellationToken ct)
     {
-        // submissionId luôn được generate bởi caller (CreateAsync) trước khi upload,
-        // nên path được tạo chính xác ngay từ đầu — không có bước re-upload.
         var path = $"{StorageBasePath}/{submissionId}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
         await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
         return path;
@@ -298,8 +298,8 @@ public sealed class SubmissionService : ISubmissionService
 
     private async Task<SubmissionDTO> ToDtoAsync(Submission submission, CancellationToken ct)
     {
-        // Reload để có Lecturer (khi Create, navigation có thể null)
-        if (submission.Lecturer is null)
+        // Reload để có GradingDiary + Lecturer (CreateBy) sau khi Create.
+        if (submission.GradingDiary is null || submission.GradingDiary.CreateBy is null)
         {
             var withDetails = await _submissionRepository.GetWithDetailsAsync(submission.SubmissionId, ct);
             if (withDetails is not null) submission = withDetails;
@@ -315,8 +315,10 @@ public sealed class SubmissionService : ISubmissionService
         Status = s.Status,
         CreatedDate = s.CreatedDate,
         UpdatedDate = s.UpdatedDate,
-        LecturerId = s.LecturerId,
-        LecturerName = s.Lecturer?.FullName,
+        DiaryId = s.DiaryId,
+        GradingDiaryName = s.GradingDiary?.Name,
+        LecturerId = s.GradingDiary?.CreateById,
+        LecturerName = s.GradingDiary?.CreateBy?.FullName,
         GradingCount = s.Gradings?.Count ?? 0
     };
 
@@ -326,7 +328,7 @@ public sealed class SubmissionService : ISubmissionService
         SubmissionName = s.SubmissionName,
         Status = s.Status,
         CreatedDate = s.CreatedDate,
-        LecturerId = s.LecturerId,
+        DiaryId = s.DiaryId,
         GradingCount = s.Gradings?.Count ?? 0
     };
 
