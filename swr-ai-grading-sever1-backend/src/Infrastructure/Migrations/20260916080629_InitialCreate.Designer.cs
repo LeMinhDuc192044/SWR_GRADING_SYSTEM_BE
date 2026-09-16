@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260915070139_AddPointToQuestion")]
-    partial class AddPointToQuestion
+    [Migration("20260916080629_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -225,6 +225,36 @@ namespace Infrastructure.Migrations
                     b.ToTable("gradings");
                 });
 
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
+                {
+                    b.Property<Guid>("GradingDiaryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("grading_diary_id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(21)
+                        .HasColumnType("character varying(21)")
+                        .HasColumnName("examination_code");
+
+                    b.Property<Guid>("CreateById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("create_by_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.HasKey("GradingDiaryId");
+
+                    b.HasIndex("CreateById");
+
+                    b.ToTable("grading_diary");
+                });
+
             modelBuilder.Entity("Domain.Entities.Question", b =>
                 {
                     b.Property<Guid>("QuestionId")
@@ -310,15 +340,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_date");
 
+                    b.Property<Guid>("DiaryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("diary_id");
+
                     b.Property<string>("Folder")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("folder");
-
-                    b.Property<Guid>("LecturerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("lecturer_id");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -336,7 +366,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("SubmissionId");
 
-                    b.HasIndex("LecturerId");
+                    b.HasIndex("DiaryId");
 
                     b.ToTable("submissions");
                 });
@@ -479,6 +509,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("Submission");
                 });
 
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
+                {
+                    b.HasOne("Domain.Entities.Lecturer", "CreatedBy")
+                        .WithMany("GradingDiaries")
+                        .HasForeignKey("CreateById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+                });
+
             modelBuilder.Entity("Domain.Entities.Question", b =>
                 {
                     b.HasOne("Domain.Entities.ExamMaterial", "ExamMaterial")
@@ -492,13 +533,13 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.Submission", b =>
                 {
-                    b.HasOne("Domain.Entities.Lecturer", "Lecturer")
+                    b.HasOne("Domain.Entities.GradingDiary", "GradingDiary")
                         .WithMany("Submissions")
-                        .HasForeignKey("LecturerId")
+                        .HasForeignKey("DiaryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Lecturer");
+                    b.Navigation("GradingDiary");
                 });
 
             modelBuilder.Entity("Domain.Entities.Lecturer", b =>
@@ -529,6 +570,11 @@ namespace Infrastructure.Migrations
                     b.Navigation("ExamMaterials");
                 });
 
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
+                {
+                    b.Navigation("Submissions");
+                });
+
             modelBuilder.Entity("Domain.Entities.Semester", b =>
                 {
                     b.Navigation("ExamMaterials");
@@ -545,7 +591,7 @@ namespace Infrastructure.Migrations
                 {
                     b.Navigation("ExamMaterialsCreated");
 
-                    b.Navigation("Submissions");
+                    b.Navigation("GradingDiaries");
                 });
 #pragma warning restore 612, 618
         }

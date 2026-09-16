@@ -34,11 +34,12 @@ public class Submission
     public DateTime UpdatedDate { get; set; }
 
     [Required]
-    [Column("lecturer_id")]
-    [ForeignKey(nameof(Lecturer))]
-    public Guid LecturerId { get; set; }
+    [Column("diary_id")]
+    [ForeignKey(nameof(GradingDiary))]
+    public Guid DiaryId { get; set; }
 
-    public Lecturer Lecturer { get; set; } = null!;
+    public GradingDiary GradingDiary { get; set; } = null!;
 
-    public ICollection<Grading> Gradings { get; set; } = new List<Grading>();
+    public ICollection<Grading> Gradings { get; set; }
+        = new List<Grading>();
 }
