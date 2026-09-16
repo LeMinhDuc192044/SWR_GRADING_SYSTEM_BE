@@ -1,7 +1,9 @@
 using Application.Interfaces;
 using Application.Common;
 using Application.Services;
+using Application.Validators.ExamMaterials;
 using DotNetEnv;
+using FluentValidation;
 using FluentValidation.AspNetCore;
 using Infrastructure.Persistence.Repositories;
 using Infrastructure.Storage;
@@ -140,6 +142,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddFluentValidationClientsideAdapters();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateExamMaterialRequestValidator>();
 
 // CORS
 var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "")

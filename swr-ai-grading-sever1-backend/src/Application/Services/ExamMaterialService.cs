@@ -35,6 +35,8 @@ public sealed class ExamMaterialService : IExamMaterialService
     public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
         if (files.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
+        var fileValidation = ValidateFiles(files);
+        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
         var questionValidation = ValidateQuestions(questions);
         if (!questionValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
         if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
@@ -54,6 +56,8 @@ public sealed class ExamMaterialService : IExamMaterialService
     {
         if (materials.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one material is required.", "MATERIALS_REQUIRED");
         if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
+        var fileValidation = ValidateFiles(materials.SelectMany(material => material.Files));
+        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
         if (materials.Any(material => !ValidateQuestions(material.Questions).IsSuccess)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
         if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Only a lecturer can create exam materials.", "LECTURER_REQUIRED");
@@ -167,8 +171,8 @@ public sealed class ExamMaterialService : IExamMaterialService
         // referencing them, since a `return` here skips the catch/cleanup block below.
         foreach (var file in files)
         {
-            if (!Enum.IsDefined(file.FileType) || string.IsNullOrWhiteSpace(file.FileName) || file.Length <= 0)
-                return Result.Failure("Each file must have a valid type, name, and content.", "INVALID_FILE");
+            var validation = ValidateFile(file);
+            if (!validation.IsSuccess) return validation;
         }
 
         var uploaded = new List<string>();
@@ -202,6 +206,35 @@ public sealed class ExamMaterialService : IExamMaterialService
             question.Point >= 0)
             ? Result.Success()
             : Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+    }
+
+    private static Result ValidateFiles(IEnumerable<MaterialFileUpload> files)
+    {
+        foreach (var file in files)
+        {
+            var validation = ValidateFile(file);
+            if (!validation.IsSuccess) return validation;
+        }
+
+        return Result.Success();
+    }
+
+    private static Result ValidateFile(MaterialFileUpload file)
+    {
+        if (!Enum.IsDefined(file.FileType) || string.IsNullOrWhiteSpace(file.FileName) || file.Length <= 0)
+            return Result.Failure("Each file must have a valid type, name, and non-empty content.", "INVALID_FILE");
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var validExtensions = file.FileType switch
+        {
+            ExamMaterialFileType.Question or ExamMaterialFileType.AnswerTemplate => new[] { ".doc", ".docx" },
+            ExamMaterialFileType.AnswerRubric => new[] { ".xls", ".xlsx" },
+            _ => Array.Empty<string>()
+        };
+
+        return validExtensions.Contains(extension)
+            ? Result.Success()
+            : Result.Failure($"The {file.FileType} file must be a Word document or Excel spreadsheet with a valid extension.", "INVALID_FILE_TYPE");
     }
 
     private async Task<Result> ValidateRelationshipAsync(Guid semesterId, Guid? examinationId, CancellationToken ct)
