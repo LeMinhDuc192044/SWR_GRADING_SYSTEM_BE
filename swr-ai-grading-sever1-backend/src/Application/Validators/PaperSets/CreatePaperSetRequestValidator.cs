@@ -1,12 +1,12 @@
-using Application.DTOs.ExamMaterials;
+using Application.DTOs.PaperSets;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
 
-namespace Application.Validators.ExamMaterials;
+namespace Application.Validators.PaperSets;
 
-public sealed class CreateExamMaterialRequestValidator : AbstractValidator<CreateExamMaterialRequest>
+public sealed class CreatePaperSetRequestValidator : AbstractValidator<CreatePaperSetRequest>
 {
-    public CreateExamMaterialRequestValidator()
+    public CreatePaperSetRequestValidator()
     {
         RuleFor(request => request.Question)
             .Must(file => HasNonEmptyContent(file))

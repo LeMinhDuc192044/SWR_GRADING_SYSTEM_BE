@@ -7,7 +7,7 @@ public interface ISubmissionRepository : IRepository<Submission>
     Task<bool> HasGradingsAsync(Guid submissionId, CancellationToken ct = default);
 }
 
-public interface IExamMaterialRepository : IRepository<ExamMaterial>
+public interface IPaperSetRepository : IRepository<PaperSet>
 {
     Task<bool> IsCodeExistsAsync(string code, CancellationToken ct = default);
 }

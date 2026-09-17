@@ -4,17 +4,17 @@ using Domain.Enums;
 
 namespace Domain.Entities;
 
-[Table("exam_materials")]
-public class ExamMaterial
+[Table("paper_sets")]
+public class PaperSet
 {
     [Key]
-    [Column("exam_material_id")]
-    public Guid ExamMaterialId { get; set; } = Guid.NewGuid();
+    [Column("paper_set_id")]
+    public Guid PaperSetId { get; set; } = Guid.NewGuid();
 
     [Required]
     [MaxLength(20)]
-    [Column("exam_material_code")]
-    public string ExamMaterialCode { get; set; } = string.Empty;
+    [Column("paper_set_code")]
+    public string PaperSetCode { get; set; } = string.Empty;
 
     [Column("description")]
     public string Description { get; set; } = string.Empty;
@@ -34,7 +34,7 @@ public class ExamMaterial
 
     [Required]
     [Column("file_examination_type")]
-    public ExamMaterialFileType FileType { get; set; }
+    public PaperSetFileType FileType { get; set; }
 
     [Required]
     [Column("created_date")]
@@ -49,7 +49,7 @@ public class ExamMaterial
 
     [Required]
     [Column("status")]
-    public ExamMaterialStatus Status { get; set; }
+    public PaperSetStatus Status { get; set; }
 
     [Column("examination_id")]
     [ForeignKey(nameof(Examination))]

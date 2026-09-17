@@ -13,7 +13,7 @@ public sealed class SupabaseStorage : ISupabaseStorage
     {
         _httpClient = httpClient;
         _baseUrl = (Environment.GetEnvironmentVariable("SUPABASE_URL") ?? string.Empty).TrimEnd('/');
-        _bucket = Environment.GetEnvironmentVariable("SUPABASE_STORAGE_BUCKET") ?? "exam-materials";
+        _bucket = Environment.GetEnvironmentVariable("SUPABASE_STORAGE_BUCKET") ?? "paper-sets";
         var secretKey = Environment.GetEnvironmentVariable("SUPABASE_SECRET_KEY");
 
         if (string.IsNullOrWhiteSpace(_baseUrl) || string.IsNullOrWhiteSpace(secretKey))

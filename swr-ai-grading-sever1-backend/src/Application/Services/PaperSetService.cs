@@ -1,5 +1,5 @@
 using Application.Common;
-using Application.DTOs.ExamMaterials;
+using Application.DTOs.PaperSets;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
@@ -7,77 +7,77 @@ using System.IO.Compression;
 
 namespace Application.Services;
 
-public sealed class ExamMaterialService : IExamMaterialService
+public sealed class PaperSetService : IPaperSetService
 {
-    private readonly IExamMaterialRepository _repository;
+    private readonly IPaperSetRepository _repository;
     private readonly IExaminationRepository _examinationRepository;
     private readonly ISemesterRepository _semesterRepository;
     private readonly ISupabaseStorage _storage;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUserRepository _userRepository;
 
-    public ExamMaterialService(IExamMaterialRepository repository, IExaminationRepository examinationRepository, ISemesterRepository semesterRepository, ISupabaseStorage storage, IUnitOfWork unitOfWork, IUserRepository userRepository)
+    public PaperSetService(IPaperSetRepository repository, IExaminationRepository examinationRepository, ISemesterRepository semesterRepository, ISupabaseStorage storage, IUnitOfWork unitOfWork, IUserRepository userRepository)
     { _repository = repository; _examinationRepository = examinationRepository; _semesterRepository = semesterRepository; _storage = storage; _unitOfWork = unitOfWork; _userRepository = userRepository; }
 
-    public async Task<PagedResult<ExamMaterialMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+    public async Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
     {
         var materials = (await _repository.GetAllAsync(ct)).Where(m => !m.IsDeleted).OrderByDescending(m => m.CreatedDate).ToList();
         var page = materials.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToList();
         var items = await Task.WhenAll(page.Select(ToMetadataAsync));
-        return new PagedResult<ExamMaterialMetadataDTO> { Items = items, TotalCount = materials.Count, Page = request.Page, PageSize = request.PageSize };
+        return new PagedResult<PaperSetMetadataDTO> { Items = items, TotalCount = materials.Count, Page = request.Page, PageSize = request.PageSize };
     }
 
-    public async Task<Result<ExamMaterialDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<Result<PaperSetDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
-        return material is null ? Result<ExamMaterialDetailDTO>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND") : Result<ExamMaterialDetailDTO>.Success(await ToDetailAsync(material));
+        return material is null ? Result<PaperSetDetailDTO>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND") : Result<PaperSetDetailDTO>.Success(await ToDetailAsync(material));
     }
 
-    public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
-        if (files.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
+        if (files.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(files);
-        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
+        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
         var questionValidation = ValidateQuestions(questions);
-        if (!questionValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-        if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Only a lecturer can create exam materials.", "LECTURER_REQUIRED");
+        if (!questionValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
+        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
         var materialResult = await CreateMaterialAsync(semesterId, description, questions, files, createdById, ct);
-        if (!materialResult.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
+        if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
         await _repository.AddAsync(materialResult.Data!, ct);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
+        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
     }
 
-    public async Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateManyAsync(
+    public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(
         Guid semesterId,
-        IReadOnlyList<CreateExamMaterialInput> materials,
+        IReadOnlyList<CreatePaperSetInput> materials,
         Guid createdById,
         CancellationToken ct = default)
     {
-        if (materials.Count == 0) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("At least one material is required.", "MATERIALS_REQUIRED");
-        if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
+        if (materials.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one material is required.", "MATERIALS_REQUIRED");
+        if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(materials.SelectMany(material => material.Files));
-        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
-        if (materials.Any(material => !ValidateQuestions(material.Questions).IsSuccess)) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-        if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure("Only a lecturer can create exam materials.", "LECTURER_REQUIRED");
+        if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
+        if (materials.Any(material => !ValidateQuestions(material.Questions).IsSuccess)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
 
-        var created = new List<ExamMaterial>();
+        var created = new List<PaperSet>();
         try
         {
             foreach (var materialInput in materials)
             {
                 var materialResult = await CreateMaterialAsync(semesterId, materialInput.Description, materialInput.Questions, materialInput.Files, createdById, ct);
                 if (!materialResult.IsSuccess)
-                    return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
+                    return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
 
                 created.Add(materialResult.Data!);
                 await _repository.AddAsync(materialResult.Data!, ct);
             }
 
             await _unitOfWork.SaveChangesAsync(ct);
-            return Result<IReadOnlyList<ExamMaterialMetadataDTO>>.Success(
+            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(
                 await Task.WhenAll(created.Select(ToMetadataAsync)));
         }
         catch
@@ -94,7 +94,7 @@ public sealed class ExamMaterialService : IExamMaterialService
         }
     }
 
-    private async Task<Result<ExamMaterial>> CreateMaterialAsync(
+    private async Task<Result<PaperSet>> CreateMaterialAsync(
         Guid semesterId,
         string description,
         IReadOnlyList<CreateQuestionInput> questions,
@@ -102,38 +102,38 @@ public sealed class ExamMaterialService : IExamMaterialService
         Guid createdById,
         CancellationToken ct)
     {
-        var material = new ExamMaterial { ExamMaterialCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = questions.Count, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = ExamMaterialStatus.Ready, SemesterId = semesterId, CreateById = createdById };
+        var material = new PaperSet { PaperSetCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = questions.Count, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = PaperSetStatus.Ready, SemesterId = semesterId, CreateById = createdById };
         material.Questions = questions
-            .Select(question => new Question { Title = question.Title.Trim(), content = question.Content.Trim(), point = question.Point, ExamMaterial = material })
+            .Select(question => new Question { Title = question.Title.Trim(), content = question.Content.Trim(), point = question.Point, PaperSet = material })
             .ToList();
         var uploadResult = await UploadFilesAsync(material, files, ct);
-        if (!uploadResult.IsSuccess) return Result<ExamMaterial>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
-        return Result<ExamMaterial>.Success(material);
+        if (!uploadResult.IsSuccess) return Result<PaperSet>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
+        return Result<PaperSet>.Success(material);
     }
 
-    public async Task<Result<ExamMaterialDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default)
+    public async Task<Result<PaperSetDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
-        if (material is null) return Result<ExamMaterialDetailDTO>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
-        if (files.Count == 0) return Result<ExamMaterialDetailDTO>.Failure("At least one file is required.", "FILES_REQUIRED");
+        if (material is null) return Result<PaperSetDetailDTO>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
+        if (files.Count == 0) return Result<PaperSetDetailDTO>.Failure("At least one file is required.", "FILES_REQUIRED");
         var uploadResult = await UploadFilesAsync(material, files, ct);
-        if (!uploadResult.IsSuccess) return Result<ExamMaterialDetailDTO>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
+        if (!uploadResult.IsSuccess) return Result<PaperSetDetailDTO>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
         material.UpdatedDate = DateTime.UtcNow;
         _repository.Update(material);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<ExamMaterialDetailDTO>.Success(await ToDetailAsync(material));
+        return Result<PaperSetDetailDTO>.Success(await ToDetailAsync(material));
     }
 
-    public async Task<Result<ExamMaterialDetailDTO>> UpdateAsync(Guid id, UpdateExamMaterialRequest request, CancellationToken ct = default)
+    public async Task<Result<PaperSetDetailDTO>> UpdateAsync(Guid id, UpdatePaperSetRequest request, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
-        if (material is null) return Result<ExamMaterialDetailDTO>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
-        if (request.Status.HasValue && !Enum.IsDefined(request.Status.Value)) return Result<ExamMaterialDetailDTO>.Failure("Invalid exam material status.", "INVALID_STATUS");
-        if (request.TotalQuestions is < 0) return Result<ExamMaterialDetailDTO>.Failure("Total questions cannot be negative.", "INVALID_TOTAL_QUESTIONS");
+        if (material is null) return Result<PaperSetDetailDTO>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
+        if (request.Status.HasValue && !Enum.IsDefined(request.Status.Value)) return Result<PaperSetDetailDTO>.Failure("Invalid paper set status.", "INVALID_STATUS");
+        if (request.TotalQuestions is < 0) return Result<PaperSetDetailDTO>.Failure("Total questions cannot be negative.", "INVALID_TOTAL_QUESTIONS");
         var semesterId = request.SemesterId ?? material.SemesterId;
         var examinationId = request.ExaminationId ?? material.ExaminationId;
         var relationshipResult = await ValidateRelationshipAsync(semesterId, examinationId, ct);
-        if (!relationshipResult.IsSuccess) return Result<ExamMaterialDetailDTO>.Failure(relationshipResult.Error!, relationshipResult.ErrorCode);
+        if (!relationshipResult.IsSuccess) return Result<PaperSetDetailDTO>.Failure(relationshipResult.Error!, relationshipResult.ErrorCode);
         material.SemesterId = semesterId;
         material.ExaminationId = examinationId;
         if (request.Description is not null) material.Description = request.Description.Trim();
@@ -142,22 +142,22 @@ public sealed class ExamMaterialService : IExamMaterialService
         material.UpdatedDate = DateTime.UtcNow;
         _repository.Update(material);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<ExamMaterialDetailDTO>.Success(await ToDetailAsync(material));
+        return Result<PaperSetDetailDTO>.Success(await ToDetailAsync(material));
     }
 
     public async Task<Result> DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
-        if (material is null) return Result.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
+        if (material is null) return Result.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
         foreach (var path in GetPaths(material).Values) await _storage.DeleteAsync(path, ct);
-        material.IsDeleted = true; material.Status = ExamMaterialStatus.Archived; material.UpdatedDate = DateTime.UtcNow;
+        material.IsDeleted = true; material.Status = PaperSetStatus.Archived; material.UpdatedDate = DateTime.UtcNow;
         _repository.Update(material); await _unitOfWork.SaveChangesAsync(ct); return Result.Success();
     }
 
     public async Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
-        if (material is null) return Result<StoredFileDownload>.Failure("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
+        if (material is null) return Result<StoredFileDownload>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
         var paths = GetPaths(material);
         if (paths.Count == 0) return Result<StoredFileDownload>.Failure("No files are uploaded.", "FILE_NOT_FOUND");
 
@@ -192,11 +192,11 @@ public sealed class ExamMaterialService : IExamMaterialService
         {
             Content = archive,
             ContentType = "application/zip",
-            FileName = $"{material.ExamMaterialCode}.zip"
+            FileName = $"{material.PaperSetCode}.zip"
         });
     }
 
-    private async Task<Result> UploadFilesAsync(ExamMaterial material, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct)
+    private async Task<Result> UploadFilesAsync(PaperSet material, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct)
     {
         // Validate every file BEFORE uploading any of them. Doing this inline inside
         // the upload loop (as before) meant a later file failing validation would
@@ -213,7 +213,7 @@ public sealed class ExamMaterialService : IExamMaterialService
         {
             foreach (var file in files)
             {
-                var path = $"examinations/{material.ExaminationId ?? material.SemesterId}/{material.ExamMaterialCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
+                var path = $"examinations/{material.ExaminationId ?? material.SemesterId}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
                 try
                 {
                     await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
@@ -230,7 +230,7 @@ public sealed class ExamMaterialService : IExamMaterialService
         catch { foreach (var path in uploaded) { try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { } } throw; }
     }
 
-    private async Task<ExamMaterial?> FindAsync(Guid id, CancellationToken ct) { var material = await _repository.GetByIdAsync(id, ct); return material is null || material.IsDeleted ? null : material; }
+    private async Task<PaperSet?> FindAsync(Guid id, CancellationToken ct) { var material = await _repository.GetByIdAsync(id, ct); return material is null || material.IsDeleted ? null : material; }
     private static Result ValidateQuestions(IReadOnlyList<CreateQuestionInput> questions)
     {
         return questions.Count > 0 && questions.All(question =>
@@ -260,8 +260,8 @@ public sealed class ExamMaterialService : IExamMaterialService
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         var validExtensions = file.FileType switch
         {
-            ExamMaterialFileType.Question or ExamMaterialFileType.AnswerTemplate => new[] { ".doc", ".docx" },
-            ExamMaterialFileType.AnswerRubric => new[] { ".xls", ".xlsx" },
+            PaperSetFileType.Question or PaperSetFileType.AnswerTemplate => new[] { ".doc", ".docx" },
+            PaperSetFileType.AnswerRubric => new[] { ".xls", ".xlsx" },
             _ => Array.Empty<string>()
         };
 
@@ -285,26 +285,26 @@ public sealed class ExamMaterialService : IExamMaterialService
 
     // Fixed: AnswerRubric and AnswerTemplate previously both fell through to "AT",
     // filing rubric files under an "answer template" folder segment.
-    private static string GetTypeCode(ExamMaterialFileType type) => type switch
+    private static string GetTypeCode(PaperSetFileType type) => type switch
     {
-        ExamMaterialFileType.Question => "EQ",
-        ExamMaterialFileType.AnswerRubric => "AR",
-        ExamMaterialFileType.AnswerTemplate => "AT",
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown exam material file type.")
+        PaperSetFileType.Question => "EQ",
+        PaperSetFileType.AnswerRubric => "AR",
+        PaperSetFileType.AnswerTemplate => "AT",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown paper set file type.")
     };
 
-    private static void SetPath(ExamMaterial m, ExamMaterialFileType type, string path) { if (type == ExamMaterialFileType.Question) m.FileQuestionDocs = path; else if (type == ExamMaterialFileType.AnswerRubric) m.FileAnswerRubric = path; else m.FileAnswerTemplate = path; }
-    private static Dictionary<ExamMaterialFileType, string> GetPaths(ExamMaterial m) => new[] { (ExamMaterialFileType.Question, m.FileQuestionDocs), (ExamMaterialFileType.AnswerRubric, m.FileAnswerRubric), (ExamMaterialFileType.AnswerTemplate, m.FileAnswerTemplate) }.Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
+    private static void SetPath(PaperSet m, PaperSetFileType type, string path) { if (type == PaperSetFileType.Question) m.FileQuestionDocs = path; else if (type == PaperSetFileType.AnswerRubric) m.FileAnswerRubric = path; else m.FileAnswerTemplate = path; }
+    private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
 
-    private async Task<ExamMaterialMetadataDTO> ToMetadataAsync(ExamMaterial material)
+    private async Task<PaperSetMetadataDTO> ToMetadataAsync(PaperSet material)
     {
-        var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new ExamMaterialFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new ExamMaterialMetadataDTO { ExamMaterialId = material.ExamMaterialId, ExamMaterialCode = material.ExamMaterialCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new ExamMaterialQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new PaperSetFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
+        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
     }
 
-    private async Task<ExamMaterialDetailDTO> ToDetailAsync(ExamMaterial material)
+    private async Task<PaperSetDetailDTO> ToDetailAsync(PaperSet material)
     {
         var metadata = await ToMetadataAsync(material);
-        return new ExamMaterialDetailDTO { ExamMaterialId = metadata.ExamMaterialId, ExamMaterialCode = metadata.ExamMaterialCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
+        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
     }
 }

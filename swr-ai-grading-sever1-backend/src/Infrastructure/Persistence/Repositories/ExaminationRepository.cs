@@ -11,6 +11,6 @@ public class ExaminationRepository : Repository<Examination>, IExaminationReposi
     public Task<bool> IsCodeExistsAsync(string code, CancellationToken ct = default)
         => AnyAsync(e => e.ExaminationCode == code, ct);
 
-    public Task<bool> HasExamMaterialsAsync(Guid examinationId, CancellationToken ct = default)
-        => _db.ExamMaterials.AnyAsync(m => m.ExaminationId == examinationId, ct);
+    public Task<bool> HasPaperSetsAsync(Guid examinationId, CancellationToken ct = default)
+        => _db.PaperSets.AnyAsync(m => m.ExaminationId == examinationId, ct);
 }

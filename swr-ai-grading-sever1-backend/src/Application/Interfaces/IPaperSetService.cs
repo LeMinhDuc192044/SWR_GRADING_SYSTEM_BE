@@ -1,27 +1,27 @@
 using Application.Common;
-using Application.DTOs.ExamMaterials;
+using Application.DTOs.PaperSets;
 using Domain.Enums;
 
 namespace Application.Interfaces;
 
-public interface IExamMaterialService
+public interface IPaperSetService
 {
-    Task<PagedResult<ExamMaterialMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
-    Task<Result<ExamMaterialDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateAsync(
+    Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
+    Task<Result<PaperSetDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(
         Guid semesterId,
         string description,
         IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
         CancellationToken ct = default);
-    Task<Result<IReadOnlyList<ExamMaterialMetadataDTO>>> CreateManyAsync(
+    Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(
         Guid semesterId,
-        IReadOnlyList<CreateExamMaterialInput> materials,
+        IReadOnlyList<CreatePaperSetInput> materials,
         Guid createdById,
         CancellationToken ct = default);
-    Task<Result<ExamMaterialDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);
-    Task<Result<ExamMaterialDetailDTO>> UpdateAsync(Guid id, UpdateExamMaterialRequest request, CancellationToken ct = default);
+    Task<Result<PaperSetDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);
+    Task<Result<PaperSetDetailDTO>> UpdateAsync(Guid id, UpdatePaperSetRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default);
 }

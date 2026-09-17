@@ -59,5 +59,5 @@ public class Examination
 
     public Semester Semester { get; set; } = null!;
 
-    public ICollection<ExamMaterial> ExamMaterials { get; set; } = new List<ExamMaterial>();
+    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
 }
