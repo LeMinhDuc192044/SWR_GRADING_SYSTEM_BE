@@ -29,7 +29,6 @@ public class Submission
     [Column("status")]
     public SubmissionStatus Status { get; set; }
 
-    [Required]
     [MaxLength(1000)]
     [Column("comment")]
     public string Comment { get; set; } = string.Empty;
