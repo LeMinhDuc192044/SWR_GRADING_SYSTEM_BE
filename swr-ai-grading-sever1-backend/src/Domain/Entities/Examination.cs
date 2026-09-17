@@ -1,6 +1,6 @@
-using Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Domain.Enums;
 
 
 namespace Domain.Entities;
@@ -60,4 +60,7 @@ public class Examination
     public Semester Semester { get; set; } = null!;
 
     public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
+
+    public ICollection<StudentExamination> StudentExaminations { get; set; }
+        = new List<StudentExamination>();
 }

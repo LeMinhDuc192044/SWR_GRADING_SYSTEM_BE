@@ -27,6 +27,14 @@ public class GradingDiary
 
     public Lecturer CreatedBy { get; set; } = null!;
 
+    // 1:1 with PaperSet
+    [Required]
+    [Column("paper_set_id")]
+    [ForeignKey(nameof(PaperSet))]
+    public Guid PaperSetId { get; set; }
+
+    public PaperSet PaperSet { get; set; } = null!;
+
     public ICollection<Submission> Submissions { get; set; }
         = new List<Submission>();
 }

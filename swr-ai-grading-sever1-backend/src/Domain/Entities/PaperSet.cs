@@ -71,4 +71,6 @@ public class PaperSet
 
     public Lecturer CreateBy { get; set; } = null!;
     public ICollection<Question> Questions { get; set; } = new List<Question>();
+
+    public GradingDiary? GradingDiary { get; set; }
 }

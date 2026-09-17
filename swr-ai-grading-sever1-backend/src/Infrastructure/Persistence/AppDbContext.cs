@@ -19,7 +19,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<Examination> Examinations => Set<Examination>();
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<Semester> Semesters => Set<Semester>();
-    public DbSet<Grading> Gradings => Set<Grading>();
+    public DbSet<StudentExamination> Gradings => Set<StudentExamination>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

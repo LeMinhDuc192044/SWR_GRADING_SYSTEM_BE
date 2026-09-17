@@ -12,7 +12,4 @@ public interface IPaperSetRepository : IRepository<PaperSet>
     Task<bool> IsCodeExistsAsync(string code, CancellationToken ct = default);
 }
 
-public interface IGradingRepository : IRepository<Grading>
-{
-    Task<bool> IsCodeExistsAsync(string code, CancellationToken ct = default);
-}
+
