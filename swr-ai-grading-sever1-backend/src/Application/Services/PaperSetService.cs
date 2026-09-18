@@ -33,16 +33,26 @@ public sealed class PaperSetService : IPaperSetService
         return material is null ? Result<PaperSetDetailDTO>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND") : Result<PaperSetDetailDTO>.Success(await ToDetailAsync(material));
     }
 
+    public Task<Result<IReadOnlyList<CreateQuestionInput>>> PreviewQuestionsAsync(MaterialFileUpload file, CancellationToken ct = default)
+    {
+        var extension = Path.GetExtension(file.FileName);
+        return Task.FromResult(string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase)
+            ? PaperSetQuestionDocumentParser.Parse(file)
+            : PaperSetQuestionDocumentParser.ParseOcr(file));
+    }
+
     public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
         if (files.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(files);
         if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
-        var questionValidation = ValidateQuestions(questions);
+        var questionResult = ParseQuestionDocument(questions, files);
+        if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
+        var questionValidation = ValidateQuestions(questionResult.Data!);
         if (!questionValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
         if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
-        var materialResult = await CreateMaterialAsync(semesterId, description, questions, files, createdById, ct);
+        var materialResult = await CreateMaterialAsync(semesterId, description, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
         await _repository.AddAsync(materialResult.Data!, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -59,16 +69,23 @@ public sealed class PaperSetService : IPaperSetService
         if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(materials.SelectMany(material => material.Files));
         if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
-        if (materials.Any(material => !ValidateQuestions(material.Questions).IsSuccess)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+        var parsedMaterials = new List<(CreatePaperSetInput Input, IReadOnlyList<CreateQuestionInput> Questions)>();
+        foreach (var material in materials)
+        {
+            var questionResult = ParseQuestionDocument(material.Questions, material.Files);
+            if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
+            if (!ValidateQuestions(questionResult.Data!).IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+            parsedMaterials.Add((material, questionResult.Data!));
+        }
         if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
 
         var created = new List<PaperSet>();
         try
         {
-            foreach (var materialInput in materials)
+            foreach (var parsedMaterial in parsedMaterials)
             {
-                var materialResult = await CreateMaterialAsync(semesterId, materialInput.Description, materialInput.Questions, materialInput.Files, createdById, ct);
+                var materialResult = await CreateMaterialAsync(semesterId, parsedMaterial.Input.Description, parsedMaterial.Questions, parsedMaterial.Input.Files, createdById, ct);
                 if (!materialResult.IsSuccess)
                     return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
 
@@ -92,6 +109,24 @@ public sealed class PaperSetService : IPaperSetService
 
             throw;
         }
+    }
+
+    private static Result<IReadOnlyList<CreateQuestionInput>> ParseQuestionDocument(
+        IReadOnlyList<CreateQuestionInput> questions,
+        IReadOnlyList<MaterialFileUpload> files)
+    {
+        if (questions.Any(question =>
+                !string.IsNullOrWhiteSpace(question.Title) ||
+                !string.IsNullOrWhiteSpace(question.Content) ||
+                question.Point != 0))
+            return Result<IReadOnlyList<CreateQuestionInput>>.Success(questions);
+
+        var questionFile = files.FirstOrDefault(file => file.FileType == PaperSetFileType.Question);
+        return questionFile is null
+            ? Result<IReadOnlyList<CreateQuestionInput>>.Success(questions)
+            : string.Equals(Path.GetExtension(questionFile.FileName), ".docx", StringComparison.OrdinalIgnoreCase)
+                ? PaperSetQuestionDocumentParser.Parse(questionFile)
+                : PaperSetQuestionDocumentParser.ParseOcr(questionFile);
     }
 
     private async Task<Result<PaperSet>> CreateMaterialAsync(

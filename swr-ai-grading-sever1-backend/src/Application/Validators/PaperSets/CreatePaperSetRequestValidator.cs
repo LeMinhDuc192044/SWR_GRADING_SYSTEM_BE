@@ -14,9 +14,9 @@ public sealed class CreatePaperSetRequestValidator : AbstractValidator<CreatePap
             .WithMessage("Question file must not be empty.");
 
         RuleFor(request => request.Question)
-            .Must(file => HasExtension(file, ".doc", ".docx"))
+            .Must(file => HasExtension(file, ".docx", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".pdf"))
             .When(request => request.Question is not null)
-            .WithMessage("Question file must be a Word document (.doc or .docx).");
+            .WithMessage("Question file must be a .docx, image, or PDF file.");
 
         RuleFor(request => request.AnswerRubric)
             .Must(file => HasNonEmptyContent(file))

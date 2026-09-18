@@ -25,6 +25,21 @@ public sealed class PaperSetsController : ControllerBase
         CancellationToken ct) =>
         Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
+    [HttpPost("preview-questions")]
+    [Authorize]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> PreviewQuestions(IFormFile question, CancellationToken ct)
+    {
+        if (question is null || question.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+
+        var upload = ToUpload(question, PaperSetFileType.Question)!;
+        var result = await _service.PreviewQuestionsAsync(upload, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
     {
