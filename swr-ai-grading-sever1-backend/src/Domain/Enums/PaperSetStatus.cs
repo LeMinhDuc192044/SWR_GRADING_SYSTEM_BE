@@ -2,14 +2,14 @@ namespace Domain.Enums;
 
 /// <summary>
 /// Trạng thái của tài liệu thi (đề thi, đáp án, rubric).
-/// Mapping: exam_materials.status (integer) trên Supabase.
+/// Mapping: paper_sets.status (integer) trên Supabase.
 /// </summary>
-public enum ExamMaterialStatus
+public enum PaperSetStatus
 {
     Processing = 0,
     Ready = 1,
 
-    InUse = 2,
+    Used = 2,
 
     Archived = 3,
     Failed = 4

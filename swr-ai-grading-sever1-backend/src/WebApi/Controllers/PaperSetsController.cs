@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using Application.Common;
-using Application.DTOs.ExamMaterials;
+using Application.DTOs.PaperSets;
 using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -9,12 +9,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace WebApi.Controllers;
 
 [ApiController]
-[Route("api/exam-materials")]
-public sealed class ExamMaterialsController : ControllerBase
+[Route("api/paper-sets")]
+public sealed class PaperSetsController : ControllerBase
 {
-    private readonly IExamMaterialService _service;
+    private readonly IPaperSetService _service;
 
-    public ExamMaterialsController(IExamMaterialService service)
+    public PaperSetsController(IPaperSetService service)
     {
         _service = service;
     }
@@ -24,6 +24,21 @@ public sealed class ExamMaterialsController : ControllerBase
         [FromQuery] PagedRequest request,
         CancellationToken ct) =>
         Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
+
+    [HttpPost("preview-questions")]
+    [Authorize]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> PreviewQuestions(IFormFile question, CancellationToken ct)
+    {
+        if (question is null || question.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+
+        var upload = ToUpload(question, PaperSetFileType.Question)!;
+        var result = await _service.PreviewQuestionsAsync(upload, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
@@ -45,7 +60,7 @@ public sealed class ExamMaterialsController : ControllerBase
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Create(
-        [FromForm] CreateExamMaterialRequest request,
+        [FromForm] CreatePaperSetRequest request,
         CancellationToken ct)
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
@@ -63,11 +78,11 @@ public sealed class ExamMaterialsController : ControllerBase
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateMany(
-       [FromForm] CreateExamMaterialsRequest request,
+       [FromForm] CreatePaperSetsRequest request,
        CancellationToken ct)
     {
        var materials = request.Materials
-           .Select(item => new CreateExamMaterialInput
+           .Select(item => new CreatePaperSetInput
            {
                Description = item.Description,
                Questions = item.Questions.Select(ToQuestionInput).ToList(),
@@ -94,7 +109,7 @@ public sealed class ExamMaterialsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> AddFiles(
         Guid id,
-        [FromForm] AddExamMaterialFilesRequest request,
+        [FromForm] AddPaperSetFilesRequest request,
         CancellationToken ct)
     {
         var result = await _service.AddFilesAsync(
@@ -103,19 +118,19 @@ public sealed class ExamMaterialsController : ControllerBase
             ct);
 
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
-        return result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(
         Guid id,
-        [FromBody] UpdateExamMaterialRequest request,
+        [FromBody] UpdatePaperSetRequest request,
         CancellationToken ct)
     {
         var result = await _service.UpdateAsync(id, request, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     [HttpDelete("{id:guid}")]
@@ -124,22 +139,22 @@ public sealed class ExamMaterialsController : ControllerBase
         var result = await _service.DeleteAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(null))
-            : result.ErrorCode == "EXAM_MATERIAL_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
     private static List<MaterialFileUpload> BuildUploads(
         IFormFile? question, IFormFile? answerRubric, IFormFile? answerTemplate) =>
         new[]
         {
-            ToUpload(question, ExamMaterialFileType.Question),
-            ToUpload(answerRubric, ExamMaterialFileType.AnswerRubric),
-            ToUpload(answerTemplate, ExamMaterialFileType.AnswerTemplate)
+            ToUpload(question, PaperSetFileType.Question),
+            ToUpload(answerRubric, PaperSetFileType.AnswerRubric),
+            ToUpload(answerTemplate, PaperSetFileType.AnswerTemplate)
         }
         .Where(upload => upload is not null)
         .Select(upload => upload!)
         .ToList();
 
-    private static MaterialFileUpload? ToUpload(IFormFile? file, ExamMaterialFileType type) =>
+    private static MaterialFileUpload? ToUpload(IFormFile? file, PaperSetFileType type) =>
         file is null
             ? null
             : new MaterialFileUpload

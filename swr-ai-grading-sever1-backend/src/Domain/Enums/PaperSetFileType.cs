@@ -1,6 +1,6 @@
-﻿
+
 namespace Domain.Enums;
-public enum ExamMaterialFileType
+public enum PaperSetFileType
 {
     Question = 1,
     AnswerRubric = 2,

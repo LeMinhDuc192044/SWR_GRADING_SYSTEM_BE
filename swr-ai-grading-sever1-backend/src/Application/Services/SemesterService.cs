@@ -11,14 +11,14 @@ public class SemesterService : ISemesterService
 {
 	private readonly ISemesterRepository _repository;
 	private readonly IExaminationRepository _examinationRepository;
-	private readonly IExamMaterialRepository _examMaterialRepository;
+	private readonly IPaperSetRepository _paperSetRepository;
 	private readonly IUnitOfWork _unitOfWork;
 
-	public SemesterService(ISemesterRepository repository, IExaminationRepository examinationRepository, IExamMaterialRepository examMaterialRepository, IUnitOfWork unitOfWork)
+	public SemesterService(ISemesterRepository repository, IExaminationRepository examinationRepository, IPaperSetRepository paperSetRepository, IUnitOfWork unitOfWork)
 	{
 		_repository = repository;
 		_examinationRepository = examinationRepository;
-		_examMaterialRepository = examMaterialRepository;
+		_paperSetRepository = paperSetRepository;
 		_unitOfWork = unitOfWork;
 	}
 
@@ -161,7 +161,7 @@ public class SemesterService : ISemesterService
 	private async Task<SemesterDetailDTO> ToDetailDtoAsync(Semester semester, CancellationToken ct)
 	{
 		var examinations = await _examinationRepository.FindAsync(e => e.SemesterId == semester.SemesterId, ct);
-		var materials = await _examMaterialRepository.FindAsync(m => m.SemesterId == semester.SemesterId && !m.IsDeleted, ct);
+		var materials = await _paperSetRepository.FindAsync(m => m.SemesterId == semester.SemesterId && !m.IsDeleted, ct);
 
 		return new SemesterDetailDTO
 		{
@@ -184,12 +184,12 @@ public class SemesterService : ISemesterService
 				Note = e.Note,
 				Status = e.Status,
 				SemesterId = e.SemesterId,
-				ExamMaterialId = materials.FirstOrDefault(m => m.ExaminationId == e.ExaminationId)?.ExamMaterialId
+				PaperSetId = materials.FirstOrDefault(m => m.ExaminationId == e.ExaminationId)?.PaperSetId
 			}).ToList(),
-			ExamMaterials = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterExamMaterialDTO
+			PaperSets = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterPaperSetDTO
 			{
-				ExamMaterialId = m.ExamMaterialId,
-				ExamMaterialCode = m.ExamMaterialCode,
+				PaperSetId = m.PaperSetId,
+				PaperSetCode = m.PaperSetCode,
 				Description = m.Description,
 				TotalQuestions = m.TotalQuestions,
 				Status = m.Status,

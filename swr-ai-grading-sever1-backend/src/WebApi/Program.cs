@@ -1,7 +1,7 @@
 using Application.Interfaces;
 using Application.Common;
 using Application.Services;
-using Application.Validators.ExamMaterials;
+using Application.Validators.PaperSets;
 using DotNetEnv;
 using FluentValidation;
 using FluentValidation.AspNetCore;
@@ -114,8 +114,8 @@ builder.Services.AddScoped<ISemesterService, SemesterService>();
 builder.Services.AddScoped<ISemesterRepository, SemesterRepository>();
 builder.Services.AddScoped<IExaminationService, ExaminationService>();
 builder.Services.AddScoped<IExaminationRepository, ExaminationRepository>();
-builder.Services.AddScoped<IExamMaterialService, ExamMaterialService>();
-builder.Services.AddScoped<IExamMaterialRepository, ExamMaterialRepository>();
+builder.Services.AddScoped<IPaperSetService, PaperSetService>();
+builder.Services.AddScoped<IPaperSetRepository, PaperSetRepository>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 
 builder.Services.AddScoped<ISupabaseStorage>(sp =>
@@ -142,7 +142,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddFluentValidationClientsideAdapters();
-builder.Services.AddValidatorsFromAssemblyContaining<CreateExamMaterialRequestValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreatePaperSetRequestValidator>();
 
 // CORS
 var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "")
