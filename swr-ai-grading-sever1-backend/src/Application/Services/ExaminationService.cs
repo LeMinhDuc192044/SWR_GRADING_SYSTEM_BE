@@ -161,7 +161,7 @@ public class ExaminationService : IExaminationService
             return Result.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
 
         if (await _repository.HasPaperSetsAsync(id, ct))
-            return Result.Failure("Cannot delete an examination that has materials.", "EXAMINATION_HAS_MATERIALS");
+            return Result.Failure("Cannot delete an examination that has paper sets.", "EXAMINATION_HAS_MATERIALS");
 
         _repository.Remove(examination);
         await _unitOfWork.SaveChangesAsync(ct);

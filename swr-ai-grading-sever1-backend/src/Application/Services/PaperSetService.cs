@@ -65,8 +65,8 @@ public sealed class PaperSetService : IPaperSetService
         Guid createdById,
         CancellationToken ct = default)
     {
-        if (materials.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one material is required.", "MATERIALS_REQUIRED");
-        if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each material must contain at least one file.", "FILES_REQUIRED");
+        if (materials.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one paper set is required.", "MATERIALS_REQUIRED");
+        if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each paper set must contain at least one file.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(materials.SelectMany(material => material.Files));
         if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
         var parsedMaterials = new List<(CreatePaperSetInput Input, IReadOnlyList<CreateQuestionInput> Questions)>();
