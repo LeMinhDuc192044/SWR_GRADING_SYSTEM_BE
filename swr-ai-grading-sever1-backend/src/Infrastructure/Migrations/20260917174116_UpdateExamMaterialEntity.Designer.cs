@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260915070139_AddPointToQuestion")]
-    partial class AddPointToQuestion
+    [Migration("20260917174116_UpdateExamMaterialEntity")]
+    partial class UpdateExamMaterialEntity
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,83 +24,6 @@ namespace Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Domain.Entities.ExamMaterial", b =>
-                {
-                    b.Property<Guid>("ExamMaterialId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("exam_material_id");
-
-                    b.Property<Guid>("CreateById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("create_by_id");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_date");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("ExamMaterialCode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("exam_material_code");
-
-                    b.Property<Guid?>("ExaminationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("examination_id");
-
-                    b.Property<string>("FileAnswerRubric")
-                        .HasColumnType("text")
-                        .HasColumnName("file_answer_rubric");
-
-                    b.Property<string>("FileAnswerTemplate")
-                        .HasColumnType("text")
-                        .HasColumnName("file_answer_template");
-
-                    b.Property<string>("FileQuestionDocs")
-                        .HasColumnType("text")
-                        .HasColumnName("file_question_docs");
-
-                    b.Property<int>("FileType")
-                        .HasColumnType("integer")
-                        .HasColumnName("file_examination_type");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<Guid>("SemesterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("semester_id");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer")
-                        .HasColumnName("status");
-
-                    b.Property<int>("TotalQuestions")
-                        .HasColumnType("integer")
-                        .HasColumnName("total_questions");
-
-                    b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_date");
-
-                    b.HasKey("ExamMaterialId");
-
-                    b.HasIndex("CreateById");
-
-                    b.HasIndex("ExaminationId");
-
-                    b.HasIndex("SemesterId");
-
-                    b.ToTable("exam_materials");
-                });
 
             modelBuilder.Entity("Domain.Entities.Examination", b =>
                 {
@@ -168,61 +91,118 @@ namespace Infrastructure.Migrations
                     b.ToTable("examinations");
                 });
 
-            modelBuilder.Entity("Domain.Entities.Grading", b =>
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
                 {
-                    b.Property<Guid>("GradingId")
+                    b.Property<Guid>("GradingDiaryId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
-                        .HasColumnName("grading_id");
+                        .HasColumnName("grading_diary_id");
 
-                    b.Property<string>("AiLogs")
-                        .HasColumnType("text")
-                        .HasColumnName("ai_logs");
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(21)
+                        .HasColumnType("character varying(21)")
+                        .HasColumnName("examination_code");
 
-                    b.Property<decimal?>("AiScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("ai_score");
+                    b.Property<Guid>("CreateById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("create_by_id");
 
-                    b.Property<string>("Comment")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("comment");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
 
-                    b.Property<DateTime>("CreateDate")
+                    b.Property<Guid>("PaperSetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("paper_set_id");
+
+                    b.HasKey("GradingDiaryId");
+
+                    b.HasIndex("CreateById");
+
+                    b.HasIndex("PaperSetId")
+                        .IsUnique();
+
+                    b.ToTable("grading_diary");
+                });
+
+            modelBuilder.Entity("Domain.Entities.PaperSet", b =>
+                {
+                    b.Property<Guid>("PaperSetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("paper_set_id");
+
+                    b.Property<Guid>("CreateById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("create_by_id");
+
+                    b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("create_date");
+                        .HasColumnName("created_date");
 
-                    b.Property<decimal?>("FinalScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("final_score");
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
 
-                    b.Property<string>("GradingCode")
+                    b.Property<Guid?>("ExaminationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("examination_id");
+
+                    b.Property<string>("FileAnswerRubric")
+                        .HasColumnType("text")
+                        .HasColumnName("file_answer_rubric");
+
+                    b.Property<string>("FileAnswerTemplate")
+                        .HasColumnType("text")
+                        .HasColumnName("file_answer_template");
+
+                    b.Property<string>("FileQuestionDocs")
+                        .HasColumnType("text")
+                        .HasColumnName("file_question_docs");
+
+                    b.Property<int>("FileType")
+                        .HasColumnType("integer")
+                        .HasColumnName("file_examination_type");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("PaperSetCode")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
-                        .HasColumnName("grading_code");
+                        .HasColumnName("paper_set_code");
 
-                    b.Property<decimal?>("LecturerScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("lecturer_score");
+                    b.Property<Guid>("SemesterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("semester_id");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
-                    b.Property<Guid>("SubmissionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("submission_id");
+                    b.Property<int>("TotalQuestions")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_questions");
 
-                    b.Property<DateTime>("UpdateDate")
+                    b.Property<DateTime>("UpdatedDate")
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("update_date");
+                        .HasColumnName("updated_date");
 
-                    b.HasKey("GradingId");
+                    b.HasKey("PaperSetId");
 
-                    b.HasIndex("SubmissionId");
+                    b.HasIndex("CreateById");
 
-                    b.ToTable("gradings");
+                    b.HasIndex("ExaminationId");
+
+                    b.HasIndex("SemesterId");
+
+                    b.ToTable("paper_sets");
                 });
 
             modelBuilder.Entity("Domain.Entities.Question", b =>
@@ -232,9 +212,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("question_id");
 
-                    b.Property<Guid>("ExamMaterialId")
+                    b.Property<Guid>("PaperSetId")
                         .HasColumnType("uuid")
-                        .HasColumnName("exam_material_id");
+                        .HasColumnName("paper_set_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -253,7 +233,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("QuestionId");
 
-                    b.HasIndex("ExamMaterialId");
+                    b.HasIndex("PaperSetId");
 
                     b.ToTable("questions");
                 });
@@ -299,6 +279,30 @@ namespace Infrastructure.Migrations
                     b.ToTable("semesters");
                 });
 
+            modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
+                {
+                    b.Property<Guid>("StudentExaminationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_examination_id");
+
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("exam_id");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
+
+                    b.HasKey("StudentExaminationId");
+
+                    b.HasIndex("ExamId");
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("student_examination");
+                });
+
             modelBuilder.Entity("Domain.Entities.Submission", b =>
                 {
                     b.Property<Guid>("SubmissionId")
@@ -306,23 +310,39 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("submission_id");
 
+                    b.Property<string>("AiLogs")
+                        .HasColumnType("text")
+                        .HasColumnName("ai_logs");
+
+                    b.Property<decimal?>("AiScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("ai_score");
+
+                    b.Property<string>("Comment")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("comment");
+
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_date");
 
-                    b.Property<string>("Folder")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("folder");
-
-                    b.Property<Guid>("LecturerId")
+                    b.Property<Guid>("DiaryId")
                         .HasColumnType("uuid")
-                        .HasColumnName("lecturer_id");
+                        .HasColumnName("diary_id");
+
+                    b.Property<decimal?>("LecturerScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("lecturer_score");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
+
+                    b.Property<Guid>("StudentExaminationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_examination_id");
 
                     b.Property<string>("SubmissionName")
                         .IsRequired()
@@ -336,9 +356,11 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("SubmissionId");
 
-                    b.HasIndex("LecturerId");
+                    b.HasIndex("DiaryId");
 
-                    b.ToTable("submissions");
+                    b.HasIndex("StudentExaminationId");
+
+                    b.ToTable("student_submission");
                 });
 
             modelBuilder.Entity("Domain.Entities.User", b =>
@@ -432,31 +454,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("students");
                 });
 
-            modelBuilder.Entity("Domain.Entities.ExamMaterial", b =>
-                {
-                    b.HasOne("Domain.Entities.Lecturer", "CreateBy")
-                        .WithMany("ExamMaterialsCreated")
-                        .HasForeignKey("CreateById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.Examination", "Examination")
-                        .WithMany("ExamMaterials")
-                        .HasForeignKey("ExaminationId");
-
-                    b.HasOne("Domain.Entities.Semester", "Semester")
-                        .WithMany("ExamMaterials")
-                        .HasForeignKey("SemesterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreateBy");
-
-                    b.Navigation("Examination");
-
-                    b.Navigation("Semester");
-                });
-
             modelBuilder.Entity("Domain.Entities.Examination", b =>
                 {
                     b.HasOne("Domain.Entities.Semester", "Semester")
@@ -468,37 +465,97 @@ namespace Infrastructure.Migrations
                     b.Navigation("Semester");
                 });
 
-            modelBuilder.Entity("Domain.Entities.Grading", b =>
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
                 {
-                    b.HasOne("Domain.Entities.Submission", "Submission")
-                        .WithMany("Gradings")
-                        .HasForeignKey("SubmissionId")
+                    b.HasOne("Domain.Entities.Lecturer", "CreatedBy")
+                        .WithMany("GradingDiaries")
+                        .HasForeignKey("CreateById")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Submission");
+                    b.HasOne("Domain.Entities.PaperSet", "PaperSet")
+                        .WithOne("GradingDiary")
+                        .HasForeignKey("Domain.Entities.GradingDiary", "PaperSetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("PaperSet");
+                });
+
+            modelBuilder.Entity("Domain.Entities.PaperSet", b =>
+                {
+                    b.HasOne("Domain.Entities.Lecturer", "CreateBy")
+                        .WithMany("PaperSetsCreated")
+                        .HasForeignKey("CreateById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.Examination", "Examination")
+                        .WithMany("PaperSets")
+                        .HasForeignKey("ExaminationId");
+
+                    b.HasOne("Domain.Entities.Semester", "Semester")
+                        .WithMany("PaperSets")
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreateBy");
+
+                    b.Navigation("Examination");
+
+                    b.Navigation("Semester");
                 });
 
             modelBuilder.Entity("Domain.Entities.Question", b =>
                 {
-                    b.HasOne("Domain.Entities.ExamMaterial", "ExamMaterial")
+                    b.HasOne("Domain.Entities.PaperSet", "PaperSet")
                         .WithMany("Questions")
-                        .HasForeignKey("ExamMaterialId")
+                        .HasForeignKey("PaperSetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("ExamMaterial");
+                    b.Navigation("PaperSet");
+                });
+
+            modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
+                {
+                    b.HasOne("Domain.Entities.Examination", "Examination")
+                        .WithMany("StudentExaminations")
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.Student", "Student")
+                        .WithMany("StudentExaminations")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Examination");
+
+                    b.Navigation("Student");
                 });
 
             modelBuilder.Entity("Domain.Entities.Submission", b =>
                 {
-                    b.HasOne("Domain.Entities.Lecturer", "Lecturer")
+                    b.HasOne("Domain.Entities.GradingDiary", "GradingDiary")
                         .WithMany("Submissions")
-                        .HasForeignKey("LecturerId")
+                        .HasForeignKey("DiaryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Lecturer");
+                    b.HasOne("Domain.Entities.StudentExamination", "StudentExamination")
+                        .WithMany()
+                        .HasForeignKey("StudentExaminationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GradingDiary");
+
+                    b.Navigation("StudentExamination");
                 });
 
             modelBuilder.Entity("Domain.Entities.Lecturer", b =>
@@ -519,33 +576,42 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Domain.Entities.ExamMaterial", b =>
-                {
-                    b.Navigation("Questions");
-                });
-
             modelBuilder.Entity("Domain.Entities.Examination", b =>
                 {
-                    b.Navigation("ExamMaterials");
+                    b.Navigation("PaperSets");
+
+                    b.Navigation("StudentExaminations");
+                });
+
+            modelBuilder.Entity("Domain.Entities.GradingDiary", b =>
+                {
+                    b.Navigation("Submissions");
+                });
+
+            modelBuilder.Entity("Domain.Entities.PaperSet", b =>
+                {
+                    b.Navigation("GradingDiary");
+
+                    b.Navigation("Questions");
                 });
 
             modelBuilder.Entity("Domain.Entities.Semester", b =>
                 {
-                    b.Navigation("ExamMaterials");
-
                     b.Navigation("Examinations");
-                });
 
-            modelBuilder.Entity("Domain.Entities.Submission", b =>
-                {
-                    b.Navigation("Gradings");
+                    b.Navigation("PaperSets");
                 });
 
             modelBuilder.Entity("Domain.Entities.Lecturer", b =>
                 {
-                    b.Navigation("ExamMaterialsCreated");
+                    b.Navigation("GradingDiaries");
 
-                    b.Navigation("Submissions");
+                    b.Navigation("PaperSetsCreated");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Student", b =>
+                {
+                    b.Navigation("StudentExaminations");
                 });
 #pragma warning restore 612, 618
         }

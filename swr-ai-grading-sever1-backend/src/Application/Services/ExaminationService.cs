@@ -11,18 +11,18 @@ public class ExaminationService : IExaminationService
     private const string DefaultCourseCode = "SWR302";
     private readonly IExaminationRepository _repository;
     private readonly ISemesterRepository _semesterRepository;
-    private readonly IExamMaterialRepository _examMaterialRepository;
+    private readonly IPaperSetRepository _paperSetRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public ExaminationService(
         IExaminationRepository repository,
         ISemesterRepository semesterRepository,
-        IExamMaterialRepository examMaterialRepository,
+        IPaperSetRepository paperSetRepository,
         IUnitOfWork unitOfWork)
     {
         _repository = repository;
         _semesterRepository = semesterRepository;
-        _examMaterialRepository = examMaterialRepository;
+        _paperSetRepository = paperSetRepository;
         _unitOfWork = unitOfWork;
     }
 
@@ -63,7 +63,7 @@ public class ExaminationService : IExaminationService
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
-        var material = await _examMaterialRepository.GetByIdAsync(request.ExamMaterialId, ct);
+        var material = await _paperSetRepository.GetByIdAsync(request.PaperSetId, ct);
         var materialValidation = ValidateMaterial(material, request.SemesterId);
         if (materialValidation is not null)
             return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
@@ -84,9 +84,9 @@ public class ExaminationService : IExaminationService
         };
 
         material!.ExaminationId = examination.ExaminationId;
-        material.Status = ExamMaterialStatus.InUse;
+        material.Status = PaperSetStatus.Used;
         material.UpdatedDate = DateTime.UtcNow;
-        _examMaterialRepository.Update(material);
+        _paperSetRepository.Update(material);
 
         await _repository.AddAsync(examination, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -112,26 +112,26 @@ public class ExaminationService : IExaminationService
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
-        var linkedMaterials = await _examMaterialRepository.FindAsync(
+        var linkedMaterials = await _paperSetRepository.FindAsync(
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
             ct);
         if (linkedMaterials.Any(material => material.SemesterId != semesterId))
             return Result<ExaminationDTO>.Failure(
-                "Examination semester must match the semester of its exam material.",
-                "EXAM_MATERIAL_SEMESTER_MISMATCH");
+                "Examination semester must match the semester of its paper set.",
+                "PAPER_SET_SEMESTER_MISMATCH");
 
-        var materialId = request.ExamMaterialId;
+        var materialId = request.PaperSetId;
         if (materialId.HasValue)
         {
-            var material = await _examMaterialRepository.GetByIdAsync(materialId.Value, ct);
+            var material = await _paperSetRepository.GetByIdAsync(materialId.Value, ct);
             var materialValidation = ValidateMaterial(material, semesterId);
             if (materialValidation is not null)
                 return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
 
             material!.ExaminationId = examination.ExaminationId;
-            material.Status = ExamMaterialStatus.InUse;
+            material.Status = PaperSetStatus.Used;
             material.UpdatedDate = DateTime.UtcNow;
-            _examMaterialRepository.Update(material);
+            _paperSetRepository.Update(material);
         }
 
         if (semesterId != examination.SemesterId || type != examination.ExaminationType)
@@ -160,8 +160,8 @@ public class ExaminationService : IExaminationService
         if (examination is null)
             return Result.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
 
-        if (await _repository.HasExamMaterialsAsync(id, ct))
-            return Result.Failure("Cannot delete an examination that has materials.", "EXAMINATION_HAS_MATERIALS");
+        if (await _repository.HasPaperSetsAsync(id, ct))
+            return Result.Failure("Cannot delete an examination that has paper sets.", "EXAMINATION_HAS_MATERIALS");
 
         _repository.Remove(examination);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -202,7 +202,7 @@ public class ExaminationService : IExaminationService
 
     private async Task<ExaminationDTO> ToDtoAsync(Examination examination)
     {
-        var material = (await _examMaterialRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
+        var material = (await _paperSetRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
         return new ExaminationDTO
         {
         ExaminationId = examination.ExaminationId,
@@ -216,16 +216,16 @@ public class ExaminationService : IExaminationService
         Note = examination.Note,
         Status = examination.Status,
         SemesterId = examination.SemesterId,
-        ExamMaterialId = material?.ExamMaterialId
+        PaperSetId = material?.PaperSetId
         };
     }
 
-    private static (string Message, string Code)? ValidateMaterial(ExamMaterial? material, Guid semesterId)
+    private static (string Message, string Code)? ValidateMaterial(PaperSet? material, Guid semesterId)
     {
         if (material is null || material.IsDeleted)
-            return ("Exam material not found.", "EXAM_MATERIAL_NOT_FOUND");
+            return ("Paper set not found.", "PAPER_SET_NOT_FOUND");
         if (material.SemesterId != semesterId)
-            return ("Exam material does not belong to the selected semester.", "EXAM_MATERIAL_SEMESTER_MISMATCH");
+            return ("Paper set does not belong to the selected semester.", "PAPER_SET_SEMESTER_MISMATCH");
         return null;
     }
 }

@@ -34,5 +34,5 @@ public class Semester
     public SemesterStatus Status { get; set; }
 
     public ICollection<Examination> Examinations { get; set; } = new List<Examination>();
-    public ICollection<ExamMaterial> ExamMaterials { get; set; } = new List<ExamMaterial>();
+    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
 }

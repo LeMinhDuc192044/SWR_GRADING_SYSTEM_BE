@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Domain.Entities;
@@ -16,6 +16,9 @@ public class Lecturer : User
     [Column("subject")]
     public string Subject { get; set; } = string.Empty;
 
-    public ICollection<ExamMaterial> ExamMaterialsCreated { get; set; } = new List<ExamMaterial>();
-    public ICollection<GradingDiary> GradingDiariesCreated { get; set; } = new List<GradingDiary>();
+    public ICollection<GradingDiary> GradingDiaries { get; set; }
+        = new List<GradingDiary>();
+
+    public ICollection<PaperSet> PaperSetsCreated { get; set; }
+        = new List<PaperSet>();
 }

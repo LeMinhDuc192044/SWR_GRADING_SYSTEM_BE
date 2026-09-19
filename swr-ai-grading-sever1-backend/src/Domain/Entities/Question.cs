@@ -25,9 +25,9 @@ public class Question
     public decimal point { get; set; }
 
     [Required]
-    [Column("exam_material_id")]
-    [ForeignKey(nameof(ExamMaterial))]
-    public Guid ExamMaterialId { get; set; }
+    [Column("paper_set_id")]
+    [ForeignKey(nameof(PaperSet))]
+    public Guid PaperSetId { get; set; }
 
-    public ExamMaterial ExamMaterial { get; set; } = null!;
+    public PaperSet PaperSet { get; set; } = null!;
 }

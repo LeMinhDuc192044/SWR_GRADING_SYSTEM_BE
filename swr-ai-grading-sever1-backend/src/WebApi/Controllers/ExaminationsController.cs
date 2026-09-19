@@ -37,7 +37,7 @@ public class ExaminationsController : ControllerBase
         var result = await _service.CreateAsync(request, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode is "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
+        if (result.ErrorCode is "SEMESTER_NOT_FOUND" or "PAPER_SET_NOT_FOUND" or "PAPER_SET_SEMESTER_MISMATCH")
             return NotFound(ApiResponse.Failure(404, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
@@ -51,7 +51,7 @@ public class ExaminationsController : ControllerBase
         var result = await _service.UpdateAsync(id, request, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND" or "EXAM_MATERIAL_NOT_FOUND" or "EXAM_MATERIAL_SEMESTER_MISMATCH")
+        if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND" or "PAPER_SET_NOT_FOUND" or "PAPER_SET_SEMESTER_MISMATCH")
             return NotFound(ApiResponse.Failure(404, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
