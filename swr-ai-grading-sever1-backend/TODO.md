@@ -12,6 +12,7 @@
 - [x] Flow 3 — Gemini AI Integration Service (OpenXml Docx extraction & Rubric Grading) — 2026-09-20
 - [x] Flow 3 — Batch Upload Submissions & AI Auto-Grading — 2026-09-20
 - [x] Flow 3 — Lecturer Score Decision & Finalize (Audited, AI Comments Preserved) — 2026-09-20
+- [x] Flow 3 — Nested Submission System Architecture (Upload, List, Detail, AI-Grade, Review, Finalize) — 2026-09-20
 
 ## Sắp tới
 - [ ] Mã hóa CCCD trong DB (AES-256, key từ env) — user deferred

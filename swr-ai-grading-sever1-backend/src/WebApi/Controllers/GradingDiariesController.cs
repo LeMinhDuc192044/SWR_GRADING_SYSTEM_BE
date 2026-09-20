@@ -14,12 +14,10 @@ namespace WebApi.Controllers;
 public sealed class GradingDiariesController : ControllerBase
 {
     private readonly IGradingDiaryService _service;
-    private readonly ISubmissionService _submissionService;
 
-    public GradingDiariesController(IGradingDiaryService service, ISubmissionService submissionService)
+    public GradingDiariesController(IGradingDiaryService service)
     {
         _service = service;
-        _submissionService = submissionService;
     }
 
     [HttpPost]
@@ -122,33 +120,6 @@ public sealed class GradingDiariesController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
-    [HttpPost("{id:guid}/submissions/upload")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(524_288_000)]
-    public async Task<IActionResult> UploadSubmissions(
-        Guid id,
-        [FromForm] List<IFormFile> files,
-        CancellationToken ct)
-    {
-        if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
-
-        if (files is null || files.Count == 0)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx bài làm của sinh viên."));
-
-        var docFiles = files.Select(f => (Application.Common.Interfaces.IDocumentFile)new WebApi.Common.FormFileDocumentAdapter(f)).ToList();
-        var result = await _submissionService.UploadAndGradeBatchAsync(id, docFiles, userId, ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
 
     private bool TryGetCurrentUserId(out Guid userId)
     {

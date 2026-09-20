@@ -5,6 +5,13 @@ namespace Application.DTOs.GradingDiaries;
 public sealed class SubmitLecturerScoreRequest
 {
     public decimal LecturerScore { get; set; }
+    public string? Comment { get; set; }
+}
+
+public sealed class ReviewSubmissionRequest
+{
+    public decimal LecturerScore { get; set; }
+    public string? Comment { get; set; }
 }
 
 public sealed class SubmissionDetailDTO
@@ -17,10 +24,11 @@ public sealed class SubmissionDetailDTO
     public string StudentCode { get; set; } = string.Empty;
     public string StudentName { get; set; } = string.Empty;
     public decimal? AiScore { get; set; }
+    public string? AiLogs { get; set; }
     public decimal? LecturerScore { get; set; }
+    public string Comment { get; set; } = string.Empty;
     public SubmissionStatus Status { get; set; }
     public string StatusName => Status.ToString();
-    public string AiComment { get; set; } = string.Empty;
     public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }

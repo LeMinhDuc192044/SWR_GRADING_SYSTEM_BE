@@ -23,7 +23,7 @@ public sealed class GeminiAIService : IGeminiAIService
 
         _model = configuration["GEMINI_MODEL"]
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-1.5-flash";
+            ?? "gemini-3.6-flash";
     }
 
     public Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
