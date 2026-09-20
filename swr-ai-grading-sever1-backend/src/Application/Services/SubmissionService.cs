@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Application.Common;
 using Application.Common.Interfaces;
@@ -85,9 +87,11 @@ public sealed partial class SubmissionService : ISubmissionService
 
         var examId = paperSet.ExaminationId.Value;
 
-        // Định dạng storage path: submissions/{gradingDiaryCode}/{originalFileName}
-        var diaryCode = !string.IsNullOrWhiteSpace(diary.Content) ? diary.Content.Trim() : diary.Name.Trim();
-        var safeDiaryCode = string.Concat(diaryCode.Split(Path.GetInvalidFileNameChars()));
+        // Định dạng storage path: submissions/{paperSetCode}/{originalFileName}
+        var paperSetCode = !string.IsNullOrWhiteSpace(paperSet?.PaperSetCode)
+            ? paperSet.PaperSetCode.Trim()
+            : "UNKNOWN_PAPERSET";
+        var safePaperSetCode = NormalizeStorageKeySegment(paperSetCode);
 
         var results = new List<UploadedSubmissionSummaryDTO>();
         int successCount = 0;
@@ -139,7 +143,7 @@ public sealed partial class SubmissionService : ISubmissionService
 
                 // 4. File hợp lệ -> Upload lên Supabase Storage với format chuẩn
                 memoryStream.Position = 0;
-                var storagePath = $"submissions/{safeDiaryCode}/{file.FileName}";
+                var storagePath = $"submissions/{safePaperSetCode}/{file.FileName}";
                 await _storage.UploadAsync(storagePath, memoryStream, file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ct);
 
                 // 5. Tạo bản ghi Submission với status = Submitted (0)
@@ -612,6 +616,30 @@ public sealed partial class SubmissionService : ISubmissionService
             catch { }
         }
         return criteriaScores;
+    }
+
+    private static string NormalizeStorageKeySegment(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "default_exam";
+
+        var normalizedString = text.Normalize(NormalizationForm.FormD);
+        var stringBuilder = new StringBuilder();
+
+        foreach (var c in normalizedString)
+        {
+            var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+            if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+            {
+                stringBuilder.Append(c);
+            }
+        }
+
+        var clean = stringBuilder.ToString().Normalize(NormalizationForm.FormC);
+        clean = clean.Replace("đ", "d").Replace("Đ", "D");
+        clean = Regex.Replace(clean, @"[^\w\-\.]", "_");
+        clean = Regex.Replace(clean, @"_+", "_").Trim('_');
+
+        return string.IsNullOrWhiteSpace(clean) ? "default_exam" : clean;
     }
 
     [GeneratedRegex(@"[A-Za-z]{2}\d{5,8}")]
