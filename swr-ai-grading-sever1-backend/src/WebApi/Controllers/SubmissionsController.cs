@@ -25,19 +25,16 @@ public sealed class SubmissionsController : ControllerBase
     /// <summary>
     /// FLOW 1: Upload danh sách bài làm sinh viên (.docx) vào sổ chấm.
     /// </summary>
-    [HttpPost("upload")]
     [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/upload")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(524_288_000)]
     public async Task<IActionResult> Upload(
+        [FromRoute] Guid diaryId,
         [FromForm] List<IFormFile> files,
-        [FromForm] Guid? diaryId,
-        [FromRoute] Guid? routeDiaryId,
         CancellationToken ct)
     {
-        var targetDiaryId = diaryId ?? routeDiaryId;
-        if (!targetDiaryId.HasValue || targetDiaryId.Value == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId (qua form data hoặc route)."));
+        if (diaryId == Guid.Empty)
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
 
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
@@ -46,7 +43,7 @@ public sealed class SubmissionsController : ControllerBase
             return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx bài làm của sinh viên."));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
-        var result = await _submissionService.UploadSubmissionsAsync(targetDiaryId.Value, docFiles, userId, ct);
+        var result = await _submissionService.UploadSubmissionsAsync(diaryId, docFiles, userId, ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
@@ -61,23 +58,20 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách bài nộp theo sổ chấm (Grading Diary).
+    /// Lấy danh sách toàn bộ bài nộp trong sổ chấm (Grading Diary).
     /// </summary>
-    [HttpGet]
     [HttpGet("~/api/grading-diaries/{diaryId:guid}/submissions")]
     public async Task<IActionResult> GetList(
-        [FromQuery] Guid? diaryId,
-        [FromRoute] Guid? routeDiaryId,
+        [FromRoute] Guid diaryId,
         CancellationToken ct)
     {
-        var targetDiaryId = diaryId ?? routeDiaryId;
-        if (!targetDiaryId.HasValue || targetDiaryId.Value == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId (qua query param hoặc route)."));
+        if (diaryId == Guid.Empty)
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
 
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
-        var result = await _submissionService.GetListByDiaryIdAsync(targetDiaryId.Value, userId, IsElevatedRole(), ct);
+        var result = await _submissionService.GetListByDiaryIdAsync(diaryId, userId, IsElevatedRole(), ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
@@ -92,10 +86,9 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy thông tin chi tiết một bài nộp.
+    /// Lấy thông tin chi tiết một bài nộp (bao gồm điểm AI, điểm giảng viên, tiêu chí chi tiết).
     /// </summary>
     [HttpGet("{id:guid}")]
-    [HttpGet("~/api/grading-diaries/{diaryId:guid}/submissions/{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -115,10 +108,9 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 2: Kích hoạt chấm điểm AI tự động bằng Gemini theo Rubric.
+    /// FLOW 2: Kích hoạt Gemini AI tự động chấm bài theo Rubric.
     /// </summary>
     [HttpPost("{id:guid}/ai-grade")]
-    [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/{id:guid}/ai-grade")]
     public async Task<IActionResult> TriggerAiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -139,11 +131,9 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 3: Giảng viên xem xét bài nộp và nhập điểm/nhận xét (chuyển sang Lecturer_Reviewed).
+    /// FLOW 3: Giảng viên xem xét bài nộp và nhập điểm/nhận xét (trạng thái chuyển sang Lecturer_Reviewed).
     /// </summary>
     [HttpPut("{id:guid}/review")]
-    [HttpPut("~/api/grading-diaries/{diaryId:guid}/submissions/{id:guid}/review")]
-    [HttpPost("{id:guid}/score")]
     public async Task<IActionResult> Review(
         Guid id,
         [FromBody] ReviewSubmissionRequest request,
@@ -170,11 +160,9 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 4: Chốt điểm cuối cùng cho bài nộp (chuyển sang Final).
+    /// FLOW 4: Chốt điểm cuối cùng cho bài nộp (trạng thái chuyển sang Final).
     /// </summary>
     [HttpPut("{id:guid}/finalize")]
-    [HttpPut("~/api/grading-diaries/{diaryId:guid}/submissions/{id:guid}/finalize")]
-    [HttpPost("{id:guid}/finalize")]
     public async Task<IActionResult> Finalize(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
