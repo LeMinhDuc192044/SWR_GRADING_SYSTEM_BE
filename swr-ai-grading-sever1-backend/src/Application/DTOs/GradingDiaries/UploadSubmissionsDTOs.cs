@@ -4,6 +4,7 @@ public sealed class UploadedSubmissionSummaryDTO
 {
     public Guid SubmissionId { get; set; }
     public string SubmissionName { get; set; } = string.Empty;
+    public string? FilePath { get; set; }
     public decimal? AiScore { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Comment { get; set; } = string.Empty;

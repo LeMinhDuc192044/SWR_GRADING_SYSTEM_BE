@@ -123,16 +123,19 @@ public sealed partial class SubmissionService : ISubmissionService
                     continue;
                 }
 
-                // 2.4. File hợp lệ -> Mới upload lên Supabase Storage
+                // 2.4. File hợp lệ -> Upload lên Supabase Storage
                 memoryStream.Position = 0;
-                var storagePath = $"submissions/{gradingDiaryId}/{Guid.NewGuid()}_{file.FileName}";
+                var storagePath = $"submissions/{gradingDiaryId}/{file.FileName}";
+
+                // Dùng tạm SubmissionName làm storage path (sẽ có migration tách riêng)
                 await _storage.UploadAsync(storagePath, memoryStream, file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ct);
 
-                // 2.5. Tạo bản ghi Submission ở trạng thái AI_Grading
+                // 2.5. Tạo bản ghi Submission với FilePath lưu storage path
                 var submission = new Submission
                 {
                     SubmissionId = Guid.NewGuid(),
                     SubmissionName = file.FileName,
+                    FilePath = storagePath,
                     Status = SubmissionStatus.AI_Grading,
                     DiaryId = gradingDiaryId,
                     StudentExaminationId = studentExam.StudentExaminationId,
@@ -144,6 +147,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 await _submissionRepository.AddAsync(submission, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
                 summary.SubmissionId = submission.SubmissionId;
+                summary.FilePath = submission.FilePath;
 
                 // 2.6. Gọi Gemini chấm bài theo Rubric
                 var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
@@ -390,6 +394,7 @@ public sealed partial class SubmissionService : ISubmissionService
         {
             SubmissionId = submission.SubmissionId,
             SubmissionName = submission.SubmissionName,
+            FilePath = submission.FilePath,
             DiaryId = submission.DiaryId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
             StudentCode = submission.StudentExamination?.Student?.StundentCode ?? string.Empty,
