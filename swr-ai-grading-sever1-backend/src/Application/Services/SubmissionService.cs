@@ -543,7 +543,7 @@ public sealed partial class SubmissionService : ISubmissionService
         var match = StudentCodeRegex().Match(filename);
         if (!match.Success)
         {
-            return Result<StudentExamination>.Failure("Tên file không chứa mã sinh viên hợp lệ.", "INVALID_FILENAME");
+            return Result<StudentExamination>.Failure("Tên file không chứa mã sinh viên.", "INVALID_FILENAME");
         }
 
         var studentCode = match.Value.ToUpperInvariant();
