@@ -12,7 +12,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Configurations;
-using Infrastructure.Services;
 using WebApi;
 using System.Text;
 
@@ -117,12 +116,7 @@ builder.Services.AddScoped<IExaminationService, ExaminationService>();
 builder.Services.AddScoped<IExaminationRepository, ExaminationRepository>();
 builder.Services.AddScoped<IPaperSetService, PaperSetService>();
 builder.Services.AddScoped<IPaperSetRepository, PaperSetRepository>();
-builder.Services.AddScoped<IGradingDiaryRepository, GradingDiaryRepository>();
-builder.Services.AddScoped<IGradingDiaryService, GradingDiaryService>();
-builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
-builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
-builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>();
 
 builder.Services.AddScoped<ISupabaseStorage>(sp =>
 {
@@ -228,5 +222,7 @@ app.MapGet("/health", () => Results.Ok(ApiResponse.Success(new
     server = "Backend.Server1",
     time = DateTime.UtcNow
 })));
+
+app.Run();
 
 app.Run();
