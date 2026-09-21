@@ -12,6 +12,7 @@ public interface IApplicationDbContext
     DbSet<Examination> Examinations { get; }
     DbSet<Submission> Submissions { get; }
     DbSet<Semester> Semesters { get; }
-    DbSet<StudentExamination> Gradings { get; }
+    DbSet<StudentExamination> StudentExaminations { get; }
+    DbSet<GradingDiary> GradingDiaries { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
