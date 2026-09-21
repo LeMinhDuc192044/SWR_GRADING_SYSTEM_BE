@@ -16,6 +16,10 @@ public class Submission
     [Column("submission_name")]
     public string SubmissionName { get; set; } = string.Empty;
 
+    [MaxLength(500)]
+    [Column("file_path")]
+    public string? FilePath { get; set; }
+
     [Column("ai_score", TypeName = "decimal(5,2)")]
     public decimal? AiScore { get; set; }
 
@@ -56,5 +60,4 @@ public class Submission
     public Guid StudentExaminationId { get; set; }
 
     public StudentExamination StudentExamination { get; set; } = null!;
-
 }
