@@ -27,6 +27,7 @@
 | **R1.3** | **KHÔNG BAO GIỜ hardcode secret** vào code hay appsettings.json | Lộ thông tin nhạy cảm |
 | **R1.4** | **KHÔNG BAO GIỜ commit `.env`** lên git | Lộ database password, JWT secret |
 | **R1.5** | **Mọi request phải kết thúc bằng việc cập nhật tài liệu** (README, RULE, doc/) | Mất context cho lần sau |
+| **R1.6** | **Luôn nói rõ tình hình / nguyên nhân cho user trước khi bắt đầu làm** | Tránh làm user hoang mang, không hiểu AI đang làm gì, tránh chạy lệnh ngầm liên tục |
 
 ---
 
