@@ -19,9 +19,18 @@ public sealed class PaperSetService : IPaperSetService
     public PaperSetService(IPaperSetRepository repository, IExaminationRepository examinationRepository, ISemesterRepository semesterRepository, ISupabaseStorage storage, IUnitOfWork unitOfWork, IUserRepository userRepository)
     { _repository = repository; _examinationRepository = examinationRepository; _semesterRepository = semesterRepository; _storage = storage; _unitOfWork = unitOfWork; _userRepository = userRepository; }
 
-    public async Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+    public Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+        => GetPagedInternalAsync(request, null, ct);
+
+    public Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default)
+        => GetPagedInternalAsync(request, lecturerId, ct);
+
+    private async Task<PagedResult<PaperSetMetadataDTO>> GetPagedInternalAsync(PagedRequest request, Guid? lecturerId, CancellationToken ct)
     {
-        var materials = (await _repository.GetAllAsync(ct)).Where(m => !m.IsDeleted).OrderByDescending(m => m.CreatedDate).ToList();
+        var materials = (await _repository.GetAllAsync(ct))
+            .Where(m => !m.IsDeleted && (!lecturerId.HasValue || m.CreateById == lecturerId.Value))
+            .OrderByDescending(m => m.CreatedDate)
+            .ToList();
         var page = materials.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToList();
         var items = await Task.WhenAll(page.Select(ToMetadataAsync));
         return new PagedResult<PaperSetMetadataDTO> { Items = items, TotalCount = materials.Count, Page = request.Page, PageSize = request.PageSize };
@@ -334,12 +343,12 @@ public sealed class PaperSetService : IPaperSetService
     private async Task<PaperSetMetadataDTO> ToMetadataAsync(PaperSet material)
     {
         var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new PaperSetFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreateById = material.CreateById, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
     }
 
     private async Task<PaperSetDetailDTO> ToDetailAsync(PaperSet material)
     {
         var metadata = await ToMetadataAsync(material);
-        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
+        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreateById = metadata.CreateById, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
     }
 }
