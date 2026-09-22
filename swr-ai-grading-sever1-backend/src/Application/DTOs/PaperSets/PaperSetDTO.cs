@@ -16,6 +16,9 @@ public class PaperSetMetadataDTO
     public Guid? ExaminationId { get; set; }
     public Guid SemesterId { get; set; }
     public Guid CreateById { get; set; }
+    public string LecturerName { get; set; } = string.Empty;
+    public string LecturerCode { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
 }
