@@ -25,6 +25,13 @@ public sealed class PaperSetsController : ControllerBase
         CancellationToken ct) =>
         Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
+    [HttpGet("lecturer/{lecturerId:guid}")]
+    public async Task<IActionResult> GetLecturerById(
+        Guid lecturerId,
+        [FromQuery] PagedRequest request,
+        CancellationToken ct) =>
+        Ok(ApiResponse.Success(await _service.GetLecturerByIdAsync(lecturerId, request, ct)));
+
     [HttpPost("preview-questions")]
     [Authorize]
     [Consumes("multipart/form-data")]

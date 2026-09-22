@@ -15,6 +15,7 @@ public class PaperSetMetadataDTO
     public PaperSetStatus Status { get; set; }
     public Guid? ExaminationId { get; set; }
     public Guid SemesterId { get; set; }
+    public Guid CreateById { get; set; }
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
 }
