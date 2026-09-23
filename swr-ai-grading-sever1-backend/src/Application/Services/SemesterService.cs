@@ -56,16 +56,22 @@ public class SemesterService : ISemesterService
 		if (validation is not null)
 			return Result<SemesterDTO>.Failure(validation, "INVALID_SEMESTER");
 
+		if (await _repository.IsDateRangeOverlappingAsync(request.StartDate, request.EndDate, ct: ct))
+			return Result<SemesterDTO>.Failure("Semester dates must not overlap another semester.", "SEMESTER_DATE_RANGE_OVERLAP");
+
 		var code = request.SemesterCode.Trim();
 		if (await _repository.IsCodeExistsAsync(code, ct))
 			return Result<SemesterDTO>.Failure("Semester code already exists.", "SEMESTER_CODE_EXISTS");
 
+		var now = DateTime.UtcNow;
 		var semester = new Semester
 		{
 			SemesterCode = code,
 			Name = request.Name.Trim(),
 			StartDate = request.StartDate,
 			EndDate = request.EndDate,
+			CreatedDay = now,
+			UpdatedDay = now,
 			Status = request.Status
 		};
 
@@ -88,6 +94,9 @@ public class SemesterService : ISemesterService
 		if (validation is not null)
 			return Result<SemesterDTO>.Failure(validation, "INVALID_SEMESTER");
 
+		if (await _repository.IsDateRangeOverlappingAsync(startDate, endDate, id, ct))
+			return Result<SemesterDTO>.Failure("Semester dates must not overlap another semester.", "SEMESTER_DATE_RANGE_OVERLAP");
+
 		if (!string.Equals(code, semester.SemesterCode, StringComparison.OrdinalIgnoreCase)
 			&& await _repository.IsCodeExistsAsync(code, ct))
 			return Result<SemesterDTO>.Failure("Semester code already exists.", "SEMESTER_CODE_EXISTS");
@@ -96,6 +105,7 @@ public class SemesterService : ISemesterService
 		semester.Name = name;
 		semester.StartDate = startDate;
 		semester.EndDate = endDate;
+		semester.UpdatedDay = DateTime.UtcNow;
 		if (request.Status.HasValue)
 			semester.Status = request.Status.Value;
 
@@ -114,6 +124,7 @@ public class SemesterService : ISemesterService
 			return Result<SemesterDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
 		semester.Status = request.Status;
+		semester.UpdatedDay = DateTime.UtcNow;
 		_repository.Update(semester);
 		await _unitOfWork.SaveChangesAsync(ct);
 		return Result<SemesterDTO>.Success(ToDto(semester));
@@ -155,6 +166,8 @@ public class SemesterService : ISemesterService
 		Name = semester.Name,
 		StartDate = semester.StartDate,
 		EndDate = semester.EndDate,
+		CreatedDay = semester.CreatedDay,
+		UpdatedDay = semester.UpdatedDay,
 		Status = semester.Status
 	};
 
@@ -170,6 +183,8 @@ public class SemesterService : ISemesterService
 			Name = semester.Name,
 			StartDate = semester.StartDate,
 			EndDate = semester.EndDate,
+			CreatedDay = semester.CreatedDay,
+			UpdatedDay = semester.UpdatedDay,
 			Status = semester.Status,
 			Examinations = examinations.OrderBy(e => e.StartDate).ThenBy(e => e.StartTime).Select(e => new ExaminationDTO
 			{

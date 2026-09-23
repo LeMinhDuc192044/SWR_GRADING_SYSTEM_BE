@@ -33,6 +33,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("before_time_minutes");
 
+                    b.Property<DateTime>("CreatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_day");
+
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("duration_minutes");
@@ -77,6 +81,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_day");
 
                     b.HasKey("ExaminationId");
 
@@ -209,9 +217,22 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("question_id");
 
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_day");
+
                     b.Property<Guid>("PaperSetId")
                         .HasColumnType("uuid")
                         .HasColumnName("paper_set_id");
+
+                    b.Property<decimal>("Point")
+                        .HasColumnType("numeric")
+                        .HasColumnName("point");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -219,14 +240,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("Title");
 
-                    b.Property<string>("content")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content");
-
-                    b.Property<decimal>("point")
-                        .HasColumnType("numeric")
-                        .HasColumnName("point");
+                    b.Property<DateTime>("UpdatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_day");
 
                     b.HasKey("QuestionId");
 
@@ -241,6 +257,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("semester_id");
+
+                    b.Property<DateTime>("CreatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_day");
 
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date")
@@ -268,6 +288,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<DateTime>("UpdatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_day");
+
                     b.HasKey("SemesterId");
 
                     b.HasIndex("SemesterCode")
@@ -283,6 +307,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("student_examination_id");
 
+                    b.Property<DateTime>("CreatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_day");
+
                     b.Property<Guid>("ExamId")
                         .HasColumnType("uuid")
                         .HasColumnName("exam_id");
@@ -290,6 +318,10 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid")
                         .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedDay")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_day");
 
                     b.HasKey("StudentExaminationId");
 
@@ -329,6 +361,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("diary_id");
 
+                    b.Property<string>("FilePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("file_path");
+
                     b.Property<decimal?>("LecturerScore")
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("lecturer_score");
@@ -341,7 +378,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("student_examination_id");
 
-                    b.Property<string>("SubmissionName")
+                    b.Property<string>("SubmissionFile")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")

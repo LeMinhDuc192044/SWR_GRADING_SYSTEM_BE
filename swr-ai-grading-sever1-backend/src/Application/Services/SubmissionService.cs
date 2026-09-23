@@ -100,7 +100,7 @@ public sealed partial class SubmissionService : ISubmissionService
         {
             var summary = new UploadedSubmissionSummaryDTO
             {
-                SubmissionName = file.FileName
+                SubmissionFile = file.FileName
             };
 
             var extension = Path.GetExtension(file.FileName);
@@ -150,7 +150,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 var submission = new Submission
                 {
                     SubmissionId = Guid.NewGuid(),
-                    SubmissionName = file.FileName,
+                    SubmissionFile = file.FileName,
                     FilePath = storagePath,
                     Status = SubmissionStatus.Submitted, // 0 = Submitted
                     DiaryId = diaryId,
@@ -529,7 +529,7 @@ public sealed partial class SubmissionService : ISubmissionService
             sb.AppendLine("DANH SÁCH CÂU HỎI VÀ THANG ĐIỂM:");
             foreach (var q in paperSet.Questions)
             {
-                sb.AppendLine($"- {q.Title}: {q.content} (Điểm tối đa: {q.point}đ)");
+                sb.AppendLine($"- {q.Title}: {q.Content} (Điểm tối đa: {q.Point}đ)");
             }
             return sb.ToString();
         }
@@ -579,7 +579,7 @@ public sealed partial class SubmissionService : ISubmissionService
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
-            SubmissionName = submission.SubmissionName,
+            SubmissionFile = submission.SubmissionFile,
             FilePath = submission.FilePath,
             DiaryId = submission.DiaryId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
