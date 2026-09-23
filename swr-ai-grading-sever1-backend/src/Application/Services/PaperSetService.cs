@@ -1,9 +1,9 @@
+using System.IO.Compression;
 using Application.Common;
 using Application.DTOs.PaperSets;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
-using System.IO.Compression;
 
 namespace Application.Services;
 
@@ -147,8 +147,17 @@ public sealed class PaperSetService : IPaperSetService
         CancellationToken ct)
     {
         var material = new PaperSet { PaperSetCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = questions.Count, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = PaperSetStatus.Ready, SemesterId = semesterId, CreateById = createdById };
+        var now = DateTime.UtcNow;
         material.Questions = questions
-            .Select(question => new Question { Title = question.Title.Trim(), content = question.Content.Trim(), point = question.Point, PaperSet = material })
+            .Select(question => new Question
+            {
+                Title = question.Title.Trim(),
+                Content = question.Content.Trim(),
+                Point = question.Point,
+                CreatedDay = now,
+                UpdatedDay = now,
+                PaperSet = material
+            })
             .ToList();
         var uploadResult = await UploadFilesAsync(material, files, ct);
         if (!uploadResult.IsSuccess) return Result<PaperSet>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
@@ -338,12 +347,13 @@ public sealed class PaperSetService : IPaperSetService
     };
 
     private static void SetPath(PaperSet m, PaperSetFileType type, string path) { if (type == PaperSetFileType.Question) m.FileQuestionDocs = path; else if (type == PaperSetFileType.AnswerRubric) m.FileAnswerRubric = path; else m.FileAnswerTemplate = path; }
-    private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
+    private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.
+    Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
 
     private async Task<PaperSetMetadataDTO> ToMetadataAsync(PaperSet material)
     {
         var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new PaperSetFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreateById = material.CreateById, LecturerName = material.CreateBy?.FullName ?? string.Empty, LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty, Subject = material.CreateBy?.Subject ?? string.Empty, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.Content, Point = question.Point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreateById = material.CreateById, LecturerName = material.CreateBy?.FullName ?? string.Empty, LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty, Subject = material.CreateBy?.Subject ?? string.Empty, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
     }
 
     private async Task<PaperSetDetailDTO> ToDetailAsync(PaperSet material)

@@ -63,12 +63,18 @@ public class ExaminationService : IExaminationService
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
+        if (request.StartDate < semester.StartDate || request.StartDate > semester.EndDate)
+            return Result<ExaminationDTO>.Failure(
+                "Examination start date must be within the semester dates.",
+                "EXAMINATION_DATE_OUT_OF_SEMESTER");
+
         var material = await _paperSetRepository.GetByIdAsync(request.PaperSetId, ct);
         var materialValidation = ValidateMaterial(material, request.SemesterId);
         if (materialValidation is not null)
             return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
 
         var code = await GenerateCodeAsync(semester.SemesterCode, request.ExaminationType, ct);
+        var now = DateTime.UtcNow;
         var examination = new Examination
         {
             ExaminationCode = code,
@@ -79,6 +85,8 @@ public class ExaminationService : IExaminationService
             DurationMinutes = request.DurationMinutes,
             BeforeTimeMinutes = request.BeforeTimeMinutes,
             Note = request.Note?.Trim(),
+            CreatedDay = now,
+            UpdatedDay = now,
             Status = request.Status,
             SemesterId = request.SemesterId
         };
@@ -112,6 +120,12 @@ public class ExaminationService : IExaminationService
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
+        var startDate = request.StartDate ?? examination.StartDate;
+        if (startDate < semester.StartDate || startDate > semester.EndDate)
+            return Result<ExaminationDTO>.Failure(
+                "Examination start date must be within the semester dates.",
+                "EXAMINATION_DATE_OUT_OF_SEMESTER");
+
         var linkedMaterials = await _paperSetRepository.FindAsync(
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
             ct);
@@ -139,12 +153,13 @@ public class ExaminationService : IExaminationService
 
         examination.Name = name;
         examination.ExaminationType = type;
-        examination.StartDate = request.StartDate ?? examination.StartDate;
+        examination.StartDate = startDate;
         examination.StartTime = request.StartTime ?? examination.StartTime;
         examination.DurationMinutes = duration;
         examination.BeforeTimeMinutes = beforeTime;
         if (request.Note is not null)
             examination.Note = request.Note.Trim();
+        examination.UpdatedDay = DateTime.UtcNow;
         if (request.Status.HasValue)
             examination.Status = request.Status.Value;
         examination.SemesterId = semesterId;
@@ -205,18 +220,20 @@ public class ExaminationService : IExaminationService
         var material = (await _paperSetRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
         return new ExaminationDTO
         {
-        ExaminationId = examination.ExaminationId,
-        ExaminationCode = examination.ExaminationCode,
-        Name = examination.Name,
-        ExaminationType = examination.ExaminationType,
-        StartDate = examination.StartDate,
-        StartTime = examination.StartTime,
-        DurationMinutes = examination.DurationMinutes,
-        BeforeTimeMinutes = examination.BeforeTimeMinutes,
-        Note = examination.Note,
-        Status = examination.Status,
-        SemesterId = examination.SemesterId,
-        PaperSetId = material?.PaperSetId
+            ExaminationId = examination.ExaminationId,
+            ExaminationCode = examination.ExaminationCode,
+            Name = examination.Name,
+            ExaminationType = examination.ExaminationType,
+            StartDate = examination.StartDate,
+            StartTime = examination.StartTime,
+            DurationMinutes = examination.DurationMinutes,
+            BeforeTimeMinutes = examination.BeforeTimeMinutes,
+            Note = examination.Note,
+            CreatedDay = examination.CreatedDay,
+            UpdatedDay = examination.UpdatedDay,
+            Status = examination.Status,
+            SemesterId = examination.SemesterId,
+            PaperSetId = material?.PaperSetId
         };
     }
 

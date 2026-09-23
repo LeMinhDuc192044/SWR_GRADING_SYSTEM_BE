@@ -138,7 +138,7 @@ public sealed class GradingDiaryService : IGradingDiaryService
             .Select(s => new SubmissionItemDTO
             {
                 SubmissionId = s.SubmissionId,
-                SubmissionName = s.SubmissionName,
+                SubmissionFile = s.SubmissionFile,
                 AiScore = s.AiScore,
                 LecturerScore = s.LecturerScore,
                 Status = s.Status,

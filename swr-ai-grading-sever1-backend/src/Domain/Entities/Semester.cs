@@ -30,6 +30,14 @@ public class Semester
     public DateOnly EndDate { get; set; }
 
     [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
+
+    [Required]
     [Column("status")]
     public SemesterStatus Status { get; set; }
 

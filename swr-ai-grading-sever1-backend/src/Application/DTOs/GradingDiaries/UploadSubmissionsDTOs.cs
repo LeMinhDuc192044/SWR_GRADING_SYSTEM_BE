@@ -3,7 +3,7 @@ namespace Application.DTOs.GradingDiaries;
 public sealed class UploadResultDTO
 {
     public Guid SubmissionId { get; set; }
-    public string SubmissionName { get; set; } = string.Empty;
+    public string SubmissionFile { get; set; } = string.Empty;
     public string? FilePath { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool IsSuccess { get; set; }
@@ -13,7 +13,7 @@ public sealed class UploadResultDTO
 public sealed class UploadedSubmissionSummaryDTO
 {
     public Guid SubmissionId { get; set; }
-    public string SubmissionName { get; set; } = string.Empty;
+    public string SubmissionFile { get; set; } = string.Empty;
     public string? FilePath { get; set; }
     public decimal? AiScore { get; set; }
     public string Status { get; set; } = string.Empty;

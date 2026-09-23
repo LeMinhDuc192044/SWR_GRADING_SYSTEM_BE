@@ -17,7 +17,7 @@ public sealed class ReviewSubmissionRequest
 public sealed class SubmissionDetailDTO
 {
     public Guid SubmissionId { get; set; }
-    public string SubmissionName { get; set; } = string.Empty;
+    public string SubmissionFile { get; set; } = string.Empty;
     public string? FilePath { get; set; }
     public Guid DiaryId { get; set; }
     public string DiaryName { get; set; } = string.Empty;

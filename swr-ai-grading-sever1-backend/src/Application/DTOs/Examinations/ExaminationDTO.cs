@@ -13,6 +13,8 @@ public class ExaminationDTO
     public int DurationMinutes { get; set; }
     public int BeforeTimeMinutes { get; set; }
     public string? Note { get; set; }
+    public DateTime CreatedDay { get; set; }
+    public DateTime UpdatedDay { get; set; }
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
