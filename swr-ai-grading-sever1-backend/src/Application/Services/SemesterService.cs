@@ -1,9 +1,10 @@
+using System.Text.RegularExpressions;
 using Application.Common;
 using Application.DTOs.Examinations;
 using Application.DTOs.Semesters;
 using Application.Interfaces;
 using Domain.Entities;
-using System.Text.RegularExpressions;
+using Domain.Enums;
 
 namespace Application.Services;
 
@@ -63,7 +64,10 @@ public class SemesterService : ISemesterService
 		if (await _repository.IsCodeExistsAsync(code, ct))
 			return Result<SemesterDTO>.Failure("Semester code already exists.", "SEMESTER_CODE_EXISTS");
 
-		var now = DateTime.UtcNow;
+        if (request.Status == SemesterStatus.Closed)
+			return Result<SemesterDTO>.Failure("Cannot create a semester with status 'Closed'.", "INVALID_SEMESTER_STATUS");
+
+            var now = DateTime.UtcNow;
 		var semester = new Semester
 		{
 			SemesterCode = code,

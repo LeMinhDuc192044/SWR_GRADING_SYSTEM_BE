@@ -62,9 +62,6 @@ public sealed class GradingDiaryService : IGradingDiaryService
             PaperSetId = request.PaperSetId
         };
 
-        paperSet.Status = PaperSetStatus.Used;
-        _paperSetRepository.Update(paperSet);
-
         await _diaryRepository.AddAsync(diary, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 

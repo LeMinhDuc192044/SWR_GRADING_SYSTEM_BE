@@ -130,9 +130,12 @@ public class ExaminationService : IExaminationService
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
             ct);
         if (linkedMaterials.Any(material => material.SemesterId != semesterId))
+        {
             return Result<ExaminationDTO>.Failure(
                 "Examination semester must match the semester of its paper set.",
                 "PAPER_SET_SEMESTER_MISMATCH");
+        }
+
 
         var materialId = request.PaperSetId;
         if (materialId.HasValue)
@@ -190,6 +193,7 @@ public class ExaminationService : IExaminationService
             ExaminationType.RE => "RE",
             ExaminationType.PE => "PE",
             ExaminationType.ThreeW => "3W",
+            ExaminationType.RE_3W => "RE_3W",
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown examination type.")
         };
 

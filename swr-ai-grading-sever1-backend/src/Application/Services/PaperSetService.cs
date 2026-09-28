@@ -59,7 +59,8 @@ public sealed class PaperSetService : IPaperSetService
         if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
         var questionValidation = ValidateQuestions(questionResult.Data!);
         if (!questionValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        var semesterValidation = await ValidateSemesterForUploadAsync(semesterId, ct);
+        if (!semesterValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(semesterValidation.Error!, semesterValidation.ErrorCode);
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
         var materialResult = await CreateMaterialAsync(semesterId, description, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
@@ -86,7 +87,8 @@ public sealed class PaperSetService : IPaperSetService
             if (!ValidateQuestions(questionResult.Data!).IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
             parsedMaterials.Add((material, questionResult.Data!));
         }
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        var semesterValidation = await ValidateSemesterForUploadAsync(semesterId, ct);
+        if (!semesterValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(semesterValidation.Error!, semesterValidation.ErrorCode);
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
 
         var created = new List<PaperSet>();
@@ -162,6 +164,18 @@ public sealed class PaperSetService : IPaperSetService
         var uploadResult = await UploadFilesAsync(material, files, ct);
         if (!uploadResult.IsSuccess) return Result<PaperSet>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
         return Result<PaperSet>.Success(material);
+    }
+
+    private async Task<Result> ValidateSemesterForUploadAsync(Guid semesterId, CancellationToken ct)
+    {
+        var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
+        if (semester is null)
+            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+        if (semester.Status == SemesterStatus.Closed)
+            return Result.Failure("Cannot upload paper sets to a closed semester.", "SEMESTER_CLOSED");
+
+        return Result.Success();
     }
 
     public async Task<Result<PaperSetDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default)
@@ -261,12 +275,18 @@ public sealed class PaperSetService : IPaperSetService
             if (!validation.IsSuccess) return validation;
         }
 
+        var semester = await _semesterRepository.GetByIdAsync(material.SemesterId, ct);
+        if (semester is null)
+            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+        var semesterFolder = NormalizeStorageSegment(semester.Name);
+
         var uploaded = new List<string>();
         try
         {
             foreach (var file in files)
             {
-                var path = $"examinations/{material.ExaminationId ?? material.SemesterId}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
+                var path = $"examinations/{semesterFolder}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
                 try
                 {
                     await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
@@ -334,7 +354,8 @@ public sealed class PaperSetService : IPaperSetService
             ? Result.Success()
             : Result.Failure("Examination does not belong to the selected semester.", "EXAMINATION_SEMESTER_MISMATCH");
     }
-    private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"EM{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
+    private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"PS{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
+    private static string NormalizeStorageSegment(string value) => value.Trim().Replace('/', '-').Replace('\\', '-');
 
     // Fixed: AnswerRubric and AnswerTemplate previously both fell through to "AT",
     // filing rubric files under an "answer template" folder segment.
