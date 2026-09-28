@@ -23,4 +23,6 @@ public class StudentExamination
     public Guid ExamId { get; set; }
 
     public Examination Examination { get; set; } = null!;
+
+    public ICollection<StudentSubmission> StudentSubmissions { get; set; } = [];
 }

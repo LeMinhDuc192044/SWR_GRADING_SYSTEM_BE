@@ -120,6 +120,52 @@ public sealed class GradingDiariesController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
+    /// <summary>
+    /// GET /api/grading-diaries/{id}/progress
+    /// Thống kê tiến độ chấm bài của sổ chấm (tổng bài, số bài đã chốt, % hoàn thành).
+    /// </summary>
+    [HttpGet("{id:guid}/progress")]
+    public async Task<IActionResult> GetProgress(Guid id, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _service.GetProgressAsync(id, userId, IsElevatedRole(), ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        if (result.ErrorCode == "DIARY_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+
+        if (result.ErrorCode == "FORBIDDEN")
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    /// <summary>
+    /// GET /api/grading-diaries/{id}/compare-with-ai
+    /// Rà soát độ lệch điểm giữa Giảng viên và AI để phát hiện các bài thi chênh lệch điểm lớn.
+    /// </summary>
+    [HttpGet("{id:guid}/compare-with-ai")]
+    public async Task<IActionResult> CompareWithAi(Guid id, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _service.CompareWithAiAsync(id, userId, IsElevatedRole(), ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        if (result.ErrorCode == "DIARY_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+
+        if (result.ErrorCode == "FORBIDDEN")
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
 
     private bool TryGetCurrentUserId(out Guid userId)
     {

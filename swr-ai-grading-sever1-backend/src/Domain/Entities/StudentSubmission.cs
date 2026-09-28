@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Domain.Enums;
@@ -6,7 +5,7 @@ using Domain.Enums;
 namespace Domain.Entities;
 
 [Table("student_submission")]
-public class Submission
+public class StudentSubmission
 {
     [Key]
     [Column("submission_id")]
@@ -14,8 +13,8 @@ public class Submission
 
     [Required]
     [MaxLength(200)]
-    [Column("submission_name")]
-    public string SubmissionName { get; set; } = string.Empty;
+    [Column("submission_file")]
+    public string SubmissionFile { get; set; } = string.Empty;
 
     [MaxLength(500)]
     [Column("file_path")]
@@ -62,7 +61,3 @@ public class Submission
 
     public StudentExamination StudentExamination { get; set; } = null!;
 }
-=======
-// Global type alias so that existing code referencing Submission seamlessly uses StudentSubmission.
-global using Submission = Domain.Entities.StudentSubmission;
->>>>>>> Stashed changes

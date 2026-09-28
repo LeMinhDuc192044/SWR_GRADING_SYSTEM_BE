@@ -111,4 +111,14 @@ public interface ISubmissionService
         bool isElevatedRole,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Xem lịch sử và dòng thời gian các bước của bài thi (Audit log)
+    /// </summary>
+    Task<Result<Application.DTOs.Submissions.SubmissionHistoryDto>> GetHistoryAsync(
+        Guid submissionId,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
 }

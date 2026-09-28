@@ -16,7 +16,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
 
     public async Task<User?> GetByStudentCodeAsync(string studentCode, CancellationToken ct = default)
         => await _db.Students.AsNoTracking()
-            .FirstOrDefaultAsync(student => student.StundentCode == studentCode, ct);
+            .FirstOrDefaultAsync(student => student.StudentCode == studentCode, ct);
 
     public async Task<User?> GetByLecturerCodeAsync(string lecturerCode, CancellationToken ct = default)
         => await _db.Lecturers.AsNoTracking()
@@ -26,7 +26,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         => _set.AnyAsync(user => user.Email == email, ct);
 
     public Task<bool> IsStudentCodeExistsAsync(string studentCode, CancellationToken ct = default)
-        => _db.Students.AnyAsync(student => student.StundentCode == studentCode, ct);
+        => _db.Students.AnyAsync(student => student.StudentCode == studentCode, ct);
 
     public Task<bool> IsLecturerCodeExistsAsync(string lecturerCode, CancellationToken ct = default)
         => _db.Lecturers.AnyAsync(lecturer => lecturer.LecturerCode == lecturerCode, ct);
