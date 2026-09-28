@@ -15,6 +15,6 @@ public class Student : User
     [MaxLength(100)]
     [Column("major")]
     public string Major { get; set; } = string.Empty;
-    public ICollection<StudentExamination> StudentExaminations { get; set; }
-        = new List<StudentExamination>();
+    public ICollection<StudentExamination> StudentExaminations { get; set; }  = [];
+
 }

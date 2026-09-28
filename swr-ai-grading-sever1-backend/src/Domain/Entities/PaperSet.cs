@@ -70,7 +70,7 @@ public class PaperSet
     public Guid CreateById { get; set; }
 
     public Lecturer CreateBy { get; set; } = null!;
-    public ICollection<Question> Questions { get; set; } = new List<Question>();
+    public ICollection<Question> Questions { get; set; } = [];
 
     public GradingDiary? GradingDiary { get; set; }
 }

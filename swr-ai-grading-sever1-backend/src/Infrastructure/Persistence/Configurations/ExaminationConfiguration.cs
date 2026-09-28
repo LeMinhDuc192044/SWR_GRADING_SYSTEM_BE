@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Domain.Entities;
 using Infrastructure.Persistence.Converters;
 
-namespace AI_Assisted_SWR_Grading_System.Infrastructure.Persistence.Configurations;
+namespace Infrastructure.Persistence.Configurations;
 
 public class ExaminationConfiguration : IEntityTypeConfiguration<Examination>
 {

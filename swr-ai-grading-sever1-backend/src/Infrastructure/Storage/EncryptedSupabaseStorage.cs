@@ -3,14 +3,7 @@ using Application.Interfaces;
 
 namespace Infrastructure.Storage;
 
-/// <summary>
-/// Wraps an ISupabaseStorage implementation to encrypt file bytes at rest.
-/// Even someone with direct Supabase dashboard / service-role access sees only
-/// ciphertext, not the original document — decryption only happens here,
-/// server-side, in response to an authorized download request.
-///
-/// Storage blob layout: [12-byte nonce][ciphertext][16-byte auth tag]
-/// </summary>
+
 public sealed class EncryptedSupabaseStorage : ISupabaseStorage
 {
     private const int NonceSize = 12; // AES-GCM standard nonce size
@@ -28,8 +21,11 @@ public sealed class EncryptedSupabaseStorage : ISupabaseStorage
 
         _key = Convert.FromBase64String(keyBase64);
         if (_key.Length != 32)
+        {
             throw new InvalidOperationException(
                 "SUPABASE_STORAGE_ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256).");
+        }
+            
     }
 
     public async Task UploadAsync(string path, Stream content, string contentType, CancellationToken ct = default)
