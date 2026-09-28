@@ -17,6 +17,7 @@ namespace Infrastructure.Persistence.Converters
             ExaminationType.RE => "RE",
             ExaminationType.PE => "PE",
             ExaminationType.ThreeW => "3W",
+            ExaminationType.RE_3W => "RE_3W",
             _ => throw new ArgumentOutOfRangeException(nameof(v), v, "Unknown ExaminationType.")
         };
 
@@ -25,6 +26,7 @@ namespace Infrastructure.Persistence.Converters
             "RE" => ExaminationType.RE,
             "PE" => ExaminationType.PE,
             "3W" => ExaminationType.ThreeW,
+            "RE_3W" => ExaminationType.RE_3W,
             _ => throw new ArgumentOutOfRangeException(nameof(v), v, "Unknown examination type value in database.")
         };
     }

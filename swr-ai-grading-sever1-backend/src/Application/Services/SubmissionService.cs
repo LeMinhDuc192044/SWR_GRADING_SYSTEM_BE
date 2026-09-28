@@ -559,13 +559,25 @@ public sealed partial class SubmissionService : ISubmissionService
 
         if (studentExam is null)
         {
+            var now = DateTime.UtcNow;
             studentExam = new StudentExamination
             {
                 StudentExaminationId = Guid.NewGuid(),
                 StudentId = student.Id,
-                ExamId = examId
+                ExamId = examId,
+                CreatedDay = now,
+                UpdatedDay = now
             };
             _dbContext.StudentExaminations.Add(studentExam);
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        else if (studentExam.CreatedDay == DateTime.MinValue || studentExam.UpdatedDay == DateTime.MinValue)
+        {
+            var now = DateTime.UtcNow;
+            if (studentExam.CreatedDay == DateTime.MinValue)
+                studentExam.CreatedDay = now;
+            if (studentExam.UpdatedDay == DateTime.MinValue)
+                studentExam.UpdatedDay = now;
             await _dbContext.SaveChangesAsync(ct);
         }
 

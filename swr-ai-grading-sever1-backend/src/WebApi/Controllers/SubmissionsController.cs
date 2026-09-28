@@ -12,7 +12,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/submissions")]
-[Authorize]
+[Authorize(Roles = "Lecturer,Admin")]
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
