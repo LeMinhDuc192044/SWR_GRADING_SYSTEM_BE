@@ -35,6 +35,5 @@ public class GradingDiary
 
     public PaperSet PaperSet { get; set; } = null!;
 
-    public ICollection<Submission> Submissions { get; set; }
-        = new List<Submission>();
+    public ICollection<Submission> Submissions { get; set; } = [];
 }

@@ -66,8 +66,7 @@ public class Examination
 
     public Semester Semester { get; set; } = null!;
 
-    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
+    public ICollection<PaperSet> PaperSets { get; set; } = [];
 
-    public ICollection<StudentExamination> StudentExaminations { get; set; }
-        = new List<StudentExamination>();
+    public ICollection<StudentExamination> StudentExaminations { get; set; } = [];
 }

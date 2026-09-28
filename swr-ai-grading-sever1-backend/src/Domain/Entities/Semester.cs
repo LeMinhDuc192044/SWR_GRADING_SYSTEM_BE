@@ -41,6 +41,6 @@ public class Semester
     [Column("status")]
     public SemesterStatus Status { get; set; }
 
-    public ICollection<Examination> Examinations { get; set; } = new List<Examination>();
-    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
+    public ICollection<Examination> Examinations { get; set; } = [];
+    public ICollection<PaperSet> PaperSets { get; set; } = [];
 }

@@ -23,10 +23,10 @@ public sealed class GradingResultDto
     public decimal TotalScore { get; set; }
 
     [JsonPropertyName("criteria_scores")]
-    public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();
+    public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = [];
 
     [JsonPropertyName("missing_items")]
-    public IReadOnlyList<string> MissingItems { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> MissingItems { get; set; } = [];
 
     [JsonPropertyName("overall_comment")]
     public string OverallComment { get; set; } = string.Empty;

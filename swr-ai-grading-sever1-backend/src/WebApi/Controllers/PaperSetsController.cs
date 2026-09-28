@@ -10,6 +10,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/paper-sets")]
+[Authorize(Roles = "Lecturer,Admin")]
 public sealed class PaperSetsController : ControllerBase
 {
     private readonly IPaperSetService _service;
@@ -33,7 +34,6 @@ public sealed class PaperSetsController : ControllerBase
         Ok(ApiResponse.Success(await _service.GetLecturerByIdAsync(lecturerId, request, ct)));
 
     [HttpPost("preview-questions")]
-    [Authorize]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> PreviewQuestions(IFormFile question, CancellationToken ct)
     {
@@ -81,7 +81,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPost("batch")]
-    [Authorize]
+    [Authorize(Roles = "Lecturer")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateMany(

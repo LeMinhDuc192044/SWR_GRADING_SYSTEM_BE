@@ -13,7 +13,7 @@ public class Submission
 
     [Required]
     [MaxLength(200)]
-    [Column("submission_name")]
+    [Column("submission_file")]
     public string SubmissionFile { get; set; } = string.Empty;
 
     [MaxLength(500)]
