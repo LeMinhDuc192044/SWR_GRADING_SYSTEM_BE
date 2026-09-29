@@ -18,11 +18,19 @@ public class Question
 
     [Required]
     [Column("content")]
-    public string content { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
 
     [Required]
     [Column("point")]
-    public decimal point { get; set; }
+    public decimal Point { get; set; }
+
+    [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
 
     [Required]
     [Column("paper_set_id")]

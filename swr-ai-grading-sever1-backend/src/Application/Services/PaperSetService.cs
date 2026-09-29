@@ -1,9 +1,9 @@
+using System.IO.Compression;
 using Application.Common;
 using Application.DTOs.PaperSets;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
-using System.IO.Compression;
 
 namespace Application.Services;
 
@@ -19,9 +19,18 @@ public sealed class PaperSetService : IPaperSetService
     public PaperSetService(IPaperSetRepository repository, IExaminationRepository examinationRepository, ISemesterRepository semesterRepository, ISupabaseStorage storage, IUnitOfWork unitOfWork, IUserRepository userRepository)
     { _repository = repository; _examinationRepository = examinationRepository; _semesterRepository = semesterRepository; _storage = storage; _unitOfWork = unitOfWork; _userRepository = userRepository; }
 
-    public async Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+    public Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+        => GetPagedInternalAsync(request, null, ct);
+
+    public Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default)
+        => GetPagedInternalAsync(request, lecturerId, ct);
+
+    private async Task<PagedResult<PaperSetMetadataDTO>> GetPagedInternalAsync(PagedRequest request, Guid? lecturerId, CancellationToken ct)
     {
-        var materials = (await _repository.GetAllAsync(ct)).Where(m => !m.IsDeleted).OrderByDescending(m => m.CreatedDate).ToList();
+        var materials = (await _repository.GetAllAsync(ct))
+            .Where(m => !m.IsDeleted && (!lecturerId.HasValue || m.CreateById == lecturerId.Value))
+            .OrderByDescending(m => m.CreatedDate)
+            .ToList();
         var page = materials.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToList();
         var items = await Task.WhenAll(page.Select(ToMetadataAsync));
         return new PagedResult<PaperSetMetadataDTO> { Items = items, TotalCount = materials.Count, Page = request.Page, PageSize = request.PageSize };
@@ -50,7 +59,8 @@ public sealed class PaperSetService : IPaperSetService
         if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
         var questionValidation = ValidateQuestions(questionResult.Data!);
         if (!questionValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        var semesterValidation = await ValidateSemesterForUploadAsync(semesterId, ct);
+        if (!semesterValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(semesterValidation.Error!, semesterValidation.ErrorCode);
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
         var materialResult = await CreateMaterialAsync(semesterId, description, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
@@ -77,7 +87,8 @@ public sealed class PaperSetService : IPaperSetService
             if (!ValidateQuestions(questionResult.Data!).IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
             parsedMaterials.Add((material, questionResult.Data!));
         }
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+        var semesterValidation = await ValidateSemesterForUploadAsync(semesterId, ct);
+        if (!semesterValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(semesterValidation.Error!, semesterValidation.ErrorCode);
         if (await _userRepository.GetLecturerByIdAsync(createdById, ct) is null) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Only a lecturer can create paper sets.", "LECTURER_REQUIRED");
 
         var created = new List<PaperSet>();
@@ -138,12 +149,33 @@ public sealed class PaperSetService : IPaperSetService
         CancellationToken ct)
     {
         var material = new PaperSet { PaperSetCode = await GenerateCodeAsync(ct), Description = description.Trim(), TotalQuestions = questions.Count, CreatedDate = DateTime.UtcNow, UpdatedDate = DateTime.UtcNow, Status = PaperSetStatus.Ready, SemesterId = semesterId, CreateById = createdById };
+        var now = DateTime.UtcNow;
         material.Questions = questions
-            .Select(question => new Question { Title = question.Title.Trim(), content = question.Content.Trim(), point = question.Point, PaperSet = material })
+            .Select(question => new Question
+            {
+                Title = question.Title.Trim(),
+                Content = question.Content.Trim(),
+                Point = question.Point,
+                CreatedDay = now,
+                UpdatedDay = now,
+                PaperSet = material
+            })
             .ToList();
         var uploadResult = await UploadFilesAsync(material, files, ct);
         if (!uploadResult.IsSuccess) return Result<PaperSet>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
         return Result<PaperSet>.Success(material);
+    }
+
+    private async Task<Result> ValidateSemesterForUploadAsync(Guid semesterId, CancellationToken ct)
+    {
+        var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
+        if (semester is null)
+            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+        if (semester.Status == SemesterStatus.Closed)
+            return Result.Failure("Cannot upload paper sets to a closed semester.", "SEMESTER_CLOSED");
+
+        return Result.Success();
     }
 
     public async Task<Result<PaperSetDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default)
@@ -243,12 +275,18 @@ public sealed class PaperSetService : IPaperSetService
             if (!validation.IsSuccess) return validation;
         }
 
+        var semester = await _semesterRepository.GetByIdAsync(material.SemesterId, ct);
+        if (semester is null)
+            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+        var semesterFolder = NormalizeStorageSegment(semester.Name);
+
         var uploaded = new List<string>();
         try
         {
             foreach (var file in files)
             {
-                var path = $"examinations/{material.ExaminationId ?? material.SemesterId}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
+                var path = $"examinations/{semesterFolder}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
                 try
                 {
                     await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
@@ -316,7 +354,8 @@ public sealed class PaperSetService : IPaperSetService
             ? Result.Success()
             : Result.Failure("Examination does not belong to the selected semester.", "EXAMINATION_SEMESTER_MISMATCH");
     }
-    private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"EM{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
+    private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"PS{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
+    private static string NormalizeStorageSegment(string value) => value.Trim().Replace('/', '-').Replace('\\', '-');
 
     // Fixed: AnswerRubric and AnswerTemplate previously both fell through to "AT",
     // filing rubric files under an "answer template" folder segment.
@@ -329,17 +368,18 @@ public sealed class PaperSetService : IPaperSetService
     };
 
     private static void SetPath(PaperSet m, PaperSetFileType type, string path) { if (type == PaperSetFileType.Question) m.FileQuestionDocs = path; else if (type == PaperSetFileType.AnswerRubric) m.FileAnswerRubric = path; else m.FileAnswerTemplate = path; }
-    private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
+    private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.
+    Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
 
     private async Task<PaperSetMetadataDTO> ToMetadataAsync(PaperSet material)
     {
         var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new PaperSetFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.content, Point = question.point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.Content, Point = question.Point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreateById = material.CreateById, LecturerName = material.CreateBy?.FullName ?? string.Empty, LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty, Subject = material.CreateBy?.Subject ?? string.Empty, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
     }
 
     private async Task<PaperSetDetailDTO> ToDetailAsync(PaperSet material)
     {
         var metadata = await ToMetadataAsync(material);
-        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
+        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreateById = metadata.CreateById, LecturerName = metadata.LecturerName, LecturerCode = metadata.LecturerCode, Subject = metadata.Subject, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
     }
 }

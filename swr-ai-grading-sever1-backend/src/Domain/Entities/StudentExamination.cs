@@ -18,6 +18,14 @@ public class StudentExamination
     public Student Student { get; set; } = null!;
 
     [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
+
+    [Required]
     [Column("exam_id")]
     [ForeignKey(nameof(Examination))]
     public Guid ExamId { get; set; }

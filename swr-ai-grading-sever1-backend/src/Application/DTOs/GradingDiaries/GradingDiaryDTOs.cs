@@ -43,7 +43,7 @@ public sealed class GradingDiaryDetailDTO
 public sealed class SubmissionItemDTO
 {
     public Guid SubmissionId { get; set; }
-    public string SubmissionName { get; set; } = string.Empty;
+    public string SubmissionFile { get; set; } = string.Empty;
     public decimal? AiScore { get; set; }
     public decimal? LecturerScore { get; set; }
     public SubmissionStatus Status { get; set; }

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateExamMaterialEntity : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -20,6 +20,8 @@ namespace Infrastructure.Migrations
                     name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     start_date = table.Column<DateOnly>(type: "date", nullable: false),
                     end_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
@@ -59,6 +61,8 @@ namespace Infrastructure.Migrations
                     duration_minutes = table.Column<int>(type: "integer", nullable: false),
                     before_time_minutes = table.Column<int>(type: "integer", nullable: false),
                     note = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
@@ -159,6 +163,8 @@ namespace Infrastructure.Migrations
                 {
                     student_examination_id = table.Column<Guid>(type: "uuid", nullable: false),
                     student_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     exam_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
@@ -213,6 +219,8 @@ namespace Infrastructure.Migrations
                     Title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     content = table.Column<string>(type: "text", nullable: false),
                     point = table.Column<decimal>(type: "numeric", nullable: false),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
@@ -232,6 +240,7 @@ namespace Infrastructure.Migrations
                 {
                     submission_id = table.Column<Guid>(type: "uuid", nullable: false),
                     submission_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    file_path = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     ai_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     lecturer_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     ai_logs = table.Column<string>(type: "text", nullable: true),

@@ -10,7 +10,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/grading-diaries")]
-[Authorize]
+[Authorize(Roles = "Lecturer,Admin")]
 public sealed class GradingDiariesController : ControllerBase
 {
     private readonly IGradingDiaryService _service;

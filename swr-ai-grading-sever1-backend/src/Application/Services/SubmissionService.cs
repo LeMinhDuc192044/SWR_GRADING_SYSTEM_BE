@@ -100,7 +100,7 @@ public sealed partial class SubmissionService : ISubmissionService
         {
             var summary = new UploadedSubmissionSummaryDTO
             {
-                SubmissionName = file.FileName
+                SubmissionFile = file.FileName
             };
 
             var extension = Path.GetExtension(file.FileName);
@@ -150,7 +150,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 var submission = new StudentSubmission
                 {
                     SubmissionId = Guid.NewGuid(),
-                    SubmissionName = file.FileName,
+                    SubmissionFile = file.FileName,
                     FilePath = storagePath,
                     Status = SubmissionStatus.Submitted, // 0 = Submitted
                     DiaryId = diaryId,
@@ -529,7 +529,7 @@ public sealed partial class SubmissionService : ISubmissionService
             sb.AppendLine("DANH SÁCH CÂU HỎI VÀ THANG ĐIỂM:");
             foreach (var q in paperSet.Questions)
             {
-                sb.AppendLine($"- {q.Title}: {q.content} (Điểm tối đa: {q.point}đ)");
+                sb.AppendLine($"- {q.Title}: {q.Content} (Điểm tối đa: {q.Point}đ)");
             }
             return sb.ToString();
         }
@@ -559,13 +559,25 @@ public sealed partial class SubmissionService : ISubmissionService
 
         if (studentExam is null)
         {
+            var now = DateTime.UtcNow;
             studentExam = new StudentExamination
             {
                 StudentExaminationId = Guid.NewGuid(),
                 StudentId = student.Id,
-                ExamId = examId
+                ExamId = examId,
+                CreatedDay = now,
+                UpdatedDay = now
             };
             _dbContext.StudentExaminations.Add(studentExam);
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        else if (studentExam.CreatedDay == DateTime.MinValue || studentExam.UpdatedDay == DateTime.MinValue)
+        {
+            var now = DateTime.UtcNow;
+            if (studentExam.CreatedDay == DateTime.MinValue)
+                studentExam.CreatedDay = now;
+            if (studentExam.UpdatedDay == DateTime.MinValue)
+                studentExam.UpdatedDay = now;
             await _dbContext.SaveChangesAsync(ct);
         }
 
@@ -579,7 +591,7 @@ public sealed partial class SubmissionService : ISubmissionService
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
-            SubmissionName = submission.SubmissionName,
+            SubmissionFile = submission.SubmissionFile,
             FilePath = submission.FilePath,
             DiaryId = submission.DiaryId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,

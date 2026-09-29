@@ -68,9 +68,6 @@ public sealed class GradingDiaryService : IGradingDiaryService
             PaperSetId = request.PaperSetId
         };
 
-        paperSet.Status = PaperSetStatus.Used;
-        _paperSetRepository.Update(paperSet);
-
         await _diaryRepository.AddAsync(diary, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
@@ -144,7 +141,7 @@ public sealed class GradingDiaryService : IGradingDiaryService
             .Select(s => new SubmissionItemDTO
             {
                 SubmissionId = s.SubmissionId,
-                SubmissionName = s.SubmissionName,
+                SubmissionFile = s.SubmissionFile,
                 AiScore = s.AiScore,
                 LecturerScore = s.LecturerScore,
                 Status = s.Status,

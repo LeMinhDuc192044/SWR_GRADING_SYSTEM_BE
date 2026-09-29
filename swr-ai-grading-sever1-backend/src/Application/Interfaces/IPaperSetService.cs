@@ -7,6 +7,7 @@ namespace Application.Interfaces;
 public interface IPaperSetService
 {
     Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
+    Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default);
     Task<Result<PaperSetDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<CreateQuestionInput>>> PreviewQuestionsAsync(MaterialFileUpload file, CancellationToken ct = default);
     Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(

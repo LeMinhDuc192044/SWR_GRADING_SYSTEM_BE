@@ -35,13 +35,8 @@ public class GradingDiary
 
     public PaperSet PaperSet { get; set; } = null!;
 
-<<<<<<< Updated upstream
-    public ICollection<Submission> Submissions { get; set; }
-        = new List<Submission>();
-=======
     public ICollection<StudentSubmission> Submissions { get; set; } = [];
 
     [NotMapped]
     public ICollection<StudentSubmission> StudentSubmissions => Submissions;
->>>>>>> Stashed changes
 }

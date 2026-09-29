@@ -16,9 +16,7 @@ public class Lecturer : User
     [Column("subject")]
     public string Subject { get; set; } = string.Empty;
 
-    public ICollection<GradingDiary> GradingDiaries { get; set; }
-        = new List<GradingDiary>();
+    public ICollection<GradingDiary> GradingDiaries { get; set; }  = [];
 
-    public ICollection<PaperSet> PaperSetsCreated { get; set; }
-        = new List<PaperSet>();
+    public ICollection<PaperSet> PaperSetsCreated { get; set; }  = [];
 }

@@ -30,9 +30,17 @@ public class Semester
     public DateOnly EndDate { get; set; }
 
     [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
+
+    [Required]
     [Column("status")]
     public SemesterStatus Status { get; set; }
 
-    public ICollection<Examination> Examinations { get; set; } = new List<Examination>();
-    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
+    public ICollection<Examination> Examinations { get; set; } = [];
+    public ICollection<PaperSet> PaperSets { get; set; } = [];
 }

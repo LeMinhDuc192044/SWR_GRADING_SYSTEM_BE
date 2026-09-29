@@ -22,7 +22,6 @@ public class Examination
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
-
     [Required]
     [Column("examination_type")]
     public ExaminationType ExaminationType { get; set; }
@@ -49,6 +48,14 @@ public class Examination
     public string? Note { get; set; }
 
     [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
+
+    [Required]
     [Column("status")]
     public ExaminationStatus Status { get; set; }
 
@@ -59,8 +66,7 @@ public class Examination
 
     public Semester Semester { get; set; } = null!;
 
-    public ICollection<PaperSet> PaperSets { get; set; } = new List<PaperSet>();
+    public ICollection<PaperSet> PaperSets { get; set; } = [];
 
-    public ICollection<StudentExamination> StudentExaminations { get; set; }
-        = new List<StudentExamination>();
+    public ICollection<StudentExamination> StudentExaminations { get; set; } = [];
 }

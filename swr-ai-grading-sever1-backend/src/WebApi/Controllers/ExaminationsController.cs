@@ -1,12 +1,14 @@
 using Application.Common;
 using Application.DTOs.Examinations;
 using Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/examinations")]
+[Authorize(Roles = "Admin,Lecturer")]
 public class ExaminationsController : ControllerBase
 {
     private readonly IExaminationService _service;
@@ -30,6 +32,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create(
         [FromBody] CreateExaminationRequest request,
         CancellationToken ct)
@@ -43,6 +46,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateExaminationRequest request,
@@ -57,6 +61,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(id, ct);

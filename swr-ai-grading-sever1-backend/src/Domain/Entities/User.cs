@@ -34,7 +34,6 @@ public class User
     [Column("role")]
     public UserRole Role { get; set; }
 
-    [Required]
     [MaxLength(20)]
     [Column("cccd")]
     public string Cccd { get; set; } = string.Empty;
