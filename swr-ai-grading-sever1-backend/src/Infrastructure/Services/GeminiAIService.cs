@@ -4,6 +4,7 @@ using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using IronOcr;
 using Microsoft.Extensions.Configuration;
 
 namespace Infrastructure.Services;
@@ -23,10 +24,16 @@ public sealed class GeminiAIService : IGeminiAIService
 
         _model = configuration["GEMINI_MODEL"]
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-3.6-flash";
+            ?? "gemini-3.8-flash";
     }
 
-    public Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
+    public async Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
+    {
+        var content = await ExtractContentFromDocxAsync(docxStream, ct);
+        return content.Text;
+    }
+
+    public Task<DocxExtractedContentDto> ExtractContentFromDocxAsync(Stream docxStream, CancellationToken ct = default)
     {
         if (docxStream.CanSeek)
         {
@@ -36,38 +43,139 @@ public sealed class GeminiAIService : IGeminiAIService
         try
         {
             using var document = WordprocessingDocument.Open(docxStream, false);
-            var body = document.MainDocumentPart?.Document?.Body;
-            if (body is null)
-            {
-                return Task.FromResult(string.Empty);
-            }
-
+            var mainPart = document.MainDocumentPart;
+            var body = mainPart?.Document?.Body;
+            var result = new DocxExtractedContentDto();
             var sb = new StringBuilder();
 
-            foreach (var element in body.Elements())
+            if (body is not null && mainPart is not null)
             {
-                if (element is Paragraph paragraph)
+                var processedParts = new HashSet<ImagePart>();
+                int imageIndex = 1;
+
+                void ProcessImagePart(ImagePart imagePart)
                 {
-                    var text = string.Concat(paragraph.Descendants<Text>().Select(t => t.Text)).Trim();
-                    if (!string.IsNullOrWhiteSpace(text))
+                    if (processedParts.Contains(imagePart)) return;
+                    processedParts.Add(imagePart);
+
+                    try
                     {
-                        sb.AppendLine(text);
+                        using var imageStream = imagePart.GetStream();
+                        using var ms = new MemoryStream();
+                        imageStream.CopyTo(ms);
+                        var imageBytes = ms.ToArray();
+                        if (imageBytes.Length > 0)
+                        {
+                            var rawContentType = (imagePart.ContentType ?? string.Empty).ToLowerInvariant();
+                            var mimeType = rawContentType switch
+                            {
+                                var c when c.Contains("jpeg") || c.Contains("jpg") => "image/jpeg",
+                                var c when c.Contains("webp") => "image/webp",
+                                var c when c.Contains("gif") => "image/gif",
+                                _ => "image/png"
+                            };
+                            var base64 = Convert.ToBase64String(imageBytes);
+                            result.Images.Add(new DocxImageDto
+                            {
+                                MimeType = mimeType,
+                                Base64Data = base64
+                            });
+
+                            sb.AppendLine($"\n[HÌNH ÁNH / SƠ ĐỒ #{imageIndex} ĐƯỢC CHÈN TRỰC TIẾP TẠI VỊ TRÍ NÀY]");
+
+                            try
+                            {
+                                var ocr = new IronTesseract();
+                                using var input = new OcrInput();
+                                input.LoadImage(imageBytes);
+                                var ocrResult = ocr.Read(input);
+                                if (!string.IsNullOrWhiteSpace(ocrResult.Text))
+                                {
+                                    sb.AppendLine($"[VĂN BẢN TRÍCH XUẤT TỪ HÌNH ÁNH #{imageIndex}]:");
+                                    sb.AppendLine(ocrResult.Text.Trim());
+                                }
+                            }
+                            catch { }
+
+                            imageIndex++;
+                        }
+                    }
+                    catch { }
+                }
+
+                void TryProcessPart(string? rId)
+                {
+                    if (string.IsNullOrEmpty(rId)) return;
+                    try
+                    {
+                        var part = mainPart.GetPartById(rId);
+                        if (part is ImagePart imgPart)
+                        {
+                            ProcessImagePart(imgPart);
+                        }
+                    }
+                    catch
+                    {
+                        // Bỏ qua nếu rId không phải là ImagePart
                     }
                 }
-                else if (element is Table table)
+
+                foreach (var element in body.Elements())
                 {
-                    sb.AppendLine("\n[BẢNG NỘI DUNG]:");
-                    foreach (var row in table.Descendants<TableRow>())
+                    if (element is Paragraph paragraph)
                     {
-                        var cells = row.Descendants<TableCell>()
-                            .Select(cell => string.Concat(cell.Descendants<Text>().Select(t => t.Text)).Trim());
-                        sb.AppendLine(string.Join(" | ", cells));
+                        var text = string.Concat(paragraph.Descendants<Text>().Select(t => t.Text)).Trim();
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            sb.AppendLine(text);
+                        }
+
+                        // Tìm hình ảnh gắn liền trong Paragraph này theo thứ tự
+                        foreach (var blip in paragraph.Descendants<DocumentFormat.OpenXml.Drawing.Blip>())
+                        {
+                            TryProcessPart(blip.Embed?.Value);
+                        }
+
+                        foreach (var imgData in paragraph.Descendants<DocumentFormat.OpenXml.Vml.ImageData>())
+                        {
+                            TryProcessPart(imgData.RelationshipId?.Value);
+                        }
                     }
-                    sb.AppendLine();
+                    else if (element is Table table)
+                    {
+                        sb.AppendLine("\n[BẢNG NỘI DUNG]:");
+                        foreach (var row in table.Descendants<TableRow>())
+                        {
+                            var cells = row.Descendants<TableCell>()
+                                .Select(cell => string.Concat(cell.Descendants<Text>().Select(t => t.Text)).Trim());
+                            sb.AppendLine(string.Join(" | ", cells));
+                        }
+                        sb.AppendLine();
+
+                        foreach (var blip in table.Descendants<DocumentFormat.OpenXml.Drawing.Blip>())
+                        {
+                            TryProcessPart(blip.Embed?.Value);
+                        }
+                    }
+                }
+
+                // Xử lý các ImageParts dư còn lại nếu chưa được duyệt ở trên
+                if (mainPart.ImageParts != null)
+                {
+                    foreach (var imgPart in mainPart.ImageParts)
+                    {
+                        ProcessImagePart(imgPart);
+                    }
                 }
             }
 
-            return Task.FromResult(sb.ToString());
+            result.Text = sb.ToString();
+            if (string.IsNullOrWhiteSpace(result.Text) && result.Images.Count > 0)
+            {
+                result.Text = "[Tài liệu chứa các sơ đồ / hình ảnh đính kèm bên dưới]";
+            }
+
+            return Task.FromResult(result);
         }
         catch (Exception ex) when (ex is OpenXmlPackageException or InvalidDataException)
         {
@@ -78,6 +186,7 @@ public sealed class GeminiAIService : IGeminiAIService
     public async Task<GradingResultDto> GradeSubmissionAsync(
         string studentSubmissionText,
         string rubricContent,
+        List<DocxImageDto>? images = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
@@ -87,16 +196,36 @@ public sealed class GeminiAIService : IGeminiAIService
 
         var prompt = BuildPrompt(studentSubmissionText, rubricContent);
 
+        var partsList = new List<object>
+        {
+            new { text = prompt }
+        };
+
+        if (images != null && images.Count > 0)
+        {
+            foreach (var img in images)
+            {
+                if (!string.IsNullOrWhiteSpace(img.Base64Data))
+                {
+                    partsList.Add(new
+                    {
+                        inline_data = new
+                        {
+                            mime_type = img.MimeType,
+                            data = img.Base64Data
+                        }
+                    });
+                }
+            }
+        }
+
         var requestPayload = new
         {
             contents = new[]
             {
                 new
                 {
-                    parts = new[]
-                    {
-                        new { text = prompt }
-                    }
+                    parts = partsList.ToArray()
                 }
             },
             generationConfig = new
@@ -111,15 +240,58 @@ public sealed class GeminiAIService : IGeminiAIService
         using var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
         // Gửi API key qua header x-goog-api-key để đảm bảo an toàn (M4)
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent";
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Add("x-goog-api-key", _apiKey);
-        request.Content = requestContent;
+        HttpResponseMessage response = null!;
+        string responseBody = string.Empty;
 
-        using var response = await _httpClient.SendAsync(request, ct);
-        var responseBody = await response.Content.ReadAsStringAsync(ct);
+        var modelsToTry = new List<string> { _model };
 
-        if (!response.IsSuccessStatusCode)
+        bool success = false;
+        foreach (var currentModel in modelsToTry)
+        {
+            const int maxRetries = 5;
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:generateContent";
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Add("x-goog-api-key", _apiKey);
+                request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+                response = await _httpClient.SendAsync(request, ct);
+                responseBody = await response.Content.ReadAsStringAsync(ct);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    success = true;
+                    break;
+                }
+
+                // Nếu model 404 (Không tồn tại/bị bãi bỏ), lập tức dừng thử model này để chuyển sang model kế tiếp
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    break;
+                }
+
+                // Nếu gặp 503 (ServiceUnavailable) hoặc 429 (Rate Limit), chờ vài giây rồi thử lại
+                if ((response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ||
+                     response.StatusCode == (System.Net.HttpStatusCode)429) && attempt < maxRetries)
+                {
+                    int delaySeconds = attempt * 4; // 4s, 8s, 12s...
+                    
+                    var match = System.Text.RegularExpressions.Regex.Match(responseBody, @"retry in ([\d\.]+)s", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture, out var secondsParsed))
+                    {
+                        delaySeconds = (int)Math.Ceiling(secondsParsed) + 1;
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+                    continue;
+                }
+            }
+
+            if (success) break;
+        }
+
+        if (!success)
         {
             throw new InvalidOperationException($"Lỗi gọi Gemini API (Status: {response.StatusCode}): {responseBody}");
         }
@@ -159,6 +331,11 @@ public sealed class GeminiAIService : IGeminiAIService
             [BÀI LÀM CỦA SINH VIÊN]
             {{{studentSubmissionText}}}
 
+            [LƯU Ý QUAN TRỌNG VỀ HÌNH ẢNH / SƠ ĐỒ ĐÍNH KÈM]
+            - Bài làm của sinh viên bao gồm cả VĂN BẢN TRÍCH XUẤT bên trên VÀ CÁC HÌNH ẢNH / SƠ ĐỒ (Use Case diagram, Class diagram, Sequence diagram, ERD, Flowchart...) được đính kèm trực tiếp trong yêu cầu này.
+            - Bạn PHẢI quan sát và phân tích tất cả các hình ảnh/sơ đồ đính kèm bên dưới để đánh giá bài làm của sinh viên.
+            - Nếu sinh viên vẽ sơ đồ hoặc làm bài trong hình ảnh đính kèm, bạn PHẢI chấm điểm đạt tương ứng với tiêu chí đó. TUYỆT ĐỐI KHÔNG ĐƯỢC đánh giá là "sinh viên bỏ trống hoặc không trả lời" khi có hình ảnh/sơ đồ thể hiện bài làm.
+
             [YÊU CẦU ĐẦU RA]
             Hãy chấm điểm từng tiêu chí, tính tổng điểm và nhận xét chi tiết.
             Bạn PHẢI trả về định dạng JSON thuần túy theo cấu trúc sau (không kèm văn bản mở đầu hay kết thúc):
@@ -169,14 +346,14 @@ public sealed class GeminiAIService : IGeminiAIService
                   "criterion": "Tên tiêu chí 1",
                   "max_score": 3.0,
                   "actual_score": 2.5,
-                  "comment": "Nhận xét cụ thể đạt được gì, thiếu gì"
+                  "comment": "Nhận xét cụ thể đạt được gì, thiếu gì (kết hợp phân tích từ văn bản và sơ đồ/hình ảnh đính kèm)"
                 }
               ],
               "missing_items": [
                 "Nội dung còn thiếu sót 1",
                 "Nội dung cần bổ sung 2"
               ],
-              "overall_comment": "Nhận xét tổng thể chất lượng bài làm của sinh viên"
+              "overall_comment": "Nhận xét tổng thể chất lượng bài làm của sinh viên (bao gồm cả phần văn bản và sơ đồ/hình ảnh đính kèm)"
             }
             """;
     }

@@ -34,3 +34,15 @@ public sealed class GradingResultDto
     [JsonIgnore]
     public string RawAiLogJson { get; set; } = string.Empty;
 }
+
+public sealed class DocxImageDto
+{
+    public string MimeType { get; set; } = "image/png";
+    public string Base64Data { get; set; } = string.Empty;
+}
+
+public sealed class DocxExtractedContentDto
+{
+    public string Text { get; set; } = string.Empty;
+    public List<DocxImageDto> Images { get; set; } = [];
+}
