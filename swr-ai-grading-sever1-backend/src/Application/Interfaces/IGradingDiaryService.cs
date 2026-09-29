@@ -10,4 +10,14 @@ public interface IGradingDiaryService
     Task<Result<GradingDiaryDetailDTO>> GetByIdAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
     Task<Result<GradingDiaryResponseDTO>> UpdateAsync(Guid id, UpdateGradingDiaryRequest request, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
+
+    /// <summary>
+    /// Tiến độ chấm thi của sổ chấm (tổng số bài nộp, số bài đã chốt, % hoàn thành).
+    /// </summary>
+    Task<Result<GradingDiaryProgressDto>> GetProgressAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
+
+    /// <summary>
+    /// So sánh độ lệch điểm GV vs AI để giảng viên rà soát các bài lệch điểm lớn.
+    /// </summary>
+    Task<Result<IReadOnlyList<AiComparisonItemDto>>> CompareWithAiAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
 }

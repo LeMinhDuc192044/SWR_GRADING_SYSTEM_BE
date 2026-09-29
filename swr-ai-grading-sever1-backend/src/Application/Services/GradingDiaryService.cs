@@ -4,6 +4,9 @@ using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 
+using Application.Common.Interfaces;
+using Microsoft.EntityFrameworkCore;
+
 namespace Application.Services;
 
 public sealed class GradingDiaryService : IGradingDiaryService
@@ -12,17 +15,20 @@ public sealed class GradingDiaryService : IGradingDiaryService
     private readonly IPaperSetRepository _paperSetRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _dbContext;
 
     public GradingDiaryService(
         IGradingDiaryRepository diaryRepository,
         IPaperSetRepository paperSetRepository,
         IUserRepository userRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IApplicationDbContext dbContext)
     {
         _diaryRepository = diaryRepository;
         _paperSetRepository = paperSetRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<Result<GradingDiaryResponseDTO>> CreateAsync(
@@ -130,7 +136,7 @@ public sealed class GradingDiaryService : IGradingDiaryService
             return Result<GradingDiaryDetailDTO>.Failure("Bạn không có quyền truy cập sổ chấm này.", "FORBIDDEN");
         }
 
-        var submissions = (diary.Submissions ?? Enumerable.Empty<Submission>())
+        var submissions = (diary.Submissions ?? Enumerable.Empty<StudentSubmission>())
             .OrderByDescending(s => s.CreatedDate)
             .Select(s => new SubmissionItemDTO
             {
@@ -239,5 +245,107 @@ public sealed class GradingDiaryService : IGradingDiaryService
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Thống kê tiến độ chấm bài trong sổ chấm (Số bài, % đã chốt điểm).
+    /// </summary>
+    public async Task<Result<GradingDiaryProgressDto>> GetProgressAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var diary = await _dbContext.GradingDiaries
+            .AsNoTracking()
+            .Include(d => d.PaperSet)
+            .FirstOrDefaultAsync(d => d.GradingDiaryId == id, ct);
+
+        if (diary is null)
+        {
+            return Result<GradingDiaryProgressDto>.Failure("Không tìm thấy sổ chấm.", "DIARY_NOT_FOUND");
+        }
+
+        if (!isElevatedRole && diary.CreateById != currentUserId)
+        {
+            return Result<GradingDiaryProgressDto>.Failure("Bạn không có quyền truy cập sổ chấm này.", "FORBIDDEN");
+        }
+
+        var submissions = await _dbContext.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => s.DiaryId == id)
+            .ToListAsync(ct);
+
+        var total = submissions.Count;
+        var submittedCount = submissions.Count(s => s.Status == SubmissionStatus.Submitted);
+        var aiGradedCount = submissions.Count(s => s.Status >= SubmissionStatus.AI_Graded);
+        var reviewedCount = submissions.Count(s => s.Status >= SubmissionStatus.Lecturer_Reviewed);
+        var finalizedCount = submissions.Count(s => s.Status == SubmissionStatus.Final);
+        var progressPercent = total > 0 ? Math.Round((double)finalizedCount / total * 100, 2) : 0;
+
+        return Result<GradingDiaryProgressDto>.Success(new GradingDiaryProgressDto
+        {
+            DiaryId = diary.GradingDiaryId,
+            DiaryName = diary.Name,
+            PaperSetCode = diary.PaperSet?.PaperSetCode ?? string.Empty,
+            TotalSubmissions = total,
+            SubmittedCount = submittedCount,
+            AiGradedCount = aiGradedCount,
+            LecturerReviewedCount = reviewedCount,
+            FinalizedCount = finalizedCount,
+            ProgressPercent = progressPercent
+        });
+    }
+
+    /// <summary>
+    /// So sánh độ lệch điểm giữa Giảng viên và AI trong sổ chấm.
+    /// Giúp giảng viên phát hiện các bài thi có sự chênh lệch lớn để rà soát lại.
+    /// </summary>
+    public async Task<Result<IReadOnlyList<AiComparisonItemDto>>> CompareWithAiAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var diary = await _dbContext.GradingDiaries
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.GradingDiaryId == id, ct);
+
+        if (diary is null)
+        {
+            return Result<IReadOnlyList<AiComparisonItemDto>>.Failure("Không tìm thấy sổ chấm.", "DIARY_NOT_FOUND");
+        }
+
+        if (!isElevatedRole && diary.CreateById != currentUserId)
+        {
+            return Result<IReadOnlyList<AiComparisonItemDto>>.Failure("Bạn không có quyền truy cập sổ chấm này.", "FORBIDDEN");
+        }
+
+        var submissions = await _dbContext.StudentSubmissions
+            .AsNoTracking()
+            .Include(s => s.StudentExamination)
+                .ThenInclude(se => se.Student)
+            .Where(s => s.DiaryId == id)
+            .ToListAsync(ct);
+
+        var comparisonList = submissions
+            .Select(s =>
+            {
+                decimal? diff = null;
+                if (s.LecturerScore.HasValue && s.AiScore.HasValue)
+                {
+                    diff = Math.Abs(s.LecturerScore.Value - s.AiScore.Value);
+                }
+
+                return new AiComparisonItemDto
+                {
+                    SubmissionId = s.SubmissionId,
+                    StudentCode = s.StudentExamination?.Student?.StudentCode ?? string.Empty,
+                    StudentName = s.StudentExamination?.Student?.FullName ?? string.Empty,
+                    SubmissionFile = s.SubmissionFile,
+                    AiScore = s.AiScore,
+                    LecturerScore = s.LecturerScore,
+                    ScoreDifference = diff,
+                    Status = s.Status,
+                    Comment = s.Comment ?? string.Empty
+                };
+            })
+            // Sắp xếp ưu tiên các bài có độ lệch điểm từ lớn đến bé
+            .OrderByDescending(c => c.ScoreDifference ?? 0)
+            .ToList();
+
+        return Result<IReadOnlyList<AiComparisonItemDto>>.Success(comparisonList);
     }
 }

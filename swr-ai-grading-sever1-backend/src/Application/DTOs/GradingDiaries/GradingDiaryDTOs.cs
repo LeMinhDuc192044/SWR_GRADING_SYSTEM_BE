@@ -51,3 +51,36 @@ public sealed class SubmissionItemDTO
     public string Comment { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
 }
+
+/// <summary>
+/// DTO theo dõi tiến độ chấm thi của một sổ chấm (Grading Diary).
+/// </summary>
+public sealed class GradingDiaryProgressDto
+{
+    public Guid DiaryId { get; set; }
+    public string DiaryName { get; set; } = string.Empty;
+    public string PaperSetCode { get; set; } = string.Empty;
+    public int TotalSubmissions { get; set; }
+    public int SubmittedCount { get; set; } // Số bài mới upload (chưa chấm)
+    public int AiGradedCount { get; set; } // Đã qua AI chấm
+    public int LecturerReviewedCount { get; set; } // GV đã chấm/review
+    public int FinalizedCount { get; set; } // Đã chốt điểm Final
+    public double ProgressPercent { get; set; } // Tỷ lệ đã chốt điểm trên tổng số bài
+}
+
+/// <summary>
+/// DTO so sánh độ lệch điểm giữa Giảng viên và AI.
+/// Giúp giảng viên phát hiện các bài thi có sự chênh lệch điểm lớn để rà soát lại.
+/// </summary>
+public sealed class AiComparisonItemDto
+{
+    public Guid SubmissionId { get; set; }
+    public string StudentCode { get; set; } = string.Empty;
+    public string StudentName { get; set; } = string.Empty;
+    public string SubmissionFile { get; set; } = string.Empty;
+    public decimal? AiScore { get; set; }
+    public decimal? LecturerScore { get; set; }
+    public decimal? ScoreDifference { get; set; } // |LecturerScore - AiScore|
+    public SubmissionStatus Status { get; set; }
+    public string Comment { get; set; } = string.Empty;
+}

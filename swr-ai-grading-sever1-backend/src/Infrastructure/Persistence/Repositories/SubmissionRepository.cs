@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence.Repositories;
 
-public sealed class SubmissionRepository : Repository<Submission>, ISubmissionRepository
+public sealed class SubmissionRepository : Repository<StudentSubmission>, ISubmissionRepository
 {
     public SubmissionRepository(AppDbContext db) : base(db) { }
 
@@ -19,7 +19,7 @@ public sealed class SubmissionRepository : Repository<Submission>, ISubmissionRe
                submission.Status == SubmissionStatus.Final;
     }
 
-    public async Task<IReadOnlyList<Submission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
     {
         return await _set
             .Include(s => s.StudentExamination)

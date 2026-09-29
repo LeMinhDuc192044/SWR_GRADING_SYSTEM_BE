@@ -133,7 +133,7 @@ public sealed class AuthController : ControllerBase
                 Role = user.Role,
                 IsActive = user.IsActive,
                 IsDeleted = user.IsDeleted,
-                StundentCode = studentCode!,
+                StudentCode = studentCode!,
                 Major = major!
             },
             (int)UserRole.Lecturer => new Domain.Entities.Lecturer

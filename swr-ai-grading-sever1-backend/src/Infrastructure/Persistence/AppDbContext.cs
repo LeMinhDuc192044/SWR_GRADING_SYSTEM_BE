@@ -17,7 +17,8 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
     public DbSet<PaperSet> PaperSets => Set<PaperSet>();
     public DbSet<Examination> Examinations => Set<Examination>();
-    public DbSet<Submission> Submissions => Set<Submission>();
+    public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
+    public DbSet<StudentSubmission> Submissions => StudentSubmissions;
     public DbSet<Semester> Semesters => Set<Semester>();
     public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
