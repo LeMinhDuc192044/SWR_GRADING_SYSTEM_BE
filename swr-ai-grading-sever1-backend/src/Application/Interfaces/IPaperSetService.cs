@@ -10,6 +10,8 @@ public interface IPaperSetService
     Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default);
     Task<Result<PaperSetDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<CreateQuestionInput>>> PreviewQuestionsAsync(MaterialFileUpload file, CancellationToken ct = default);
+    Task<Result<PaperSetExtractedFileDTO>> ReadDocumentAsync(MaterialFileUpload file, CancellationToken ct = default);
+    Task<Result<PaperSetExtractedContentsDTO>> ReadFilesAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(
         Guid semesterId,
         string description,

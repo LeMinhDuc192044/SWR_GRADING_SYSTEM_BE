@@ -50,6 +50,60 @@ public sealed class PaperSetService : IPaperSetService
             : PaperSetQuestionDocumentParser.ParseOcr(file));
     }
 
+    public Task<Result<PaperSetExtractedFileDTO>> ReadDocumentAsync(MaterialFileUpload file, CancellationToken ct = default)
+    {
+        var result = PaperSetDocumentReader.Read(file);
+        return Task.FromResult(result.IsSuccess
+            ? Result<PaperSetExtractedFileDTO>.Success(new PaperSetExtractedFileDTO
+            {
+                FileName = file.FileName,
+                Text = result.Data!
+            })
+            : Result<PaperSetExtractedFileDTO>.Failure(result.Error!, result.ErrorCode));
+    }
+
+    public async Task<Result<PaperSetExtractedContentsDTO>> ReadFilesAsync(Guid id, CancellationToken ct = default)
+    {
+        var material = await FindAsync(id, ct);
+        if (material is null)
+            return Result<PaperSetExtractedContentsDTO>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
+
+        var extractedFiles = new List<PaperSetExtractedFileDTO>();
+        foreach (var (fileType, path) in GetPaths(material))
+        {
+            var metadata = await _storage.GetMetadataAsync(path, ct);
+            var download = await _storage.DownloadAsync(path, metadata.FileName, ct);
+            await using (download.Content)
+            {
+                var result = PaperSetDocumentReader.Read(new MaterialFileUpload
+                {
+                    FileType = fileType,
+                    Content = download.Content,
+                    FileName = download.FileName,
+                    ContentType = download.ContentType,
+                    Length = metadata.FileSize
+                });
+
+                if (!result.IsSuccess)
+                    return Result<PaperSetExtractedContentsDTO>.Failure(
+                        $"Could not read {fileType} file '{metadata.FileName}': {result.Error}", result.ErrorCode);
+
+                extractedFiles.Add(new PaperSetExtractedFileDTO
+                {
+                    FileType = fileType,
+                    FileName = metadata.FileName,
+                    Text = result.Data!
+                });
+            }
+        }
+
+        return Result<PaperSetExtractedContentsDTO>.Success(new PaperSetExtractedContentsDTO
+        {
+            PaperSetId = id,
+            Files = extractedFiles
+        });
+    }
+
     public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(Guid semesterId, string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
         if (files.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
