@@ -35,5 +35,8 @@ public class GradingDiary
 
     public PaperSet PaperSet { get; set; } = null!;
 
-    public ICollection<Submission> Submissions { get; set; } = [];
+    public ICollection<StudentSubmission> Submissions { get; set; } = [];
+
+    [NotMapped]
+    public ICollection<StudentSubmission> StudentSubmissions => Submissions;
 }

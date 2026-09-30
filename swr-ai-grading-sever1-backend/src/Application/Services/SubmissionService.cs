@@ -147,7 +147,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 await _storage.UploadAsync(storagePath, memoryStream, file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ct);
 
                 // 5. Tạo bản ghi Submission với status = Submitted (0)
-                var submission = new Submission
+                var submission = new StudentSubmission
                 {
                     SubmissionId = Guid.NewGuid(),
                     SubmissionFile = file.FileName,
@@ -543,11 +543,11 @@ public sealed partial class SubmissionService : ISubmissionService
         var match = StudentCodeRegex().Match(filename);
         if (!match.Success)
         {
-            return Result<StudentExamination>.Failure("Tên file không chứa mã sinh viên hợp lệ.", "INVALID_FILENAME");
+            return Result<StudentExamination>.Failure("Tên file không chứa mã sinh viên.", "INVALID_FILENAME");
         }
 
         var studentCode = match.Value.ToUpperInvariant();
-        var student = await _dbContext.Students.FirstOrDefaultAsync(s => s.StundentCode == studentCode, ct);
+        var student = await _dbContext.Students.FirstOrDefaultAsync(s => s.StudentCode == studentCode, ct);
 
         if (student is null)
         {
@@ -584,7 +584,7 @@ public sealed partial class SubmissionService : ISubmissionService
         return Result<StudentExamination>.Success(studentExam);
     }
 
-    private static SubmissionDetailDTO ToDetailDto(Submission submission)
+    private static SubmissionDetailDTO ToDetailDto(StudentSubmission submission)
     {
         var criteriaScores = ParseCriteriaScores(submission.AiLogs);
 
@@ -595,7 +595,7 @@ public sealed partial class SubmissionService : ISubmissionService
             FilePath = submission.FilePath,
             DiaryId = submission.DiaryId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
-            StudentCode = submission.StudentExamination?.Student?.StundentCode ?? string.Empty,
+            StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
             StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,
             AiScore = submission.AiScore,
             AiLogs = submission.AiLogs,
@@ -652,6 +652,100 @@ public sealed partial class SubmissionService : ISubmissionService
         clean = Regex.Replace(clean, @"_+", "_").Trim('_');
 
         return string.IsNullOrWhiteSpace(clean) ? "default_exam" : clean;
+    }
+
+    /// <summary>
+    /// Xem chi tiết lịch sử và dòng thời gian xử lý của một bài thi.
+    /// </summary>
+    public async Task<Result<Application.DTOs.Submissions.SubmissionHistoryDto>> GetHistoryAsync(
+        Guid submissionId,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        var submission = await _dbContext.StudentSubmissions
+            .AsNoTracking()
+            .Include(s => s.GradingDiary)
+            .Include(s => s.StudentExamination)
+                .ThenInclude(se => se.Student)
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
+
+        if (submission is null)
+        {
+            return Result<Application.DTOs.Submissions.SubmissionHistoryDto>.Failure("Không tìm thấy bài nộp.", "SUBMISSION_NOT_FOUND");
+        }
+
+        if (!isElevatedRole && submission.GradingDiary?.CreateById != currentUserId)
+        {
+            return Result<Application.DTOs.Submissions.SubmissionHistoryDto>.Failure("Bạn không có quyền truy cập lịch sử bài nộp này.", "FORBIDDEN");
+        }
+
+        var timeline = new List<Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto>();
+
+        // 1. Mốc nộp bài
+        timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
+        {
+            Stage = "Submitted",
+            Title = "Sinh viên nộp bài",
+            Description = $"Bài làm '{submission.SubmissionFile}' đã được tải lên hệ thống lưu trữ.",
+            Timestamp = submission.CreatedDate,
+            IsCompleted = true
+        });
+
+        // 2. Mốc AI chấm
+        var hasAiGraded = submission.Status >= SubmissionStatus.AI_Graded && submission.AiScore.HasValue;
+        timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
+        {
+            Stage = "AI_Graded",
+            Title = "Trợ lý AI chấm bài",
+            Description = hasAiGraded
+                ? $"AI đã chấm và gợi ý mức điểm: {submission.AiScore:0.00}/10."
+                : "Chưa kích hoạt hoặc chưa hoàn tất chấm AI.",
+            Timestamp = hasAiGraded ? submission.CreatedDate : null,
+            IsCompleted = hasAiGraded
+        });
+
+        // 3. Mốc Giảng viên Review
+        var hasReviewed = submission.Status >= SubmissionStatus.Lecturer_Reviewed && submission.LecturerScore.HasValue;
+        timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
+        {
+            Stage = "Lecturer_Reviewed",
+            Title = "Giảng viên đánh giá & chấm điểm",
+            Description = hasReviewed
+                ? $"Giảng viên đã chấm {submission.LecturerScore:0.00}/10. Nhận xét: {(string.IsNullOrWhiteSpace(submission.Comment) ? "Không có" : submission.Comment)}"
+                : "Giảng viên chưa review bài làm.",
+            Timestamp = hasReviewed ? submission.UpdatedDate : null,
+            IsCompleted = hasReviewed
+        });
+
+        // 4. Mốc Chốt điểm Final
+        var isFinal = submission.Status == SubmissionStatus.Final;
+        timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
+        {
+            Stage = "Final",
+            Title = "Chốt điểm chính thức",
+            Description = isFinal
+                ? $"Điểm số chính thức của bài thi là: {submission.LecturerScore:0.00}/10."
+                : "Bài thi chưa được chốt điểm chính thức.",
+            Timestamp = isFinal ? submission.UpdatedDate : null,
+            IsCompleted = isFinal
+        });
+
+        var historyDto = new Application.DTOs.Submissions.SubmissionHistoryDto
+        {
+            SubmissionId = submission.SubmissionId,
+            SubmissionFile = submission.SubmissionFile,
+            StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
+            StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,
+            DiaryName = submission.GradingDiary?.Name ?? string.Empty,
+            CurrentStatus = submission.Status,
+            AiScore = submission.AiScore,
+            LecturerScore = submission.LecturerScore,
+            LecturerComment = submission.Comment,
+            Timeline = timeline
+        };
+
+        return Result<Application.DTOs.Submissions.SubmissionHistoryDto>.Success(historyDto);
     }
 
     [GeneratedRegex(@"[A-Za-z]{2}\d{5,8}")]

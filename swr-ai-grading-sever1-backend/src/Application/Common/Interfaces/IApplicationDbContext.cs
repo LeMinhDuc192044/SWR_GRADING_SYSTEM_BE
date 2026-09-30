@@ -10,7 +10,8 @@ public interface IApplicationDbContext
     DbSet<Lecturer> Lecturers { get; }
     DbSet<PaperSet> PaperSets { get; }
     DbSet<Examination> Examinations { get; }
-    DbSet<Submission> Submissions { get; }
+    DbSet<StudentSubmission> StudentSubmissions { get; }
+    DbSet<StudentSubmission> Submissions { get; }
     DbSet<Semester> Semesters { get; }
     DbSet<StudentExamination> StudentExaminations { get; }
     DbSet<GradingDiary> GradingDiaries { get; }
