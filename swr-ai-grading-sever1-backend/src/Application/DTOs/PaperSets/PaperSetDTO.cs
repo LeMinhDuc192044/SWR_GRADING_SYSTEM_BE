@@ -39,6 +39,19 @@ public sealed class PaperSetFileDTO
     public long FileSize { get; set; }
 }
 
+public sealed class PaperSetExtractedFileDTO
+{
+    public PaperSetFileType? FileType { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+}
+
+public sealed class PaperSetExtractedContentsDTO
+{
+    public Guid PaperSetId { get; set; }
+    public IReadOnlyList<PaperSetExtractedFileDTO> Files { get; set; } = [];
+}
+
 public sealed class PaperSetDetailDTO : PaperSetMetadataDTO
 {
     public string StoragePath { get; set; } = string.Empty;

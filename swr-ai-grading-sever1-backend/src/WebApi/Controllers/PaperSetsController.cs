@@ -47,6 +47,39 @@ public sealed class PaperSetsController : ControllerBase
             : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
+    [HttpPost("read-document")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(52_428_800)]
+    public async Task<IActionResult> ReadDocument(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "A non-empty document file is required."));
+
+        await using var content = file.OpenReadStream();
+        var upload = new MaterialFileUpload
+        {
+            FileType = PaperSetFileType.Question,
+            Content = content,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            Length = file.Length
+        };
+        var result = await _service.ReadDocumentAsync(upload, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    [HttpGet("{id:guid}/read-files")]
+    public async Task<IActionResult> ReadFiles(Guid id, CancellationToken ct)
+    {
+        var result = await _service.ReadFilesAsync(id, ct);
+        if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
+        return result.ErrorCode == "PAPER_SET_NOT_FOUND"
+            ? NotFound(ApiResponse.Failure(404, result.Error!))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
     {
