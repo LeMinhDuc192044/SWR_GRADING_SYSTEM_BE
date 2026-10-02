@@ -520,6 +520,11 @@ public sealed partial class SubmissionService : ISubmissionService
                     var text = await _geminiService.ExtractTextFromDocxAsync(download.Content, ct);
                     if (!string.IsNullOrWhiteSpace(text)) return text;
                 }
+                else if (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase))
+                {
+                    var text = await _geminiService.ExtractTextFromXlsxAsync(download.Content, ct);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
                 else
                 {
                     using var reader = new StreamReader(download.Content);

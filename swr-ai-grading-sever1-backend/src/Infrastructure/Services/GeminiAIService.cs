@@ -183,6 +183,66 @@ public sealed class GeminiAIService : IGeminiAIService
         }
     }
 
+    public Task<string> ExtractTextFromXlsxAsync(Stream xlsxStream, CancellationToken ct = default)
+    {
+        if (xlsxStream.CanSeek)
+        {
+            xlsxStream.Position = 0;
+        }
+
+        try
+        {
+            using var document = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(xlsxStream, false);
+            var workbookPart = document.WorkbookPart;
+            if (workbookPart == null) return Task.FromResult(string.Empty);
+
+            var sharedStringTable = workbookPart.SharedStringTablePart?.SharedStringTable;
+            var sb = new StringBuilder();
+
+            foreach (var sheetPart in workbookPart.WorksheetParts)
+            {
+                var worksheet = sheetPart.Worksheet;
+                foreach (var row in worksheet.Descendants<DocumentFormat.OpenXml.Spreadsheet.Row>())
+                {
+                    var rowValues = new List<string>();
+                    foreach (var cell in row.Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>())
+                    {
+                        string cellValue = GetCellValue(cell, sharedStringTable);
+                        if (!string.IsNullOrWhiteSpace(cellValue))
+                        {
+                            rowValues.Add(cellValue.Trim());
+                        }
+                    }
+                    if (rowValues.Count > 0)
+                    {
+                        sb.AppendLine(string.Join(" | ", rowValues));
+                    }
+                }
+            }
+
+            return Task.FromResult(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            return Task.FromException<string>(ex);
+        }
+    }
+
+    private static string GetCellValue(DocumentFormat.OpenXml.Spreadsheet.Cell cell, DocumentFormat.OpenXml.Spreadsheet.SharedStringTable? sharedStringTable)
+    {
+        if (cell.CellValue == null) return string.Empty;
+        string val = cell.CellValue.Text;
+        if (cell.DataType != null && cell.DataType.Value == DocumentFormat.OpenXml.Spreadsheet.CellValues.SharedString)
+        {
+            if (int.TryParse(val, out int index) && sharedStringTable != null)
+            {
+                var item = sharedStringTable.ElementAtOrDefault(index);
+                return item?.InnerText ?? string.Empty;
+            }
+        }
+        return val;
+    }
+
     public async Task<GradingResultDto> GradeSubmissionAsync(
         string studentSubmissionText,
         string rubricContent,
@@ -243,7 +303,7 @@ public sealed class GeminiAIService : IGeminiAIService
         HttpResponseMessage response = null!;
         string responseBody = string.Empty;
 
-        var modelsToTry = new List<string> { _model };
+        var modelsToTry = new List<string> { _model, "gemini-2.5-flash" };
 
         bool success = false;
         foreach (var currentModel in modelsToTry)
@@ -322,38 +382,37 @@ public sealed class GeminiAIService : IGeminiAIService
     private static string BuildPrompt(string studentSubmissionText, string rubricContent)
     {
         return $$$"""
-            Bạn là giảng viên chuyên nghiệp chấm bài kiểm tra/đồ án của sinh viên.
-            Nhiệm vụ của bạn là đọc kỹ bài làm của sinh viên và chấm điểm thật chi tiết, công tâm dựa trên Rubric đáp án được cung cấp.
+            Bạn là giảng viên chấm thi đại học chuyên nghiệp, công tâm và vô cùng cẩn thận.
+            Nhiệm vụ của bạn là xem xét toàn bộ bài làm của sinh viên (bao gồm cả VĂN BẢN TRÍCH XUẤT và TẤT CẢ HÌNH ÁNH / SƠ ĐỒ ĐÍNH KÈM) và chấm điểm chi tiết từng tiêu chí dựa trên Rubric đáp án được cung cấp.
 
-            [RUBRIC ĐÁP ÁN & THANG ĐIỂM]
+            [RUBRIC ĐÁP ÁN & THANG ĐIỂM CHI TIẾT]
             {{{rubricContent}}}
 
-            [BÀI LÀM CỦA SINH VIÊN]
+            [BÀI LÀM CỦA SINH VIÊN (VĂN BẢN & VỊ TRÍ SƠ ĐỒ)]
             {{{studentSubmissionText}}}
 
-            [LƯU Ý QUAN TRỌNG VỀ HÌNH ẢNH / SƠ ĐỒ ĐÍNH KÈM]
-            - Bài làm của sinh viên bao gồm cả VĂN BẢN TRÍCH XUẤT bên trên VÀ CÁC HÌNH ẢNH / SƠ ĐỒ (Use Case diagram, Class diagram, Sequence diagram, ERD, Flowchart...) được đính kèm trực tiếp trong yêu cầu này.
-            - Bạn PHẢI quan sát và phân tích tất cả các hình ảnh/sơ đồ đính kèm bên dưới để đánh giá bài làm của sinh viên.
-            - Nếu sinh viên vẽ sơ đồ hoặc làm bài trong hình ảnh đính kèm, bạn PHẢI chấm điểm đạt tương ứng với tiêu chí đó. TUYỆT ĐỐI KHÔNG ĐƯỢC đánh giá là "sinh viên bỏ trống hoặc không trả lời" khi có hình ảnh/sơ đồ thể hiện bài làm.
+            [QUY TẮC PHÂN TÍCH HÌNH ÁNH / SƠ ĐỒ ĐÍNH KÈM - BẮT BUỘC THỰC HIỆN]
+            1. Các hình ảnh/sơ đồ được đính kèm theo đúng thứ tự 1, 2, 3... tương ứng với các ký hiệu tag [HÌNH ÁNH / SƠ ĐỒ #1...], [HÌNH ÁNH / SƠ ĐỒ #2...] trong văn bản bài làm.
+            2. Bạn PHẢI mở và phân tích TẤT CẢ các hình ảnh/sơ đồ đính kèm tương ứng với từng câu hỏi (như Question 1, Question 2, Question 3...).
+            3. RẤT QUAN TRỌNG: Nếu một câu hỏi (ví dụ Question 3) có sơ đồ hoặc hình ảnh làm bài được chèn bên dưới tiêu đề câu hỏi đó, bạn PHẢI quan sát kỹ hình ảnh/sơ đồ đó để chấm điểm. TUYỆT ĐỐI KHÔNG ĐƯỢC kết luận là "Sinh viên chỉ ghi tiêu đề và bỏ trống" khi câu hỏi đó có sơ đồ/hình ảnh làm bài đi kèm.
+            4. Hãy chấm đúng từng tiêu chí theo Rubric. Tổng điểm bằng tổng điểm thực tế của tất cả các tiêu chí.
 
-            [YÊU CẦU ĐẦU RA]
-            Hãy chấm điểm từng tiêu chí, tính tổng điểm và nhận xét chi tiết.
-            Bạn PHẢI trả về định dạng JSON thuần túy theo cấu trúc sau (không kèm văn bản mở đầu hay kết thúc):
+            [YÊU CẦU ĐẦU RA JSON CHUẨN]
+            Trả về duy nhất định dạng JSON thuần túy theo cấu trúc:
             {
               "total_score": 8.0,
               "criteria_scores": [
                 {
-                  "criterion": "Tên tiêu chí 1",
+                  "criterion": "Question X: Tên câu hỏi / tiêu chí",
                   "max_score": 3.0,
                   "actual_score": 2.5,
-                  "comment": "Nhận xét cụ thể đạt được gì, thiếu gì (kết hợp phân tích từ văn bản và sơ đồ/hình ảnh đính kèm)"
+                  "comment": "Nhận xét chi tiết đạt được gì, thiếu sót gì dựa trên cả phần văn bản và sơ đồ/hình ảnh đính kèm của câu hỏi này."
                 }
               ],
               "missing_items": [
-                "Nội dung còn thiếu sót 1",
-                "Nội dung cần bổ sung 2"
+                "Các chi tiết hoặc sơ đồ/yêu cầu còn thiếu"
               ],
-              "overall_comment": "Nhận xét tổng thể chất lượng bài làm của sinh viên (bao gồm cả phần văn bản và sơ đồ/hình ảnh đính kèm)"
+              "overall_comment": "Nhận xét tổng quan toàn bộ bài làm."
             }
             """;
     }
