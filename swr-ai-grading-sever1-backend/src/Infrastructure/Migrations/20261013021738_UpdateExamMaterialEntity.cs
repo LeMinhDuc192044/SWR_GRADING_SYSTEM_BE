@@ -288,13 +288,9 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     submission_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    submission_file = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    file_path = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
-                    ai_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
-                    lecturer_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
-                    ai_logs = table.Column<string>(type: "text", nullable: true),
+                    file_submissions = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    student_id = table.Column<Guid>(type: "uuid", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
-                    comment = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: false),
                     created_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     diary_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -314,6 +310,12 @@ namespace Infrastructure.Migrations
                         column: x => x.student_examination_id,
                         principalTable: "student_examination",
                         principalColumn: "student_examination_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_student_submission_students_student_id",
+                        column: x => x.student_id,
+                        principalTable: "students",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -552,6 +554,11 @@ namespace Infrastructure.Migrations
                 name: "IX_student_submission_student_examination_id",
                 table: "student_submission",
                 column: "student_examination_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_student_submission_student_id",
+                table: "student_submission",
+                column: "student_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_submission_evaluations_admin_selected_id",

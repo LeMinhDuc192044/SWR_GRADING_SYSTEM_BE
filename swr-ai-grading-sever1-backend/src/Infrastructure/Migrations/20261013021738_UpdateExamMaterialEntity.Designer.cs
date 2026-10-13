@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261013013109_UpdateExamMaterialEntity")]
+    [Migration("20261013021738_UpdateExamMaterialEntity")]
     partial class UpdateExamMaterialEntity
     {
         /// <inheritdoc />
@@ -512,20 +512,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("submission_id");
 
-                    b.Property<string>("AiLogs")
-                        .HasColumnType("text")
-                        .HasColumnName("ai_logs");
-
-                    b.Property<decimal?>("AiScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("ai_score");
-
-                    b.Property<string>("Comment")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("comment");
-
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_date");
@@ -534,14 +520,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("diary_id");
 
-                    b.Property<string>("FilePath")
+                    b.Property<string>("FileSubmissions")
+                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
-                        .HasColumnName("file_path");
-
-                    b.Property<decimal?>("LecturerScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("lecturer_score");
+                        .HasColumnName("file_submissions");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -551,11 +534,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("student_examination_id");
 
-                    b.Property<string>("SubmissionFile")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("submission_file");
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
 
                     b.Property<DateTime>("UpdatedDate")
                         .HasColumnType("timestamp with time zone")
@@ -566,6 +547,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("DiaryId");
 
                     b.HasIndex("StudentExaminationId");
+
+                    b.HasIndex("StudentId");
 
                     b.ToTable("student_submission");
                 });
@@ -919,7 +902,15 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("GradingDiary");
+
+                    b.Navigation("Student");
 
                     b.Navigation("StudentExamination");
                 });
