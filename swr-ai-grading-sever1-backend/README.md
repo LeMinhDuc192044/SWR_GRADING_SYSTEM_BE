@@ -240,6 +240,8 @@ dotnet ef database update <PreviousMigrationName> --project src/Infrastructure -
 | ExamMaterials | `/api/examinations/{id}/materials` (upload/list) |
 | Submissions | `/api/submissions` (CRUD, submit) |
 | Gradings | `/api/gradings` (CRUD) |
+| Diagrams | `/api/diagrams` (CRUD, get/create elements) |
+| DiagramElements | `/api/diagram-elements` (CRUD, self-ref) |
 
 ---
 

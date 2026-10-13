@@ -122,6 +122,10 @@ builder.Services.AddScoped<IGradingDiaryService, GradingDiaryService>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ILecturerService, LecturerService>();
+builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
+builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
+builder.Services.AddScoped<IDiagramService, DiagramService>();
+builder.Services.AddScoped<IDiagramElementService, DiagramElementService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>
 {
