@@ -131,14 +131,20 @@ public sealed partial class SubmissionService : ISubmissionService
                 await file.CopyToAsync(memoryStream, ct);
                 memoryStream.Position = 0;
 
-                // 3. Trích xuất text từ file docx trước để validate nội dung
-                var studentText = await _geminiService.ExtractTextFromDocxAsync(memoryStream, ct);
-                if (string.IsNullOrWhiteSpace(studentText))
+                // 3. Trích xuất text và hình ảnh từ file docx trước để validate nội dung
+                var extractedContent = await _geminiService.ExtractContentFromDocxAsync(memoryStream, ct);
+                var studentText = extractedContent.Text;
+                if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
                 {
                     summary.IsSuccess = false;
-                    summary.ErrorMessage = "Không thể trích xuất văn bản từ bài làm (file rỗng hoặc chỉ có ảnh scan).";
+                    summary.ErrorMessage = "Không thể trích xuất văn bản hoặc hình ảnh từ bài làm.";
                     results.Add(summary);
                     continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(studentText))
+                {
+                    studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm]";
                 }
 
                 // 4. File hợp lệ -> Upload lên Supabase Storage với format chuẩn
@@ -326,11 +332,17 @@ public sealed partial class SubmissionService : ISubmissionService
         // 1. Tải file từ storage
         var download = await _storage.DownloadAsync(submission.FileSubmissions, "submissions", ct);
 
-        // 2. Trích xuất text
-        var studentText = await _geminiService.ExtractTextFromDocxAsync(download.Content, ct);
+        // 2. Trích xuất text & hình ảnh từ file docx
+        var extractedContent = await _geminiService.ExtractContentFromDocxAsync(download.Content, ct);
+        var studentText = extractedContent.Text;
+        if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Không thể trích xuất văn bản hoặc hình ảnh từ file bài làm.", "EMPTY_CONTENT");
+        }
+
         if (string.IsNullOrWhiteSpace(studentText))
         {
-            return Result<SubmissionDetailDTO>.Failure("Không thể trích xuất văn bản từ file bài làm.", "EMPTY_CONTENT");
+            studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm bên dưới]";
         }
 
         // 3. Lấy Rubric
@@ -344,8 +356,8 @@ public sealed partial class SubmissionService : ISubmissionService
 
         var rubricText = await LoadRubricTextAsync(paperSet, ct);
 
-        // 4. Gọi Gemini chấm bài
-        var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
+        // 4. Gọi Gemini chấm bài (truyền hình ảnh đính kèm)
+        var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, extractedContent.Images, ct);
 
         // 5. Cập nhật AI score & AI logs, chuyển status sang AI_Graded (1). KHÔNG ghi đè comment của GV và không đổi UpdatedDate!
         AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
@@ -510,6 +522,11 @@ public sealed partial class SubmissionService : ISubmissionService
                 if (string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
                 {
                     var text = await _geminiService.ExtractTextFromDocxAsync(download.Content, ct);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+                else if (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase))
+                {
+                    var text = await _geminiService.ExtractTextFromXlsxAsync(download.Content, ct);
                     if (!string.IsNullOrWhiteSpace(text)) return text;
                 }
                 else

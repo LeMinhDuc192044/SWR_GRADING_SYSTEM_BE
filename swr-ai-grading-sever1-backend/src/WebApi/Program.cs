@@ -123,7 +123,10 @@ builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ILecturerService, LecturerService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
-builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>();
+builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
 
 builder.Services.AddScoped<ISupabaseStorage>(sp =>
 {
