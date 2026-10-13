@@ -14,6 +14,7 @@ public sealed class GradingDiaryRepository : Repository<GradingDiary>, IGradingD
             .Include(gd => gd.PaperSet)
             .Include(gd => gd.CreatedBy)
             .Include(gd => gd.Submissions)
+                .ThenInclude(submission => submission.Evaluations)
             .FirstOrDefaultAsync(gd => gd.GradingDiaryId == id, ct);
     }
 
@@ -23,6 +24,7 @@ public sealed class GradingDiaryRepository : Repository<GradingDiary>, IGradingD
             .Include(gd => gd.PaperSet)
             .Include(gd => gd.CreatedBy)
             .Include(gd => gd.Submissions)
+                .ThenInclude(submission => submission.Evaluations)
             .AsNoTracking();
 
         if (lecturerId.HasValue)

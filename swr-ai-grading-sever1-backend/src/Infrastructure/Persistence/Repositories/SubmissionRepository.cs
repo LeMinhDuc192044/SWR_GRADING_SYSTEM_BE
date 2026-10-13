@@ -11,12 +11,12 @@ public sealed class SubmissionRepository : Repository<StudentSubmission>, ISubmi
 
     public async Task<bool> HasGradingsAsync(Guid submissionId, CancellationToken ct = default)
     {
-        var submission = await _set.AsNoTracking().FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
-        if (submission is null) return false;
-
-        return submission.LecturerScore.HasValue ||
-               submission.Status == SubmissionStatus.Lecturer_Reviewed ||
-               submission.Status == SubmissionStatus.Final;
+        return await _set.AsNoTracking().AnyAsync(s =>
+            s.SubmissionId == submissionId &&
+            (s.Evaluations.Any(evaluation =>
+                 evaluation.EvaluationType == EvaluationType.Lecturer && evaluation.TotalScore.HasValue) ||
+             s.Status == SubmissionStatus.Lecturer_Reviewed ||
+             s.Status == SubmissionStatus.Final), ct);
     }
 
     public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)

@@ -2,7 +2,7 @@ namespace Domain.Enums;
 
 public enum EvaluationType
 {
-    Not_Evaluated = 0,
-    Evaluated = 1,
-    Failed = 2,
+    AI = 0,
+    Lecturer = 1,
+    Admin = 2,
 }

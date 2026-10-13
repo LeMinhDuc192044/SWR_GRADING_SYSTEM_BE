@@ -156,12 +156,11 @@ public sealed partial class SubmissionService : ISubmissionService
                 var submission = new StudentSubmission
                 {
                     SubmissionId = Guid.NewGuid(),
-                    SubmissionFile = file.FileName,
-                    FilePath = storagePath,
+                    FileSubmissions = storagePath,
+                    StudentId = studentExam.StudentId,
                     Status = SubmissionStatus.Submitted, // 0 = Submitted
                     DiaryId = diaryId,
                     StudentExaminationId = studentExam.StudentExaminationId,
-                    Comment = string.Empty, // Nhận xét dành riêng cho giảng viên
                     CreatedDate = DateTime.UtcNow,
                     UpdatedDate = DateTime.UtcNow
                 };
@@ -169,20 +168,19 @@ public sealed partial class SubmissionService : ISubmissionService
                 await _submissionRepository.AddAsync(submission, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
                 summary.SubmissionId = submission.SubmissionId;
-                summary.FilePath = submission.FilePath;
+                summary.FilePath = submission.FileSubmissions;
 
                 // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
                 try
                 {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, extractedContent.Images, ct);
-                    submission.AiScore = gradeResult.TotalScore;
-                    submission.AiLogs = gradeResult.RawAiLogJson;
+                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
+                    AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
                     submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
 
                     _submissionRepository.Update(submission);
                     await _unitOfWork.SaveChangesAsync(ct);
 
-                    summary.AiScore = submission.AiScore;
+                    summary.AiScore = gradeResult.TotalScore;
                     summary.CriteriaScores = gradeResult.CriteriaScores;
                 }
                 catch (Exception ex)
@@ -192,7 +190,7 @@ public sealed partial class SubmissionService : ISubmissionService
 
                 summary.IsSuccess = true;
                 summary.Status = submission.Status.ToString();
-                summary.Comment = submission.Comment;
+                summary.Comment = string.Empty;
                 successCount++;
             }
             catch (Exception ex)
@@ -237,6 +235,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .Where(s => s.DiaryId == diaryId)
             .OrderByDescending(s => s.CreatedDate)
             .ToListAsync(ct);
@@ -257,6 +256,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && s.DiaryId == diaryId, ct);
 
         if (submission is null)
@@ -282,6 +282,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
 
         if (submission is null)
@@ -310,6 +311,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 .ThenInclude(gd => gd.PaperSet)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
 
         if (submission is null)
@@ -322,13 +324,13 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền kích hoạt chấm AI cho bài nộp này.", "FORBIDDEN");
         }
 
-        if (string.IsNullOrWhiteSpace(submission.FilePath))
+        if (string.IsNullOrWhiteSpace(submission.FileSubmissions))
         {
             return Result<SubmissionDetailDTO>.Failure("Bài nộp chưa có file đính kèm trên hệ thống lưu trữ.", "FILE_NOT_FOUND");
         }
 
         // 1. Tải file từ storage
-        var download = await _storage.DownloadAsync(submission.FilePath, "submissions", ct);
+        var download = await _storage.DownloadAsync(submission.FileSubmissions, "submissions", ct);
 
         // 2. Trích xuất text & hình ảnh từ file docx
         var extractedContent = await _geminiService.ExtractContentFromDocxAsync(download.Content, ct);
@@ -358,8 +360,7 @@ public sealed partial class SubmissionService : ISubmissionService
         var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, extractedContent.Images, ct);
 
         // 5. Cập nhật AI score & AI logs, chuyển status sang AI_Graded (1). KHÔNG ghi đè comment của GV và không đổi UpdatedDate!
-        submission.AiScore = gradeResult.TotalScore;
-        submission.AiLogs = gradeResult.RawAiLogJson;
+        AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
         submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
 
         _submissionRepository.Update(submission);
@@ -397,6 +398,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
 
         if (submission is null)
@@ -411,8 +413,7 @@ public sealed partial class SubmissionService : ISubmissionService
 
         // Cập nhật điểm giảng viên và nhận xét (chuyển sang trạng thái Lecturer_Reviewed)
         // KHÔNG sửa ai_score hay ai_logs!
-        submission.LecturerScore = lecturerScore;
-        submission.Comment = comment?.Trim() ?? string.Empty;
+        AddEvaluation(submission, EvaluationType.Lecturer, lecturerScore, comment?.Trim());
         submission.Status = SubmissionStatus.Lecturer_Reviewed; // 2 = Lecturer_Reviewed
         submission.UpdatedDate = DateTime.UtcNow;
 
@@ -455,6 +456,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .AsQueryable();
 
         if (diaryId != Guid.Empty)
@@ -474,12 +476,14 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền chốt điểm cho bài nộp này.", "FORBIDDEN");
         }
 
-        if (submission.Status != SubmissionStatus.Lecturer_Reviewed && !submission.LecturerScore.HasValue)
+        var lecturerEvaluation = GetLatestEvaluation(submission, EvaluationType.Lecturer);
+        if (submission.Status != SubmissionStatus.Lecturer_Reviewed || lecturerEvaluation?.TotalScore.HasValue != true)
         {
             return Result<SubmissionDetailDTO>.Failure("Bài nộp phải được giảng viên review trước khi chốt điểm.", "INVALID_STATUS");
         }
 
         // Chuyển sang trạng thái Final (3). KHÔNG cập nhật lại điểm số và giữ nguyên ngày review (UpdatedDate).
+        lecturerEvaluation!.IsFinalScore = true;
         submission.Status = SubmissionStatus.Final; // 3 = Final
 
         _submissionRepository.Update(submission);
@@ -603,26 +607,59 @@ public sealed partial class SubmissionService : ISubmissionService
 
     private static SubmissionDetailDTO ToDetailDto(StudentSubmission submission)
     {
-        var criteriaScores = ParseCriteriaScores(submission.AiLogs);
+        var aiEvaluation = GetLatestEvaluation(submission, EvaluationType.AI);
+        var lecturerEvaluation = GetLatestEvaluation(submission, EvaluationType.Lecturer);
+        var criteriaScores = ParseCriteriaScores(aiEvaluation?.GeneralFeedback);
 
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
-            SubmissionFile = submission.SubmissionFile,
-            FilePath = submission.FilePath,
+            SubmissionFile = Path.GetFileName(submission.FileSubmissions),
+            FilePath = submission.FileSubmissions,
             DiaryId = submission.DiaryId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
             StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
             StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,
-            AiScore = submission.AiScore,
-            AiLogs = submission.AiLogs,
-            LecturerScore = submission.LecturerScore,
-            Comment = submission.Comment ?? string.Empty,
+            AiScore = aiEvaluation?.TotalScore,
+            AiLogs = aiEvaluation?.GeneralFeedback,
+            LecturerScore = lecturerEvaluation?.TotalScore,
+            Comment = lecturerEvaluation?.GeneralFeedback ?? string.Empty,
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate
         };
+    }
+
+    private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
+    {
+        return submission.Evaluations
+            .Where(evaluation => evaluation.EvaluationType == evaluationType)
+            .OrderByDescending(evaluation => evaluation.EvaluationRound)
+            .ThenByDescending(evaluation => evaluation.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    private static void AddEvaluation(
+        StudentSubmission submission,
+        EvaluationType evaluationType,
+        decimal? score,
+        string? feedback)
+    {
+        var nextRound = submission.Evaluations
+            .Where(evaluation => evaluation.EvaluationType == evaluationType)
+            .Select(evaluation => evaluation.EvaluationRound)
+            .DefaultIfEmpty(-1)
+            .Max() + 1;
+
+        submission.Evaluations.Add(new SubmissionEvaluation
+        {
+            EvaluationType = evaluationType,
+            EvaluationRound = nextRound,
+            TotalScore = score,
+            GeneralFeedback = feedback,
+            CreatedAt = DateTime.UtcNow
+        });
     }
 
     private static List<CriterionScoreDto> ParseCriteriaScores(string? aiLogsJson)
@@ -685,6 +722,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
 
         if (submission is null)
@@ -704,32 +742,34 @@ public sealed partial class SubmissionService : ISubmissionService
         {
             Stage = "Submitted",
             Title = "Sinh viên nộp bài",
-            Description = $"Bài làm '{submission.SubmissionFile}' đã được tải lên hệ thống lưu trữ.",
+            Description = $"Bài làm '{Path.GetFileName(submission.FileSubmissions)}' đã được tải lên hệ thống lưu trữ.",
             Timestamp = submission.CreatedDate,
             IsCompleted = true
         });
 
         // 2. Mốc AI chấm
-        var hasAiGraded = submission.Status >= SubmissionStatus.AI_Graded && submission.AiScore.HasValue;
+        var aiEvaluation = GetLatestEvaluation(submission, EvaluationType.AI);
+        var lecturerEvaluation = GetLatestEvaluation(submission, EvaluationType.Lecturer);
+        var hasAiGraded = submission.Status >= SubmissionStatus.AI_Graded && aiEvaluation?.TotalScore.HasValue == true;
         timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
         {
             Stage = "AI_Graded",
             Title = "Trợ lý AI chấm bài",
             Description = hasAiGraded
-                ? $"AI đã chấm và gợi ý mức điểm: {submission.AiScore:0.00}/10."
+                ? $"AI đã chấm và gợi ý mức điểm: {aiEvaluation!.TotalScore:0.00}/10."
                 : "Chưa kích hoạt hoặc chưa hoàn tất chấm AI.",
             Timestamp = hasAiGraded ? submission.CreatedDate : null,
             IsCompleted = hasAiGraded
         });
 
         // 3. Mốc Giảng viên Review
-        var hasReviewed = submission.Status >= SubmissionStatus.Lecturer_Reviewed && submission.LecturerScore.HasValue;
+        var hasReviewed = submission.Status >= SubmissionStatus.Lecturer_Reviewed && lecturerEvaluation?.TotalScore.HasValue == true;
         timeline.Add(new Application.DTOs.Submissions.SubmissionHistoryTimelineEventDto
         {
             Stage = "Lecturer_Reviewed",
             Title = "Giảng viên đánh giá & chấm điểm",
             Description = hasReviewed
-                ? $"Giảng viên đã chấm {submission.LecturerScore:0.00}/10. Nhận xét: {(string.IsNullOrWhiteSpace(submission.Comment) ? "Không có" : submission.Comment)}"
+                ? $"Giảng viên đã chấm {lecturerEvaluation!.TotalScore:0.00}/10. Nhận xét: {(string.IsNullOrWhiteSpace(lecturerEvaluation.GeneralFeedback) ? "Không có" : lecturerEvaluation.GeneralFeedback)}"
                 : "Giảng viên chưa review bài làm.",
             Timestamp = hasReviewed ? submission.UpdatedDate : null,
             IsCompleted = hasReviewed
@@ -742,7 +782,7 @@ public sealed partial class SubmissionService : ISubmissionService
             Stage = "Final",
             Title = "Chốt điểm chính thức",
             Description = isFinal
-                ? $"Điểm số chính thức của bài thi là: {submission.LecturerScore:0.00}/10."
+                ? $"Điểm số chính thức của bài thi là: {lecturerEvaluation?.TotalScore:0.00}/10."
                 : "Bài thi chưa được chốt điểm chính thức.",
             Timestamp = isFinal ? submission.UpdatedDate : null,
             IsCompleted = isFinal
@@ -751,14 +791,14 @@ public sealed partial class SubmissionService : ISubmissionService
         var historyDto = new Application.DTOs.Submissions.SubmissionHistoryDto
         {
             SubmissionId = submission.SubmissionId,
-            SubmissionFile = submission.SubmissionFile,
+            SubmissionFile = Path.GetFileName(submission.FileSubmissions),
             StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
             StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
             CurrentStatus = submission.Status,
-            AiScore = submission.AiScore,
-            LecturerScore = submission.LecturerScore,
-            LecturerComment = submission.Comment,
+            AiScore = aiEvaluation?.TotalScore,
+            LecturerScore = lecturerEvaluation?.TotalScore,
+            LecturerComment = lecturerEvaluation?.GeneralFeedback,
             Timeline = timeline
         };
 

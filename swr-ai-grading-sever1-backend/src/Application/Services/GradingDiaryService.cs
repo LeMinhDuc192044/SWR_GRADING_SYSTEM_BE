@@ -138,15 +138,20 @@ public sealed class GradingDiaryService : IGradingDiaryService
 
         var submissions = (diary.Submissions ?? Enumerable.Empty<StudentSubmission>())
             .OrderByDescending(s => s.CreatedDate)
-            .Select(s => new SubmissionItemDTO
+            .Select(s =>
             {
-                SubmissionId = s.SubmissionId,
-                SubmissionFile = s.SubmissionFile,
-                AiScore = s.AiScore,
-                LecturerScore = s.LecturerScore,
-                Status = s.Status,
-                Comment = s.Comment ?? string.Empty,
-                CreatedDate = s.CreatedDate
+                var aiEvaluation = GetLatestEvaluation(s, EvaluationType.AI);
+                var lecturerEvaluation = GetLatestEvaluation(s, EvaluationType.Lecturer);
+                return new SubmissionItemDTO
+                {
+                    SubmissionId = s.SubmissionId,
+                    SubmissionFile = System.IO.Path.GetFileName(s.FileSubmissions),
+                    AiScore = aiEvaluation?.TotalScore,
+                    LecturerScore = lecturerEvaluation?.TotalScore,
+                    Status = s.Status,
+                    Comment = lecturerEvaluation?.GeneralFeedback ?? string.Empty,
+                    CreatedDate = s.CreatedDate
+                };
             })
             .ToList();
 
@@ -317,16 +322,19 @@ public sealed class GradingDiaryService : IGradingDiaryService
             .AsNoTracking()
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
             .Where(s => s.DiaryId == id)
             .ToListAsync(ct);
 
         var comparisonList = submissions
             .Select(s =>
             {
+                var aiEvaluation = GetLatestEvaluation(s, EvaluationType.AI);
+                var lecturerEvaluation = GetLatestEvaluation(s, EvaluationType.Lecturer);
                 decimal? diff = null;
-                if (s.LecturerScore.HasValue && s.AiScore.HasValue)
+                if (lecturerEvaluation?.TotalScore is decimal lecturerScore && aiEvaluation?.TotalScore is decimal aiScore)
                 {
-                    diff = Math.Abs(s.LecturerScore.Value - s.AiScore.Value);
+                    diff = Math.Abs(lecturerScore - aiScore);
                 }
 
                 return new AiComparisonItemDto
@@ -334,12 +342,12 @@ public sealed class GradingDiaryService : IGradingDiaryService
                     SubmissionId = s.SubmissionId,
                     StudentCode = s.StudentExamination?.Student?.StudentCode ?? string.Empty,
                     StudentName = s.StudentExamination?.Student?.FullName ?? string.Empty,
-                    SubmissionFile = s.SubmissionFile,
-                    AiScore = s.AiScore,
-                    LecturerScore = s.LecturerScore,
+                    SubmissionFile = System.IO.Path.GetFileName(s.FileSubmissions),
+                    AiScore = aiEvaluation?.TotalScore,
+                    LecturerScore = lecturerEvaluation?.TotalScore,
                     ScoreDifference = diff,
                     Status = s.Status,
-                    Comment = s.Comment ?? string.Empty
+                    Comment = lecturerEvaluation?.GeneralFeedback ?? string.Empty
                 };
             })
             // Sắp xếp ưu tiên các bài có độ lệch điểm từ lớn đến bé
@@ -347,5 +355,14 @@ public sealed class GradingDiaryService : IGradingDiaryService
             .ToList();
 
         return Result<IReadOnlyList<AiComparisonItemDto>>.Success(comparisonList);
+    }
+
+    private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
+    {
+        return submission.Evaluations
+            .Where(evaluation => evaluation.EvaluationType == evaluationType)
+            .OrderByDescending(evaluation => evaluation.EvaluationRound)
+            .ThenByDescending(evaluation => evaluation.CreatedAt)
+            .FirstOrDefault();
     }
 }
