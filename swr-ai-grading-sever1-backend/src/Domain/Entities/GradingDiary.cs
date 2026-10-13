@@ -20,6 +20,7 @@ public class GradingDiary
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
+
     [Required]
     [Column("create_by_id")]
     [ForeignKey(nameof(CreatedBy))]
@@ -39,4 +40,6 @@ public class GradingDiary
 
     [NotMapped]
     public ICollection<StudentSubmission> StudentSubmissions => Submissions;
+
+
 }

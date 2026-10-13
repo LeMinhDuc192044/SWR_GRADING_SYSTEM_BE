@@ -6,11 +6,25 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class UpdateExamMaterialEntity : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "diagrams",
+                columns: table => new
+                {
+                    diagram_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    description = table.Column<string>(type: "text", nullable: true),
+                    file_template_url = table.Column<string>(type: "text", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_diagrams", x => x.diagram_id);
+                });
+
             migrationBuilder.CreateTable(
                 name: "semesters",
                 columns: table => new
@@ -46,6 +60,38 @@ namespace Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_users", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "diagram_elements",
+                columns: table => new
+                {
+                    element_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    diagram_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    element_code = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    shape_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    description = table.Column<string>(type: "text", nullable: true),
+                    is_requirement = table.Column<bool>(type: "boolean", nullable: false),
+                    file_template_url = table.Column<string>(type: "text", nullable: true),
+                    element_reference_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    element_reference_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    software_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_diagram_elements", x => x.element_id);
+                    table.ForeignKey(
+                        name: "FK_diagram_elements_diagram_elements_element_reference_id",
+                        column: x => x.element_reference_id,
+                        principalTable: "diagram_elements",
+                        principalColumn: "element_id");
+                    table.ForeignKey(
+                        name: "FK_diagram_elements_diagrams_diagram_id",
+                        column: x => x.diagram_id,
+                        principalTable: "diagrams",
+                        principalColumn: "diagram_id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -212,22 +258,25 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "questions",
+                name: "question_rubrics",
                 columns: table => new
                 {
-                    question_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    rubric_id = table.Column<Guid>(type: "uuid", nullable: false),
                     content = table.Column<string>(type: "text", nullable: false),
-                    point = table.Column<decimal>(type: "numeric", nullable: false),
-                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    paper_set_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    point = table.Column<decimal>(type: "numeric(5,2)", nullable: false),
+                    paper_set_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    diagram_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_questions", x => x.question_id);
+                    table.PrimaryKey("PK_question_rubrics", x => x.rubric_id);
                     table.ForeignKey(
-                        name: "FK_questions_paper_sets_paper_set_id",
+                        name: "FK_question_rubrics_diagrams_diagram_id",
+                        column: x => x.diagram_id,
+                        principalTable: "diagrams",
+                        principalColumn: "diagram_id");
+                    table.ForeignKey(
+                        name: "FK_question_rubrics_paper_sets_paper_set_id",
                         column: x => x.paper_set_id,
                         principalTable: "paper_sets",
                         principalColumn: "paper_set_id",
@@ -239,7 +288,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     submission_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    submission_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    submission_file = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     file_path = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     ai_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     lecturer_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
@@ -267,6 +316,154 @@ namespace Infrastructure.Migrations
                         principalColumn: "student_examination_id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.CreateTable(
+                name: "questions",
+                columns: table => new
+                {
+                    question_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    content = table.Column<string>(type: "text", nullable: false),
+                    point = table.Column<decimal>(type: "numeric(5,2)", nullable: false),
+                    paper_set_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    diagram_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    rubric_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_questions", x => x.question_id);
+                    table.ForeignKey(
+                        name: "FK_questions_diagrams_diagram_id",
+                        column: x => x.diagram_id,
+                        principalTable: "diagrams",
+                        principalColumn: "diagram_id");
+                    table.ForeignKey(
+                        name: "FK_questions_paper_sets_paper_set_id",
+                        column: x => x.paper_set_id,
+                        principalTable: "paper_sets",
+                        principalColumn: "paper_set_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_questions_question_rubrics_rubric_id",
+                        column: x => x.rubric_id,
+                        principalTable: "question_rubrics",
+                        principalColumn: "rubric_id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "submission_evaluations",
+                columns: table => new
+                {
+                    evaluation_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    submission_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    evaluation_type = table.Column<int>(type: "integer", nullable: false),
+                    evaluation_round = table.Column<int>(type: "integer", nullable: false),
+                    total_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
+                    general_feedback = table.Column<string>(type: "text", nullable: true),
+                    is_final_score = table.Column<bool>(type: "boolean", nullable: false),
+                    admin_selected_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    selection_reason = table.Column<string>(type: "text", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_submission_evaluations", x => x.evaluation_id);
+                    table.ForeignKey(
+                        name: "FK_submission_evaluations_student_submission_submission_id",
+                        column: x => x.submission_id,
+                        principalTable: "student_submission",
+                        principalColumn: "submission_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_submission_evaluations_users_admin_selected_id",
+                        column: x => x.admin_selected_id,
+                        principalTable: "users",
+                        principalColumn: "id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "submission_parsed_answers",
+                columns: table => new
+                {
+                    parsed_answer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    submission_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    question_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    element_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    extracted_text = table.Column<string>(type: "text", nullable: true),
+                    extracted_image_url = table.Column<string>(type: "text", nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_submission_parsed_answers", x => x.parsed_answer_id);
+                    table.ForeignKey(
+                        name: "FK_submission_parsed_answers_diagram_elements_element_id",
+                        column: x => x.element_id,
+                        principalTable: "diagram_elements",
+                        principalColumn: "element_id");
+                    table.ForeignKey(
+                        name: "FK_submission_parsed_answers_questions_question_id",
+                        column: x => x.question_id,
+                        principalTable: "questions",
+                        principalColumn: "question_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_submission_parsed_answers_student_submission_submission_id",
+                        column: x => x.submission_id,
+                        principalTable: "student_submission",
+                        principalColumn: "submission_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "evaluation_item_details",
+                columns: table => new
+                {
+                    detail_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    evaluation_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    parsed_answer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    score = table.Column<decimal>(type: "numeric(5,2)", nullable: false),
+                    comment = table.Column<string>(type: "text", nullable: true),
+                    ai_extraction_id = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_evaluation_item_details", x => x.detail_id);
+                    table.ForeignKey(
+                        name: "FK_evaluation_item_details_submission_evaluations_evaluation_id",
+                        column: x => x.evaluation_id,
+                        principalTable: "submission_evaluations",
+                        principalColumn: "evaluation_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_evaluation_item_details_submission_parsed_answers_parsed_an~",
+                        column: x => x.parsed_answer_id,
+                        principalTable: "submission_parsed_answers",
+                        principalColumn: "parsed_answer_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_diagram_elements_diagram_id",
+                table: "diagram_elements",
+                column: "diagram_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_diagram_elements_element_reference_id",
+                table: "diagram_elements",
+                column: "element_reference_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_evaluation_item_details_evaluation_id",
+                table: "evaluation_item_details",
+                column: "evaluation_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_evaluation_item_details_parsed_answer_id",
+                table: "evaluation_item_details",
+                column: "parsed_answer_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_examinations_examination_code",
@@ -306,9 +503,29 @@ namespace Infrastructure.Migrations
                 column: "semester_id");
 
             migrationBuilder.CreateIndex(
+                name: "IX_question_rubrics_diagram_id",
+                table: "question_rubrics",
+                column: "diagram_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_question_rubrics_paper_set_id",
+                table: "question_rubrics",
+                column: "paper_set_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_questions_diagram_id",
+                table: "questions",
+                column: "diagram_id");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_questions_paper_set_id",
                 table: "questions",
                 column: "paper_set_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_questions_rubric_id",
+                table: "questions",
+                column: "rubric_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_semesters_semester_code",
@@ -335,11 +552,48 @@ namespace Infrastructure.Migrations
                 name: "IX_student_submission_student_examination_id",
                 table: "student_submission",
                 column: "student_examination_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_submission_evaluations_admin_selected_id",
+                table: "submission_evaluations",
+                column: "admin_selected_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_submission_evaluations_submission_id",
+                table: "submission_evaluations",
+                column: "submission_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_submission_parsed_answers_element_id",
+                table: "submission_parsed_answers",
+                column: "element_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_submission_parsed_answers_question_id",
+                table: "submission_parsed_answers",
+                column: "question_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_submission_parsed_answers_submission_id",
+                table: "submission_parsed_answers",
+                column: "submission_id");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "evaluation_item_details");
+
+            migrationBuilder.DropTable(
+                name: "submission_evaluations");
+
+            migrationBuilder.DropTable(
+                name: "submission_parsed_answers");
+
+            migrationBuilder.DropTable(
+                name: "diagram_elements");
+
             migrationBuilder.DropTable(
                 name: "questions");
 
@@ -347,10 +601,16 @@ namespace Infrastructure.Migrations
                 name: "student_submission");
 
             migrationBuilder.DropTable(
+                name: "question_rubrics");
+
+            migrationBuilder.DropTable(
                 name: "grading_diary");
 
             migrationBuilder.DropTable(
                 name: "student_examination");
+
+            migrationBuilder.DropTable(
+                name: "diagrams");
 
             migrationBuilder.DropTable(
                 name: "paper_sets");

@@ -50,7 +50,6 @@ public class StudentSubmission
     [Column("diary_id")]
     [ForeignKey(nameof(GradingDiary))]
     public Guid DiaryId { get; set; }
-
     public GradingDiary GradingDiary { get; set; } = null!;
 
     // Student examination
@@ -58,6 +57,8 @@ public class StudentSubmission
     [Column("student_examination_id")]
     [ForeignKey(nameof(StudentExamination))]
     public Guid StudentExaminationId { get; set; }
-
     public StudentExamination StudentExamination { get; set; } = null!;
+
+    public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
+    public ICollection<SubmissionEvaluation> Evaluations { get; set; } = [];
 }
