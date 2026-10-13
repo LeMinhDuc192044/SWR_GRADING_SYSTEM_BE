@@ -73,4 +73,6 @@ public class PaperSet
     public ICollection<Question> Questions { get; set; } = [];
 
     public GradingDiary? GradingDiary { get; set; }
+    public ICollection<QuestionRubric> Rubrics { get; set; } = [];
+
 }
