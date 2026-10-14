@@ -47,6 +47,25 @@ public sealed class PaperSetsController : ControllerBase
             : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
+    [HttpPost("preview")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> PreviewPaperSet(
+        IFormFile question,
+        IFormFile? answerRubric,
+        CancellationToken ct)
+    {
+        if (question is null || question.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+
+        var questionUpload = ToUpload(question, PaperSetFileType.Question)!;
+        var rubricUpload = ToUpload(answerRubric, PaperSetFileType.AnswerRubric);
+
+        var result = await _service.PreviewPaperSetAsync(questionUpload, rubricUpload, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
     [HttpPost("read-document")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(52_428_800)]

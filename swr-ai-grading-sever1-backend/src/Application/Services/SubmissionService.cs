@@ -1,9 +1,11 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Application.Common;
 using Application.Common.Interfaces;
 using Application.DTOs.GradingDiaries;
+using Application.DTOs.PaperSets;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
@@ -173,7 +175,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
                 try
                 {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
+                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, extractedContent.Images, ct);
                     AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
                     submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
 
@@ -512,6 +514,71 @@ public sealed partial class SubmissionService : ISubmissionService
 
     private async Task<string> LoadRubricTextAsync(PaperSet paperSet, CancellationToken ct)
     {
+        // 1. Ưu tiên cao nhất: Lấy từ CSDL quan hệ (Questions + QuestionRubric) đã được bóc tách
+        var questions = await _dbContext.Questions
+            .AsNoTracking()
+            .Include(q => q.Rubric)
+            .Include(q => q.Diagram)
+            .Where(q => q.PaperSetId == paperSet.PaperSetId)
+            .ToListAsync(ct);
+
+        if (questions.Count > 0)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"[THÔNG TIN ĐỀ THI: {paperSet.PaperSetCode} - {paperSet.Description}]");
+            sb.AppendLine("DANH SÁCH CÂU HỎI VÀ TIÊU CHÍ RUBRIC CHẤM ĐIỂM CHI TIẾT:");
+
+            var sortedQuestions = questions.OrderBy(q =>
+            {
+                var match = Regex.Match(q.Title, @"\d+");
+                return match.Success && int.TryParse(match.Value, out var n) ? n : 999;
+            }).ThenBy(q => q.Title);
+
+            foreach (var q in sortedQuestions)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"=== CÂU HỎI: {q.Title} (Điểm tối đa: {q.Point:0.##}đ) ===");
+                if (!string.IsNullOrWhiteSpace(q.Content))
+                {
+                    sb.AppendLine($"Nội dung / Yêu cầu: {q.Content}");
+                }
+                if (q.Diagram != null)
+                {
+                    sb.AppendLine($"Sơ đồ yêu cầu: {q.Diagram.Name}");
+                }
+
+                if (q.Rubric != null && !string.IsNullOrWhiteSpace(q.Rubric.Content))
+                {
+                    try
+                    {
+                        var subItems = JsonSerializer.Deserialize<List<RubricSubItemDto>>(q.Rubric.Content);
+                        if (subItems != null && subItems.Count > 0)
+                        {
+                            sb.AppendLine("Các tiêu chí chấm điểm thành phần:");
+                            foreach (var item in subItems)
+                            {
+                                sb.AppendLine($"  - Tiêu chí {item.SubId} ({item.Point:0.##}đ): {item.Guideline}");
+                            }
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback text
+                    }
+
+                    sb.AppendLine($"  - Hướng dẫn chấm ({q.Rubric.Point:0.##}đ): {q.Rubric.Content}");
+                }
+                else
+                {
+                    sb.AppendLine($"  - Tiêu chí: Đánh giá độ chính xác và hoàn thiện theo thang điểm {q.Point:0.##}đ.");
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        // 2. Fallback cho dữ liệu cũ: Đọc file lưu trên Supabase Storage
         if (!string.IsNullOrWhiteSpace(paperSet.FileAnswerRubric))
         {
             try
@@ -542,10 +609,10 @@ public sealed partial class SubmissionService : ISubmissionService
             }
         }
 
-        // Fallback: Xây dựng rubric từ danh sách câu hỏi của đề thi
+        // 3. Fallback: Danh sách câu hỏi trong memory của entity nếu có
         if (paperSet.Questions.Count > 0)
         {
-            var sb = new System.Text.StringBuilder();
+            var sb = new StringBuilder();
             sb.AppendLine($"[ĐỀ THI: {paperSet.PaperSetCode} - {paperSet.Description}]");
             sb.AppendLine("DANH SÁCH CÂU HỎI VÀ THANG ĐIỂM:");
             foreach (var q in paperSet.Questions)

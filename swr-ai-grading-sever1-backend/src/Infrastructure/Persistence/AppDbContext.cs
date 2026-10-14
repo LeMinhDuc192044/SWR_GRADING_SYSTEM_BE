@@ -22,6 +22,9 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<Semester> Semesters => Set<Semester>();
     public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
+    public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
+    public DbSet<Diagram> Diagrams => Set<Diagram>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

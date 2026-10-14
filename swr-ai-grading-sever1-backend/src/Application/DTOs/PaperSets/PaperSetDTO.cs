@@ -128,4 +128,6 @@ public sealed class CreateQuestionInput
     public required string Title { get; init; }
     public required string Content { get; init; }
     public decimal Point { get; init; }
+    public int QuestionNumber { get; init; }
+    public string? DetectedDiagramType { get; init; }
 }
