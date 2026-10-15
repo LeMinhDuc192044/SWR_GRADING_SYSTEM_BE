@@ -76,9 +76,6 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<UploadSubmissionsResultDTO>.Failure("Không tìm thấy thông tin đề thi liên kết.", "PAPER_SET_NOT_FOUND");
         }
 
-        // Tải và chuẩn bị nội dung Rubric
-        var rubricText = await LoadRubricTextAsync(paperSet, ct);
-
         // Chuẩn bị ExamId
         if (!paperSet.ExaminationId.HasValue || paperSet.ExaminationId.Value == Guid.Empty)
         {
@@ -168,29 +165,13 @@ public sealed partial class SubmissionService : ISubmissionService
                 await _submissionRepository.AddAsync(submission, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
                 summary.SubmissionId = submission.SubmissionId;
-                summary.FilePath = submission.FileSubmissions;
-
-                // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
-                try
-                {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
-                    AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
-                    submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
-
-                    _submissionRepository.Update(submission);
-                    await _unitOfWork.SaveChangesAsync(ct);
-
-                    summary.AiScore = gradeResult.TotalScore;
-                    summary.CriteriaScores = gradeResult.CriteriaScores;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Chưa thể hoàn tất chấm AI ngay lúc upload cho bài {File}. Trạng thái giữ nguyên Submitted.", file.FileName);
-                }
+                summary.FileSubmissions = submission.FileSubmissions;
+                summary.StudentId = submission.StudentId;
+                summary.DiaryId = submission.DiaryId;
+                summary.StudentExaminationId = submission.StudentExaminationId;
 
                 summary.IsSuccess = true;
                 summary.Status = submission.Status.ToString();
-                summary.Comment = string.Empty;
                 successCount++;
             }
             catch (Exception ex)
@@ -206,7 +187,7 @@ public sealed partial class SubmissionService : ISubmissionService
         {
             GradingDiaryId = diaryId,
             TotalUploaded = files.Count,
-            TotalGradedSuccessfully = successCount,
+            TotalSucceeded = successCount,
             Submissions = results
         };
 
@@ -614,9 +595,12 @@ public sealed partial class SubmissionService : ISubmissionService
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
+            FileSubmissions = submission.FileSubmissions,
             SubmissionFile = Path.GetFileName(submission.FileSubmissions),
             FilePath = submission.FileSubmissions,
+            StudentId = submission.StudentId,
             DiaryId = submission.DiaryId,
+            StudentExaminationId = submission.StudentExaminationId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
             StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
             StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,
