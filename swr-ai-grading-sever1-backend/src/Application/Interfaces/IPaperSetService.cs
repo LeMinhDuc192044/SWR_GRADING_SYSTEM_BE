@@ -1,5 +1,7 @@
 using Application.Common;
 using Application.DTOs.PaperSets;
+using Application.DTOs.Questions;
+using Application.DTOs.Rubrics;
 using Domain.Enums;
 
 namespace Application.Interfaces;
@@ -29,6 +31,10 @@ public interface IPaperSetService
     Task<Result<PaperSetDetailDTO>> UpdateAsync(Guid id, UpdatePaperSetRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<QuestionDTO>>> GetQuestionsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
+    Task<Result<QuestionDTO>> GetQuestionByIdAsync(Guid questionId, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
+    Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default);
 }
 
 public sealed class StoredFileDownload

@@ -3,6 +3,8 @@ using System.Text.Json;
 using Application.Common;
 using Application.Common.Interfaces;
 using Application.DTOs.PaperSets;
+using Application.DTOs.Questions;
+using Application.DTOs.Rubrics;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
@@ -660,15 +662,180 @@ public sealed class PaperSetService : IPaperSetService
     private static Dictionary<PaperSetFileType, string> GetPaths(PaperSet m) => new[] { (PaperSetFileType.Question, m.FileQuestionDocs), (PaperSetFileType.AnswerRubric, m.FileAnswerRubric), (PaperSetFileType.AnswerTemplate, m.FileAnswerTemplate) }.
     Where(x => x.Item2 is not null).ToDictionary(x => x.Item1, x => x.Item2!);
 
+    public async Task<Result<IReadOnlyList<QuestionDTO>>> GetQuestionsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default)
+    {
+        var paperSet = await _repository.GetByIdAsync(paperSetId, ct);
+        if (paperSet is null || paperSet.IsDeleted)
+            return Result<IReadOnlyList<QuestionDTO>>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
+
+        var questions = await _dbContext.Questions
+            .AsNoTracking()
+            .Where(q => q.PaperSetId == paperSetId)
+            .Include(q => q.Diagram)
+            .Include(q => q.Rubric)
+            .OrderBy(q => q.CreatedDay)
+            .ThenBy(q => q.Title)
+            .ToListAsync(ct);
+
+        var dtos = questions.Select(MapToQuestionDTO).ToList();
+        return Result<IReadOnlyList<QuestionDTO>>.Success(dtos);
+    }
+
+    public async Task<Result<QuestionDTO>> GetQuestionByIdAsync(Guid questionId, CancellationToken ct = default)
+    {
+        var question = await _dbContext.Questions
+            .AsNoTracking()
+            .Where(q => q.QuestionId == questionId)
+            .Include(q => q.Diagram)
+            .Include(q => q.Rubric)
+            .FirstOrDefaultAsync(ct);
+
+        if (question is null)
+            return Result<QuestionDTO>.Failure("Question not found.", "QUESTION_NOT_FOUND");
+
+        return Result<QuestionDTO>.Success(MapToQuestionDTO(question));
+    }
+
+    public async Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default)
+    {
+        var paperSet = await _repository.GetByIdAsync(paperSetId, ct);
+        if (paperSet is null || paperSet.IsDeleted)
+            return Result<IReadOnlyList<RubricDTO>>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
+
+        var rubrics = await _dbContext.QuestionRubrics
+            .AsNoTracking()
+            .Where(r => r.PaperSetId == paperSetId)
+            .Include(r => r.Diagram)
+            .Include(r => r.Questions)
+            .ToListAsync(ct);
+
+        var dtos = rubrics.Select(MapToRubricDTO).ToList();
+        return Result<IReadOnlyList<RubricDTO>>.Success(dtos);
+    }
+
+    public async Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default)
+    {
+        var rubric = await _dbContext.QuestionRubrics
+            .AsNoTracking()
+            .Where(r => r.RubricId == rubricId)
+            .Include(r => r.Diagram)
+            .Include(r => r.Questions)
+            .FirstOrDefaultAsync(ct);
+
+        if (rubric is null)
+            return Result<RubricDTO>.Failure("Rubric not found.", "RUBRIC_NOT_FOUND");
+
+        return Result<RubricDTO>.Success(MapToRubricDTO(rubric));
+    }
+
+    private static QuestionDTO MapToQuestionDTO(Question q) => new()
+    {
+        QuestionId = q.QuestionId,
+        PaperSetId = q.PaperSetId,
+        Title = q.Title,
+        Content = q.Content,
+        Point = q.Point,
+        DiagramId = q.DiagramId,
+        DiagramName = q.Diagram?.Name,
+        RubricId = q.RubricId,
+        Rubric = q.Rubric is null ? null : new QuestionRubricSummaryDTO
+        {
+            RubricId = q.Rubric.RubricId,
+            Point = q.Rubric.Point,
+            Content = q.Rubric.Content,
+            SubItems = ParseSubItems(q.Rubric.Content)
+        },
+        CreatedDay = q.CreatedDay,
+        UpdatedDay = q.UpdatedDay
+    };
+
+    private static RubricDTO MapToRubricDTO(QuestionRubric r) => new()
+    {
+        RubricId = r.RubricId,
+        PaperSetId = r.PaperSetId,
+        Point = r.Point,
+        Content = r.Content,
+        SubItems = ParseSubItems(r.Content),
+        DiagramId = r.DiagramId,
+        DiagramName = r.Diagram?.Name,
+        Questions = r.Questions.Select(q => new RubricQuestionSummaryDTO
+        {
+            QuestionId = q.QuestionId,
+            Title = q.Title,
+            Point = q.Point
+        }).ToList()
+    };
+
+    private static IReadOnlyList<RubricSubItemDto> ParseSubItems(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return [];
+        try
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            return JsonSerializer.Deserialize<List<RubricSubItemDto>>(content, options) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     private async Task<PaperSetMetadataDTO> ToMetadataAsync(PaperSet material)
     {
         var files = await Task.WhenAll(GetPaths(material).Select(async pair => { var m = await _storage.GetMetadataAsync(pair.Value); return new PaperSetFileDTO { FileType = pair.Key, FileName = m.FileName, ContentType = m.ContentType, FileSize = m.FileSize }; }));
-        return new PaperSetMetadataDTO { PaperSetId = material.PaperSetId, PaperSetCode = material.PaperSetCode, Description = material.Description, TotalQuestions = material.TotalQuestions, Questions = material.Questions.Select(question => new PaperSetQuestionDTO { QuestionId = question.QuestionId, Title = question.Title, Content = question.Content, Point = question.Point }).ToList(), Files = files, Status = material.Status, ExaminationId = material.ExaminationId, SemesterId = material.SemesterId, CreateById = material.CreateById, LecturerName = material.CreateBy?.FullName ?? string.Empty, LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty, Subject = material.CreateBy?.Subject ?? string.Empty, CreatedDate = material.CreatedDate, UpdatedDate = material.UpdatedDate };
+        return new PaperSetMetadataDTO
+        {
+            PaperSetId = material.PaperSetId,
+            PaperSetCode = material.PaperSetCode,
+            Description = material.Description,
+            TotalQuestions = material.TotalQuestions,
+            Questions = material.Questions.Select(question => new PaperSetQuestionDTO
+            {
+                QuestionId = question.QuestionId,
+                Title = question.Title,
+                Content = question.Content,
+                Point = question.Point,
+                DiagramId = question.DiagramId,
+                DiagramName = question.Diagram?.Name,
+                RubricId = question.RubricId,
+                CreatedDay = question.CreatedDay,
+                UpdatedDay = question.UpdatedDay
+            }).ToList(),
+            Files = files,
+            Status = material.Status,
+            ExaminationId = material.ExaminationId,
+            SemesterId = material.SemesterId,
+            CreateById = material.CreateById,
+            LecturerName = material.CreateBy?.FullName ?? string.Empty,
+            LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty,
+            Subject = material.CreateBy?.Subject ?? string.Empty,
+            CreatedDate = material.CreatedDate,
+            UpdatedDate = material.UpdatedDate
+        };
     }
 
     private async Task<PaperSetDetailDTO> ToDetailAsync(PaperSet material)
     {
         var metadata = await ToMetadataAsync(material);
-        return new PaperSetDetailDTO { PaperSetId = metadata.PaperSetId, PaperSetCode = metadata.PaperSetCode, Description = metadata.Description, TotalQuestions = metadata.TotalQuestions, Questions = metadata.Questions, Files = metadata.Files, Status = metadata.Status, ExaminationId = metadata.ExaminationId, SemesterId = metadata.SemesterId, CreateById = metadata.CreateById, LecturerName = metadata.LecturerName, LecturerCode = metadata.LecturerCode, Subject = metadata.Subject, CreatedDate = metadata.CreatedDate, UpdatedDate = metadata.UpdatedDate, StoragePath = string.Join(',', GetPaths(material).Values) };
+        return new PaperSetDetailDTO
+        {
+            PaperSetId = metadata.PaperSetId,
+            PaperSetCode = metadata.PaperSetCode,
+            Description = metadata.Description,
+            TotalQuestions = metadata.TotalQuestions,
+            Questions = metadata.Questions,
+            Files = metadata.Files,
+            Status = metadata.Status,
+            ExaminationId = metadata.ExaminationId,
+            SemesterId = metadata.SemesterId,
+            CreateById = metadata.CreateById,
+            LecturerName = metadata.LecturerName,
+            LecturerCode = metadata.LecturerCode,
+            Subject = metadata.Subject,
+            CreatedDate = metadata.CreatedDate,
+            UpdatedDate = metadata.UpdatedDate,
+            StoragePath = string.Join(',', GetPaths(material).Values),
+            Rubrics = material.Rubrics.Select(MapToRubricDTO).ToList()
+        };
     }
 }

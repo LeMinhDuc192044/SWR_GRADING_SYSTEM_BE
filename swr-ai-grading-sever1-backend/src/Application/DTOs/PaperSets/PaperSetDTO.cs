@@ -1,3 +1,5 @@
+using Application.DTOs.Questions;
+using Application.DTOs.Rubrics;
 using Domain.Enums;
 using Microsoft.AspNetCore.Http;
 
@@ -29,6 +31,11 @@ public sealed class PaperSetQuestionDTO
     public string Title { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public decimal Point { get; set; }
+    public Guid? DiagramId { get; set; }
+    public string? DiagramName { get; set; }
+    public Guid? RubricId { get; set; }
+    public DateTime? CreatedDay { get; set; }
+    public DateTime? UpdatedDay { get; set; }
 }
 
 public sealed class PaperSetFileDTO
@@ -55,6 +62,7 @@ public sealed class PaperSetExtractedContentsDTO
 public sealed class PaperSetDetailDTO : PaperSetMetadataDTO
 {
     public string StoragePath { get; set; } = string.Empty;
+    public IReadOnlyList<RubricDTO> Rubrics { get; set; } = [];
 }
 
 public sealed class UpdatePaperSetRequest
