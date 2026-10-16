@@ -23,7 +23,7 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 1: Upload danh sách bài làm sinh viên (.docx) vào sổ chấm.
+    /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
     /// </summary>
     [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/upload")]
     [Consumes("multipart/form-data")]
@@ -40,7 +40,7 @@ public sealed class SubmissionsController : ControllerBase
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
         if (files is null || files.Count == 0)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx bài làm của sinh viên."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx hoặc .rar bài làm của sinh viên."));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
         var result = await _submissionService.UploadSubmissionsAsync(diaryId, docFiles, userId, ct);

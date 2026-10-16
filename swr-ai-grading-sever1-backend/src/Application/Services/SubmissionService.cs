@@ -61,7 +61,7 @@ public sealed partial class SubmissionService : ISubmissionService
     {
         if (files is null || files.Count == 0)
         {
-            return Result<UploadSubmissionsResultDTO>.Failure("Vui lòng chọn ít nhất một file bài làm (.docx).", "FILES_REQUIRED");
+            return Result<UploadSubmissionsResultDTO>.Failure("Vui lòng chọn ít nhất một file bài làm (.docx hoặc .rar).", "FILES_REQUIRED");
         }
 
         var diary = await _diaryRepository.GetDetailByIdAsync(diaryId, ct);
@@ -101,10 +101,11 @@ public sealed partial class SubmissionService : ISubmissionService
             };
 
             var extension = Path.GetExtension(file.FileName);
-            if (!string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
+            var isRar = string.Equals(extension, ".rar", StringComparison.OrdinalIgnoreCase);
+            if (!isRar && !string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
             {
                 summary.IsSuccess = false;
-                summary.ErrorMessage = "Hệ thống chỉ hỗ trợ định dạng bài làm Word (.docx).";
+                summary.ErrorMessage = "Hệ thống chỉ hỗ trợ file Word (.docx) hoặc archive RAR (.rar).";
                 results.Add(summary);
                 continue;
             }
@@ -123,13 +124,20 @@ public sealed partial class SubmissionService : ISubmissionService
 
                 var studentExam = studentExamResult.Data!;
 
-                // 2. Đọc file vào memoryStream
-                using var memoryStream = new MemoryStream();
-                await file.CopyToAsync(memoryStream, ct);
-                memoryStream.Position = 0;
+                // RAR submissions are validated and graded using their embedded Word and diagram files.
+                if (file.Length > SubmissionArchive.MaxArchiveBytes)
+                    throw new InvalidDataException("File bài làm vượt quá giới hạn dung lượng cho phép.");
+
+                using var uploadStream = new MemoryStream();
+                await file.CopyToAsync(uploadStream, ct);
+                uploadStream.Position = 0;
+                var submissionContent = isRar
+                    ? SubmissionArchive.Read(uploadStream)
+                    : new SubmissionArchive.Content(uploadStream.ToArray(), null);
 
                 // 3. Trích xuất text và hình ảnh từ file docx trước để validate nội dung
-                var extractedContent = await _geminiService.ExtractContentFromDocxAsync(memoryStream, ct);
+                using var wordStream = new MemoryStream(submissionContent.WordDocument);
+                var extractedContent = await _geminiService.ExtractContentFromDocxAsync(wordStream, ct);
                 var studentText = extractedContent.Text;
                 if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
                 {
@@ -145,9 +153,9 @@ public sealed partial class SubmissionService : ISubmissionService
                 }
 
                 // 4. File hợp lệ -> Upload lên Supabase Storage với format chuẩn
-                memoryStream.Position = 0;
                 var storagePath = $"submissions/{safePaperSetCode}/{file.FileName}";
-                await _storage.UploadAsync(storagePath, memoryStream, file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ct);
+                uploadStream.Position = 0;
+                await _storage.UploadAsync(storagePath, uploadStream, file.ContentType ?? (isRar ? "application/vnd.rar" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), ct);
 
                 // 5. Tạo bản ghi Submission với status = Submitted (0)
                 var submission = new StudentSubmission
@@ -313,8 +321,16 @@ public sealed partial class SubmissionService : ISubmissionService
         // 1. Tải file từ storage
         var download = await _storage.DownloadAsync(submission.FileSubmissions, "submissions", ct);
 
-        // 2. Trích xuất text & hình ảnh từ file docx
-        var extractedContent = await _geminiService.ExtractContentFromDocxAsync(download.Content, ct);
+        // 2. Extract the Word document and optional diagram source from RAR submissions.
+        var isRar = string.Equals(Path.GetExtension(submission.FileSubmissions), ".rar", StringComparison.OrdinalIgnoreCase);
+        using var downloadStream = new MemoryStream();
+        await download.Content.CopyToAsync(downloadStream, ct);
+        downloadStream.Position = 0;
+        var submissionContent = isRar
+            ? SubmissionArchive.Read(downloadStream)
+            : new SubmissionArchive.Content(downloadStream.ToArray(), null);
+        using var wordStream = new MemoryStream(submissionContent.WordDocument);
+        var extractedContent = await _geminiService.ExtractContentFromDocxAsync(wordStream, ct);
         var studentText = extractedContent.Text;
         if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
         {
@@ -324,6 +340,10 @@ public sealed partial class SubmissionService : ISubmissionService
         if (string.IsNullOrWhiteSpace(studentText))
         {
             studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm bên dưới]";
+        }
+        if (!string.IsNullOrWhiteSpace(submissionContent.DiagramSource))
+        {
+            studentText += $"\n\nNội dung file sơ đồ trong archive:\n{submissionContent.DiagramSource}";
         }
 
         // 3. Lấy Rubric
