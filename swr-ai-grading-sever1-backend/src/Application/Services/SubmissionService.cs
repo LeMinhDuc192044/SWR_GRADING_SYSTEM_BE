@@ -173,7 +173,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
                 try
                 {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct);
+                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct: ct);
                     AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
                     submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
 

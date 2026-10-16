@@ -15,5 +15,7 @@ public interface IApplicationDbContext
     DbSet<Semester> Semesters { get; }
     DbSet<StudentExamination> StudentExaminations { get; }
     DbSet<GradingDiary> GradingDiaries { get; }
+    DbSet<Diagram> Diagrams { get; }
+    DbSet<DiagramElement> DiagramElements { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

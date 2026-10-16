@@ -18,8 +18,9 @@
 6. [Examinations API (`/api/examinations`)](#5-examinations-api-apiexaminations)
 7. [GradingDiaries API (`/api/grading-diaries`)](#6-gradingdiaries-api-apigrading-diaries)
 8. [Submissions API (`/api/submissions`)](#7-submissions-api-apisubmissions)
-9. [Complete Flow (Flow 1 - End-to-End)](#-complete-flow-flow-1---end-to-end)
-10. [Test Accounts](#-test-accounts-development)
+9. [Diagrams & Diagram Elements API (`/api/diagrams`, `/api/diagram-elements`)](#8-diagrams--diagram-elements-api)
+10. [Complete Flow (Flow 1 - End-to-End)](#-complete-flow-flow-1---end-to-end)
+11. [Test Accounts](#-test-accounts-development)
 
 ---
 
@@ -34,7 +35,9 @@
 | 5 | Examinations | 4 | ❌ |
 | 6 | GradingDiaries | 4 | ✅ Có |
 | 7 | Submissions | 6 (+routes duplicate) | ✅ Có |
-| **Tổng** | **7 controllers** | **31 endpoints** | |
+| 8 | Diagrams | 7 | ✅ Có |
+| 9 | DiagramElements | 5 | ✅ Có |
+| **Tổng** | **9 controllers** | **43 endpoints** | |
 
 **Pattern chung:** Tất cả response đều wrap trong `ApiResponse<T>`:
 
@@ -469,6 +472,88 @@ API này support 2 dạng route:
 **Khi nào dùng:** Sau khi giảng viên review xong tất cả bài, muốn đóng sổ chấm.
 
 **Lưu ý:** Phải ở status `Lecturer_Reviewed` mới finalize được.
+
+---
+
+## 8. Diagrams & Diagram Elements API 🔒
+
+> **Lý do có:** Quản lý mẫu diagram và các diagram element (các thành phần hình học, ký hiệu trong biểu đồ dùng để chấm bài thi, đối chiếu tiêu chí).
+>
+> **Auth:** Required (`Lecturer`, `Admin`)
+
+### 8.1 Diagrams API (`/api/diagrams`)
+
+#### `GET /api/diagrams?Page=1&PageSize=20&search=...`
+- **Tác dụng:** Lấy danh sách diagram có phân trang, hỗ trợ tìm kiếm theo tên hoặc mô tả.
+- **Response:** `PagedResult<DiagramDTO>` gồm `diagramId`, `name`, `description`, `fileTemplateUrl`, `elementCount`.
+
+#### `GET /api/diagrams/{id}`
+- **Tác dụng:** Lấy thông tin chi tiết diagram kèm toàn bộ danh sách `elements` liên thuộc.
+- **Response:** `DiagramDetailDTO`.
+
+#### `POST /api/diagrams`
+- **Tác dụng:** Tạo mới 1 diagram. Có thể tạo kèm danh sách `elements` cùng lúc.
+- **Request:**
+```json
+{
+  "name": "Class Diagram Mẫu",
+  "description": "Biểu đồ lớp cho bài thi cuối kỳ SWR302",
+  "fileTemplateUrl": "https://supabase.../template.png",
+  "elements": [
+    {
+      "elementCode": "C01",
+      "name": "Student",
+      "shapeType": "Class",
+      "description": "Lớp sinh viên",
+      "isRequired": true
+    }
+  ]
+}
+```
+
+#### `PUT /api/diagrams/{id}`
+- **Tác dụng:** Cập nhật thông tin diagram (`name`, `description`, `fileTemplateUrl`).
+
+#### `DELETE /api/diagrams/{id}`
+- **Tác dụng:** Xóa diagram. Không xóa được nếu diagram đang liên kết với rubric đề thi (`409 DIAGRAM_IN_USE`).
+
+#### `GET /api/diagrams/{diagramId}/elements`
+- **Tác dụng:** Lấy tất cả elements thuộc diagram cụ thể.
+
+#### `POST /api/diagrams/{diagramId}/elements`
+- **Tác dụng:** Thêm nhanh một element vào diagram đã chỉ định.
+
+---
+
+### 8.2 Diagram Elements API (`/api/diagram-elements`)
+
+#### `GET /api/diagram-elements?Page=1&PageSize=20&diagramId=...&search=...`
+- **Tác dụng:** Lấy danh sách elements có phân trang, hỗ trợ lọc theo `diagramId` và tìm kiếm từ khóa.
+
+#### `GET /api/diagram-elements/{id}`
+- **Tác dụng:** Lấy chi tiết 1 element (kèm thông tin tham chiếu `referenceElement`).
+
+#### `POST /api/diagram-elements`
+- **Tác dụng:** Tạo mới element trực tiếp.
+- **Request:**
+```json
+{
+  "diagramId": "d1c2b3a4-...",
+  "elementCode": "C02",
+  "name": "Course",
+  "shapeType": "Class",
+  "description": "Lớp môn học",
+  "isRequired": true,
+  "elementReferenceId": "d5e6f7a8-...",
+  "elementReferenceType": "Association"
+}
+```
+
+#### `PUT /api/diagram-elements/{id}`
+- **Tác dụng:** Cập nhật thông tin element. Kiểm tra tránh tự tham chiếu chính nó (`INVALID_SELF_REFERENCE`) hoặc trùng mã code.
+
+#### `DELETE /api/diagram-elements/{id}`
+- **Tác dụng:** Xóa element. Chặn xóa nếu đang được element khác tham chiếu (`ELEMENT_HAS_REFERENCES`) hoặc đã có câu trả lời bài thi gắn với element (`ELEMENT_IN_USE`).
 
 ---
 
