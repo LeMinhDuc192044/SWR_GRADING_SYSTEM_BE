@@ -35,6 +35,26 @@ public class QuestionRubricDtoTests
     }
 
     [Fact]
+    public void RubricDTO_Serializing_With_UnsafeRelaxedJsonEscaping_Preserves_Vietnamese()
+    {
+        var subItems = new List<RubricSubItemDto>
+        {
+            new() { SubId = "1.1", Point = 1.0m, Guideline = "Vẽ đúng actor và biểu đồ ca sử dụng" }
+        };
+
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
+        var json = JsonSerializer.Serialize(subItems, options);
+
+        Assert.Contains("Vẽ đúng actor và biểu đồ ca sử dụng", json);
+        Assert.DoesNotContain("\\u", json);
+    }
+
+    [Fact]
     public void QuestionDTO_CanHold_RubricSummary()
     {
         var questionDto = new QuestionDTO

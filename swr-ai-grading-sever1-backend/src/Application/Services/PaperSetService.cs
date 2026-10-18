@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Application.Common;
 using Application.Common.Interfaces;
@@ -14,7 +15,11 @@ namespace Application.Services;
 
 public sealed class PaperSetService : IPaperSetService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private readonly IPaperSetRepository _repository;
     private readonly IExaminationRepository _examinationRepository;
     private readonly ISemesterRepository _semesterRepository;
