@@ -43,15 +43,6 @@ public sealed partial class SubmissionService : ISubmissionService
         _logger = logger;
     }
 
-    public Task<Result<UploadSubmissionsResultDTO>> UploadAndGradeBatchAsync(
-        Guid gradingDiaryId,
-        IReadOnlyList<IDocumentFile> files,
-        Guid currentUserId,
-        CancellationToken ct = default)
-    {
-        return UploadSubmissionsAsync(gradingDiaryId, files, currentUserId, ct);
-    }
-
     // FLOW 1: Upload Submission
     public async Task<Result<UploadSubmissionsResultDTO>> UploadSubmissionsAsync(
         Guid diaryId,
@@ -60,61 +51,46 @@ public sealed partial class SubmissionService : ISubmissionService
         CancellationToken ct = default)
     {
         if (files is null || files.Count == 0)
-        {
-            return Result<UploadSubmissionsResultDTO>.Failure("Vui lòng chọn ít nhất một file bài làm (.docx).", "FILES_REQUIRED");
-        }
+            return Result<UploadSubmissionsResultDTO>.Failure("Vui lòng chọn ít nhất một file bài làm (.docx hoặc .rar).", "FILES_REQUIRED");
 
         var diary = await _diaryRepository.GetDetailByIdAsync(diaryId, ct);
         if (diary is null)
-        {
             return Result<UploadSubmissionsResultDTO>.Failure("Không tìm thấy sổ chấm thi.", "DIARY_NOT_FOUND");
-        }
 
         var paperSet = diary.PaperSet ?? await _paperSetRepository.GetByIdAsync(diary.PaperSetId, ct);
         if (paperSet is null)
-        {
             return Result<UploadSubmissionsResultDTO>.Failure("Không tìm thấy thông tin đề thi liên kết.", "PAPER_SET_NOT_FOUND");
-        }
 
-        // Tải và chuẩn bị nội dung Rubric
-        var rubricText = await LoadRubricTextAsync(paperSet, ct);
-
-        // Chuẩn bị ExamId
         if (!paperSet.ExaminationId.HasValue || paperSet.ExaminationId.Value == Guid.Empty)
-        {
             return Result<UploadSubmissionsResultDTO>.Failure("PaperSet chưa liên kết với kỳ thi.", "PAPER_SET_NOT_LINKED_TO_EXAM");
-        }
 
         var examId = paperSet.ExaminationId.Value;
+        var paperQuestions = await _dbContext.Questions
+            .AsNoTracking()
+            .Where(question => question.PaperSetId == paperSet.PaperSetId)
+            .OrderBy(question => question.Title)
+            .ToListAsync(ct);
 
-        // Định dạng storage path: submissions/{paperSetCode}/{originalFileName}
-        var paperSetCode = !string.IsNullOrWhiteSpace(paperSet?.PaperSetCode)
-            ? paperSet.PaperSetCode.Trim()
-            : "UNKNOWN_PAPERSET";
+        var paperSetCode = !string.IsNullOrWhiteSpace(paperSet.PaperSetCode) ? paperSet.PaperSetCode.Trim() : "UNKNOWN_PAPERSET";
         var safePaperSetCode = NormalizeStorageKeySegment(paperSetCode);
-
         var results = new List<UploadedSubmissionSummaryDTO>();
-        int successCount = 0;
+        var successCount = 0;
 
         foreach (var file in files)
         {
-            var summary = new UploadedSubmissionSummaryDTO
-            {
-                SubmissionFile = file.FileName
-            };
-
+            var summary = new UploadedSubmissionSummaryDTO { SubmissionFile = file.FileName };
             var extension = Path.GetExtension(file.FileName);
-            if (!string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
+            var isRar = string.Equals(extension, ".rar", StringComparison.OrdinalIgnoreCase);
+            if (!isRar && !string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
             {
                 summary.IsSuccess = false;
-                summary.ErrorMessage = "Hệ thống chỉ hỗ trợ định dạng bài làm Word (.docx).";
+                summary.ErrorMessage = "Hệ thống chỉ hỗ trợ file Word (.docx) hoặc archive RAR (.rar).";
                 results.Add(summary);
                 continue;
             }
 
             try
             {
-                // 1. Kiểm tra và tìm StudentExamination trước (Regex [A-Za-z]{2}\d{5,8})
                 var studentExamResult = await ResolveStudentExaminationAsync(file.FileName, examId, ct);
                 if (!studentExamResult.IsSuccess)
                 {
@@ -125,16 +101,28 @@ public sealed partial class SubmissionService : ISubmissionService
                 }
 
                 var studentExam = studentExamResult.Data!;
+                if (file.Length > SubmissionArchive.MaxArchiveBytes)
+                    throw new InvalidDataException("File bài làm vượt quá giới hạn dung lượng cho phép.");
 
-                // 2. Đọc file vào memoryStream
-                using var memoryStream = new MemoryStream();
-                await file.CopyToAsync(memoryStream, ct);
-                memoryStream.Position = 0;
+                using var uploadStream = new MemoryStream();
+                await file.CopyToAsync(uploadStream, ct);
+                uploadStream.Position = 0;
+                var submissionContent = isRar
+                    ? SubmissionArchive.Read(uploadStream)
+                    : new SubmissionArchive.Content(uploadStream.ToArray(), new Dictionary<string, string>());
 
-                // 3. Trích xuất text và hình ảnh từ file docx trước để validate nội dung
-                var extractedContent = await _geminiService.ExtractContentFromDocxAsync(memoryStream, ct);
-                var studentText = extractedContent.Text;
-                if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
+                using var wordStream = new MemoryStream(submissionContent.WordDocument);
+                var extractedContent = await _geminiService.ExtractContentFromDocxAsync(wordStream, ct);
+                var diagramAnswers = new Dictionary<Guid, string>();
+                foreach (var question in paperQuestions)
+                {
+                    var diagramKey = SubmissionArchive.GetQuestionKey(question.Title);
+                    if (submissionContent.DiagramSources.TryGetValue(diagramKey, out var diagramText))
+                        diagramAnswers[question.QuestionId] = diagramText;
+                }
+
+                var hasWordContent = !string.IsNullOrWhiteSpace(extractedContent.Text) || extractedContent.Images.Count > 0;
+                if (!hasWordContent && diagramAnswers.Count == 0)
                 {
                     summary.IsSuccess = false;
                     summary.ErrorMessage = "Không thể trích xuất văn bản hoặc hình ảnh từ bài làm.";
@@ -142,55 +130,96 @@ public sealed partial class SubmissionService : ISubmissionService
                     continue;
                 }
 
+                var studentText = extractedContent.Text;
                 if (string.IsNullOrWhiteSpace(studentText))
-                {
                     studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm]";
+
+                IReadOnlyList<ExtractedQuestionAnswerDto> extractedAnswers = hasWordContent
+                    ? await _geminiService.ExtractAnswersForQuestionsAsync(studentText, paperQuestions, extractedContent.Images, ct)
+                    : [];
+                var submissionId = Guid.NewGuid();
+                var validQuestionIds = paperQuestions.Select(question => question.QuestionId).ToHashSet();
+                var answersByQuestion = extractedAnswers
+                    .Where(answer => validQuestionIds.Contains(answer.QuestionId))
+                    .GroupBy(answer => answer.QuestionId)
+                    .ToDictionary(group => group.Key, group => group.First());
+                var answerTextByQuestion = answersByQuestion
+                    .ToDictionary(pair => pair.Key, pair => pair.Value.ExtractedText);
+                foreach (var (questionId, diagramText) in diagramAnswers)
+                    answerTextByQuestion[questionId] = diagramText;
+
+                var imagePaths = new Dictionary<int, string>();
+                for (var imageIndex = 0; imageIndex < extractedContent.Images.Count; imageIndex++)
+                {
+                    var image = extractedContent.Images[imageIndex];
+                    if (string.IsNullOrWhiteSpace(image.Base64Data))
+                        continue;
+
+                    var imageNumber = imageIndex + 1;
+                    var imageExtension = image.MimeType switch
+                    {
+                        "image/jpeg" => ".jpg",
+                        "image/gif" => ".gif",
+                        "image/webp" => ".webp",
+                        _ => ".png"
+                    };
+                    var imagePath = $"submissions/{safePaperSetCode}/{submissionId}/images/image-{imageNumber}{imageExtension}";
+                    await using var imageStream = new MemoryStream(Convert.FromBase64String(image.Base64Data));
+                    await _storage.UploadAsync(imagePath, imageStream, image.MimeType, ct);
+                    imagePaths[imageNumber] = imagePath;
                 }
 
-                // 4. File hợp lệ -> Upload lên Supabase Storage với format chuẩn
-                memoryStream.Position = 0;
-                var storagePath = $"submissions/{safePaperSetCode}/{file.FileName}";
-                await _storage.UploadAsync(storagePath, memoryStream, file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ct);
+                var imagePathByQuestion = answersByQuestion
+                    .Where(pair => pair.Value.ImageIndexes.Count > 0)
+                    .Select(pair => new
+                    {
+                        pair.Key,
+                        ImagePath = pair.Value.ImageIndexes
+                            .Where(imagePaths.ContainsKey)
+                            .Select(imageIndex => imagePaths[imageIndex])
+                            .FirstOrDefault()
+                    })
+                    .Where(pair => pair.ImagePath is not null)
+                    .ToDictionary(pair => pair.Key, pair => pair.ImagePath!);
 
-                // 5. Tạo bản ghi Submission với status = Submitted (0)
+                var createdAt = DateTime.UtcNow;
+                var parsedAnswers = paperQuestions.Select(question => new SubmissionParsedAnswer
+                {
+                    ParsedAnswerId = Guid.NewGuid(),
+                    SubmissionId = submissionId,
+                    QuestionId = question.QuestionId,
+                    ExtractedText = answerTextByQuestion.GetValueOrDefault(question.QuestionId, string.Empty),
+                    ExtractedImageUrl = imagePathByQuestion.GetValueOrDefault(question.QuestionId),
+                    CreatedAt = createdAt
+                }).ToList();
+
+                var storagePath = $"submissions/{safePaperSetCode}/{file.FileName}";
+                uploadStream.Position = 0;
+                await _storage.UploadAsync(storagePath, uploadStream,
+                    file.ContentType ?? (isRar ? "application/vnd.rar" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), ct);
+
                 var submission = new StudentSubmission
                 {
-                    SubmissionId = Guid.NewGuid(),
+                    SubmissionId = submissionId,
                     FileSubmissions = storagePath,
                     StudentId = studentExam.StudentId,
-                    Status = SubmissionStatus.Submitted, // 0 = Submitted
+                    Status = SubmissionStatus.Submitted,
                     DiaryId = diaryId,
                     StudentExaminationId = studentExam.StudentExaminationId,
                     CreatedDate = DateTime.UtcNow,
-                    UpdatedDate = DateTime.UtcNow
+                    UpdatedDate = DateTime.UtcNow,
+                    ParsedAnswers = parsedAnswers
                 };
 
                 await _submissionRepository.AddAsync(submission, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
                 summary.SubmissionId = submission.SubmissionId;
-                summary.FilePath = submission.FileSubmissions;
-
-                // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
-                try
-                {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct: ct);
-                    AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
-                    submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
-
-                    _submissionRepository.Update(submission);
-                    await _unitOfWork.SaveChangesAsync(ct);
-
-                    summary.AiScore = gradeResult.TotalScore;
-                    summary.CriteriaScores = gradeResult.CriteriaScores;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Chưa thể hoàn tất chấm AI ngay lúc upload cho bài {File}. Trạng thái giữ nguyên Submitted.", file.FileName);
-                }
-
+                summary.FileSubmissions = submission.FileSubmissions;
+                summary.StudentId = submission.StudentId;
+                summary.DiaryId = submission.DiaryId;
+                summary.StudentExaminationId = submission.StudentExaminationId;
                 summary.IsSuccess = true;
                 summary.Status = submission.Status.ToString();
-                summary.Comment = string.Empty;
                 successCount++;
             }
             catch (Exception ex)
@@ -202,16 +231,16 @@ public sealed partial class SubmissionService : ISubmissionService
             results.Add(summary);
         }
 
-        var response = new UploadSubmissionsResultDTO
+        return Result<UploadSubmissionsResultDTO>.Success(new UploadSubmissionsResultDTO
         {
             GradingDiaryId = diaryId,
             TotalUploaded = files.Count,
-            TotalGradedSuccessfully = successCount,
+            TotalSucceeded = successCount,
             Submissions = results
-        };
-
-        return Result<UploadSubmissionsResultDTO>.Success(response);
+        });
     }
+
+    // List submissions under a diary
 
     // List submissions under a diary
     public async Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListByDiaryIdAsync(
@@ -298,87 +327,7 @@ public sealed partial class SubmissionService : ISubmissionService
         return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
     }
 
-    // FLOW 2: AI Grading
-    public async Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
-        Guid diaryId,
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default)
-    {
-        var submission = await _dbContext.Submissions
-            .Include(s => s.GradingDiary)
-                .ThenInclude(gd => gd.PaperSet)
-            .Include(s => s.StudentExamination)
-                .ThenInclude(se => se.Student)
-            .Include(s => s.Evaluations)
-            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
-
-        if (submission is null)
-        {
-            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy bài nộp.", "SUBMISSION_NOT_FOUND");
-        }
-
-        if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
-        {
-            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền kích hoạt chấm AI cho bài nộp này.", "FORBIDDEN");
-        }
-
-        if (string.IsNullOrWhiteSpace(submission.FileSubmissions))
-        {
-            return Result<SubmissionDetailDTO>.Failure("Bài nộp chưa có file đính kèm trên hệ thống lưu trữ.", "FILE_NOT_FOUND");
-        }
-
-        // 1. Tải file từ storage
-        var download = await _storage.DownloadAsync(submission.FileSubmissions, "submissions", ct);
-
-        // 2. Trích xuất text & hình ảnh từ file docx
-        var extractedContent = await _geminiService.ExtractContentFromDocxAsync(download.Content, ct);
-        var studentText = extractedContent.Text;
-        if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
-        {
-            return Result<SubmissionDetailDTO>.Failure("Không thể trích xuất văn bản hoặc hình ảnh từ file bài làm.", "EMPTY_CONTENT");
-        }
-
-        if (string.IsNullOrWhiteSpace(studentText))
-        {
-            studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm bên dưới]";
-        }
-
-        // 3. Lấy Rubric
-        var paperSet = submission.GradingDiary.PaperSet
-            ?? await _paperSetRepository.GetByIdAsync(submission.GradingDiary.PaperSetId, ct);
-
-        if (paperSet is null)
-        {
-            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy đề thi để lấy rubric.", "PAPER_SET_NOT_FOUND");
-        }
-
-        var rubricText = await LoadRubricTextAsync(paperSet, ct);
-
-        // 4. Gọi Gemini chấm bài (truyền hình ảnh đính kèm)
-        var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, extractedContent.Images, ct);
-
-        // 5. Cập nhật AI score & AI logs, chuyển status sang AI_Graded (1). KHÔNG ghi đè comment của GV và không đổi UpdatedDate!
-        AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
-        submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
-
-        _submissionRepository.Update(submission);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
-    }
-
-    public Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default)
-    {
-        return TriggerAiGradingAsync(Guid.Empty, submissionId, currentUserId, isElevatedRole, ct);
-    }
-
-    // FLOW 3: Lecturer Review
+    // FLOW 2: Lecturer Review
     public async Task<Result<SubmissionDetailDTO>> ReviewAsync(
         Guid diaryId,
         Guid submissionId,
@@ -444,7 +393,7 @@ public sealed partial class SubmissionService : ISubmissionService
         return ReviewAsync(Guid.Empty, submissionId, lecturerScore, null, currentUserId, isElevatedRole, ct);
     }
 
-    // FLOW 4: Finalize
+    // FLOW 3: Finalize
     public async Task<Result<SubmissionDetailDTO>> FinalizeAsync(
         Guid diaryId,
         Guid submissionId,
@@ -510,54 +459,6 @@ public sealed partial class SubmissionService : ISubmissionService
         return FinalizeAsync(Guid.Empty, submissionId, currentUserId, isElevatedRole, ct);
     }
 
-    private async Task<string> LoadRubricTextAsync(PaperSet paperSet, CancellationToken ct)
-    {
-        if (!string.IsNullOrWhiteSpace(paperSet.FileAnswerRubric))
-        {
-            try
-            {
-                var download = await _storage.DownloadAsync(paperSet.FileAnswerRubric, "rubric", ct);
-                var extension = Path.GetExtension(paperSet.FileAnswerRubric);
-
-                if (string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
-                {
-                    var text = await _geminiService.ExtractTextFromDocxAsync(download.Content, ct);
-                    if (!string.IsNullOrWhiteSpace(text)) return text;
-                }
-                else if (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase))
-                {
-                    var text = await _geminiService.ExtractTextFromXlsxAsync(download.Content, ct);
-                    if (!string.IsNullOrWhiteSpace(text)) return text;
-                }
-                else
-                {
-                    using var reader = new StreamReader(download.Content);
-                    var text = await reader.ReadToEndAsync(ct);
-                    if (!string.IsNullOrWhiteSpace(text)) return text;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Không thể tải hoặc đọc rubric từ storage: {Path}", paperSet.FileAnswerRubric);
-            }
-        }
-
-        // Fallback: Xây dựng rubric từ danh sách câu hỏi của đề thi
-        if (paperSet.Questions.Count > 0)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"[ĐỀ THI: {paperSet.PaperSetCode} - {paperSet.Description}]");
-            sb.AppendLine("DANH SÁCH CÂU HỎI VÀ THANG ĐIỂM:");
-            foreach (var q in paperSet.Questions)
-            {
-                sb.AppendLine($"- {q.Title}: {q.Content} (Điểm tối đa: {q.Point}đ)");
-            }
-            return sb.ToString();
-        }
-
-        return $"Đề thi mã {paperSet.PaperSetCode}. Hãy chấm điểm bài làm tổng thể theo thang điểm 10 dựa trên độ chính xác, đầy đủ và tính chuyên nghiệp.";
-    }
-
     private async Task<Result<StudentExamination>> ResolveStudentExaminationAsync(string filename, Guid examId, CancellationToken ct)
     {
         // Trích xuất mã sinh viên dạng SE123456, HE123456, QE123456 từ tên file
@@ -614,9 +515,12 @@ public sealed partial class SubmissionService : ISubmissionService
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
+            FileSubmissions = submission.FileSubmissions,
             SubmissionFile = Path.GetFileName(submission.FileSubmissions),
             FilePath = submission.FileSubmissions,
+            StudentId = submission.StudentId,
             DiaryId = submission.DiaryId,
+            StudentExaminationId = submission.StudentExaminationId,
             DiaryName = submission.GradingDiary?.Name ?? string.Empty,
             StudentCode = submission.StudentExamination?.Student?.StudentCode ?? string.Empty,
             StudentName = submission.StudentExamination?.Student?.FullName ?? string.Empty,

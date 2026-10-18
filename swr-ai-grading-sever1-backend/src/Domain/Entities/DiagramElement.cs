@@ -59,5 +59,5 @@ public class DiagramElement
     [Column("software_type")]
     public string? SoftwareType { get; set; }
 
-    public ICollection<SubmissionParsedAnswer>? ParsedAnswers { get; set; } = [];
+    public SubmissionParsedAnswer? ParsedAnswer { get; set; }
 }
