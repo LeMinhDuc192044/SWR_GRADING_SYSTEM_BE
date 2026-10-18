@@ -263,8 +263,9 @@ public sealed class GeminiAIService : IGeminiAIService
             Trích xuất câu trả lời của sinh viên cho từng câu hỏi từ bài làm bên dưới.
             Chỉ sử dụng nội dung có trong bài làm, không tự suy luận hoặc bổ sung câu trả lời.
             Trả về đúng một mục cho mỗi question_id được cung cấp; nếu không tìm thấy câu trả lời, extracted_text phải là chuỗi rỗng.
+            Với mỗi câu trả lời có sử dụng hình ảnh trong bài làm, thêm image_indexes là danh sách chỉ số hình ảnh bắt đầu từ 1 theo marker [HÌNH ÁNH / SƠ ĐỒ #N]. Nếu không dùng hình ảnh, trả về danh sách rỗng.
             Giữ nguyên nội dung và ngôn ngữ của sinh viên. Kết quả phải là JSON đúng định dạng:
-            {"answers":[{"question_id":"GUID","extracted_text":"..."}]}
+            {"answers":[{"question_id":"GUID","extracted_text":"...","image_indexes":[1]}]}
 
             CÂU HỎI:
             {{JsonSerializer.Serialize(questionData)}}

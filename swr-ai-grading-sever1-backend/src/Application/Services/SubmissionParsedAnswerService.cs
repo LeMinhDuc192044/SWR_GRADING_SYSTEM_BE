@@ -10,10 +10,12 @@ namespace Application.Services;
 public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerService
 {
     private readonly IApplicationDbContext _db;
+    private readonly ISupabaseStorage _storage;
 
-    public SubmissionParsedAnswerService(IApplicationDbContext db)
+    public SubmissionParsedAnswerService(IApplicationDbContext db, ISupabaseStorage storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     public async Task<Result<IReadOnlyList<SubmissionParsedAnswerDTO>>> GetBySubmissionIdAsync(
@@ -42,6 +44,25 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         return submissionResult.IsSuccess
             ? Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer))
             : Result<SubmissionParsedAnswerDTO>.Failure(submissionResult.Error!, submissionResult.ErrorCode);
+    }
+
+    public async Task<Result<StoredFileDownload>> GetImageAsync(
+        Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var answer = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.ParsedAnswerId == id, ct);
+        if (answer is null)
+            return Result<StoredFileDownload>.Failure("Parsed answer not found.", "PARSED_ANSWER_NOT_FOUND");
+        if (string.IsNullOrWhiteSpace(answer.ExtractedImageUrl))
+            return Result<StoredFileDownload>.Failure("No image is stored for this parsed answer.", "IMAGE_NOT_FOUND");
+
+        var submissionResult = await FindAccessibleSubmissionAsync(answer.SubmissionId, currentUserId, isElevatedRole, ct);
+        if (!submissionResult.IsSuccess)
+            return Result<StoredFileDownload>.Failure(submissionResult.Error!, submissionResult.ErrorCode);
+
+        var fileName = Path.GetFileName(answer.ExtractedImageUrl);
+        var image = await _storage.DownloadAsync(answer.ExtractedImageUrl, fileName, ct);
+        return Result<StoredFileDownload>.Success(image);
     }
 
     public async Task<Result<SubmissionParsedAnswerDTO>> CreateAsync(

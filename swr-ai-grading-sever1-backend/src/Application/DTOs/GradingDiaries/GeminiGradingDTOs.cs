@@ -55,6 +55,9 @@ public sealed class ExtractedQuestionAnswerDto
 
     [JsonPropertyName("extracted_text")]
     public string ExtractedText { get; set; } = string.Empty;
+
+    [JsonPropertyName("image_indexes")]
+    public List<int> ImageIndexes { get; set; } = [];
 }
 
 public sealed class ExtractedQuestionAnswersDto

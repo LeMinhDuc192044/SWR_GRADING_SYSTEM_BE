@@ -36,6 +36,17 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
+    [HttpGet("{id:guid}/image")]
+    public async Task<IActionResult> GetImage(Guid id, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
+        var result = await _service.GetImageAsync(id, userId, IsAdmin(), ct);
+        if (!result.IsSuccess) return Failure(result.ErrorCode, result.Error);
+
+        var image = result.Data!;
+        return File(image.Content, image.ContentType);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] SaveSubmissionParsedAnswerRequest request, CancellationToken ct)
     {
@@ -62,7 +73,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
 
     private IActionResult Failure(string? code, string? message) => code switch
     {
-        "PARSED_ANSWER_NOT_FOUND" or "SUBMISSION_NOT_FOUND" or "ELEMENT_NOT_FOUND" =>
+        "PARSED_ANSWER_NOT_FOUND" or "SUBMISSION_NOT_FOUND" or "ELEMENT_NOT_FOUND" or "IMAGE_NOT_FOUND" =>
             NotFound(ApiResponse.Failure(404, message ?? "Not found.")),
         "FORBIDDEN" => StatusCode(403, ApiResponse.Failure(403, message ?? "Forbidden.")),
         _ => BadRequest(ApiResponse.Failure(400, message ?? "Invalid request."))

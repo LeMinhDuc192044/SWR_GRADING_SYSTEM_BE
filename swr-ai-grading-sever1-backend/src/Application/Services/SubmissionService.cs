@@ -109,12 +109,20 @@ public sealed partial class SubmissionService : ISubmissionService
                 uploadStream.Position = 0;
                 var submissionContent = isRar
                     ? SubmissionArchive.Read(uploadStream)
-                    : new SubmissionArchive.Content(uploadStream.ToArray(), null);
+                    : new SubmissionArchive.Content(uploadStream.ToArray(), new Dictionary<string, string>());
 
                 using var wordStream = new MemoryStream(submissionContent.WordDocument);
                 var extractedContent = await _geminiService.ExtractContentFromDocxAsync(wordStream, ct);
-                var studentText = extractedContent.Text;
-                if (string.IsNullOrWhiteSpace(studentText) && extractedContent.Images.Count == 0)
+                var diagramAnswers = new Dictionary<Guid, string>();
+                foreach (var question in paperQuestions)
+                {
+                    var diagramKey = SubmissionArchive.GetQuestionKey(question.Title);
+                    if (submissionContent.DiagramSources.TryGetValue(diagramKey, out var diagramText))
+                        diagramAnswers[question.QuestionId] = diagramText;
+                }
+
+                var hasWordContent = !string.IsNullOrWhiteSpace(extractedContent.Text) || extractedContent.Images.Count > 0;
+                if (!hasWordContent && diagramAnswers.Count == 0)
                 {
                     summary.IsSuccess = false;
                     summary.ErrorMessage = "Không thể trích xuất văn bản hoặc hình ảnh từ bài làm.";
@@ -122,19 +130,58 @@ public sealed partial class SubmissionService : ISubmissionService
                     continue;
                 }
 
+                var studentText = extractedContent.Text;
                 if (string.IsNullOrWhiteSpace(studentText))
                     studentText = "[Tài liệu bài làm chứa các hình ảnh/sơ đồ đính kèm]";
-                if (!string.IsNullOrWhiteSpace(submissionContent.DiagramSource))
-                    studentText += $"\n\nNội dung file sơ đồ trong archive:\n{submissionContent.DiagramSource}";
 
-                var extractedAnswers = await _geminiService.ExtractAnswersForQuestionsAsync(
-                    studentText, paperQuestions, extractedContent.Images, ct);
+                IReadOnlyList<ExtractedQuestionAnswerDto> extractedAnswers = hasWordContent
+                    ? await _geminiService.ExtractAnswersForQuestionsAsync(studentText, paperQuestions, extractedContent.Images, ct)
+                    : [];
+                var submissionId = Guid.NewGuid();
                 var validQuestionIds = paperQuestions.Select(question => question.QuestionId).ToHashSet();
-                var answerTextByQuestion = extractedAnswers
+                var answersByQuestion = extractedAnswers
                     .Where(answer => validQuestionIds.Contains(answer.QuestionId))
                     .GroupBy(answer => answer.QuestionId)
-                    .ToDictionary(group => group.Key, group => group.First().ExtractedText);
-                var submissionId = Guid.NewGuid();
+                    .ToDictionary(group => group.Key, group => group.First());
+                var answerTextByQuestion = answersByQuestion
+                    .ToDictionary(pair => pair.Key, pair => pair.Value.ExtractedText);
+                foreach (var (questionId, diagramText) in diagramAnswers)
+                    answerTextByQuestion[questionId] = diagramText;
+
+                var imagePaths = new Dictionary<int, string>();
+                for (var imageIndex = 0; imageIndex < extractedContent.Images.Count; imageIndex++)
+                {
+                    var image = extractedContent.Images[imageIndex];
+                    if (string.IsNullOrWhiteSpace(image.Base64Data))
+                        continue;
+
+                    var imageNumber = imageIndex + 1;
+                    var imageExtension = image.MimeType switch
+                    {
+                        "image/jpeg" => ".jpg",
+                        "image/gif" => ".gif",
+                        "image/webp" => ".webp",
+                        _ => ".png"
+                    };
+                    var imagePath = $"submissions/{safePaperSetCode}/{submissionId}/images/image-{imageNumber}{imageExtension}";
+                    await using var imageStream = new MemoryStream(Convert.FromBase64String(image.Base64Data));
+                    await _storage.UploadAsync(imagePath, imageStream, image.MimeType, ct);
+                    imagePaths[imageNumber] = imagePath;
+                }
+
+                var imagePathByQuestion = answersByQuestion
+                    .Where(pair => pair.Value.ImageIndexes.Count > 0)
+                    .Select(pair => new
+                    {
+                        pair.Key,
+                        ImagePath = pair.Value.ImageIndexes
+                            .Where(imagePaths.ContainsKey)
+                            .Select(imageIndex => imagePaths[imageIndex])
+                            .FirstOrDefault()
+                    })
+                    .Where(pair => pair.ImagePath is not null)
+                    .ToDictionary(pair => pair.Key, pair => pair.ImagePath!);
+
                 var createdAt = DateTime.UtcNow;
                 var parsedAnswers = paperQuestions.Select(question => new SubmissionParsedAnswer
                 {
@@ -142,6 +189,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     SubmissionId = submissionId,
                     QuestionId = question.QuestionId,
                     ExtractedText = answerTextByQuestion.GetValueOrDefault(question.QuestionId, string.Empty),
+                    ExtractedImageUrl = imagePathByQuestion.GetValueOrDefault(question.QuestionId),
                     CreatedAt = createdAt
                 }).ToList();
 

@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using SharpCompress.Archives;
 
 namespace Application.Services;
@@ -10,20 +12,17 @@ internal static class SubmissionArchive
     private const long MaxDiagramBytes = 2 * 1024 * 1024;
     private static readonly HashSet<string> DiagramExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".drawio", ".xml", ".puml", ".plantuml"
+        ".drawio", ".io", ".xml", ".puml", ".plantuml"
     };
 
-    public sealed record Content(byte[] WordDocument, string? DiagramSource);
+    public sealed record Content(byte[] WordDocument, IReadOnlyDictionary<string, string> DiagramSources);
 
     public static Content Read(Stream archiveStream)
     {
         using var archive = ArchiveFactory.OpenArchive(archiveStream);
         var entries = archive.Entries.Where(entry => !entry.IsDirectory).ToList();
-        if (entries.Count != 2)
-            throw new InvalidDataException("Archive RAR phải chứa đúng 2 file: một file .docx và một file sơ đồ.");
-
         byte[]? wordDocument = null;
-        string? diagramSource = null;
+        var diagramSources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entries)
         {
@@ -32,9 +31,11 @@ internal static class SubmissionArchive
             {
                 wordDocument = ReadEntry(entry, MaxWordDocumentBytes);
             }
-            else if (DiagramExtensions.Contains(extension) && diagramSource is null)
+            else if (DiagramExtensions.Contains(extension))
             {
-                diagramSource = Encoding.UTF8.GetString(ReadEntry(entry, MaxDiagramBytes));
+                var diagramName = GetQuestionKey(Path.GetFileNameWithoutExtension(entry.Key ?? string.Empty));
+                if (!diagramSources.TryAdd(diagramName, Encoding.UTF8.GetString(ReadEntry(entry, MaxDiagramBytes))))
+                    throw new InvalidDataException($"Archive RAR chứa nhiều file sơ đồ có cùng tên '{diagramName}'.");
             }
             else
             {
@@ -42,10 +43,18 @@ internal static class SubmissionArchive
             }
         }
 
-        if (wordDocument is null || diagramSource is null)
-            throw new InvalidDataException("Archive RAR phải chứa đúng một file .docx và một file sơ đồ.");
+        if (wordDocument is null)
+            throw new InvalidDataException("Archive RAR phải chứa một file .docx.");
 
-        return new Content(wordDocument, diagramSource);
+        return new Content(wordDocument, diagramSources);
+    }
+
+    internal static string GetQuestionKey(string name)
+    {
+        var match = Regex.Match(name, @"^\s*(?:Q|Question|Câu)\s*0*(\d+)", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var questionNumber)
+            ? $"Q{questionNumber.ToString(CultureInfo.InvariantCulture)}"
+            : name.Trim();
     }
 
     private static byte[] ReadEntry(IArchiveEntry entry, long maxBytes)

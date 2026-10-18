@@ -11,6 +11,9 @@ public interface ISubmissionParsedAnswerService
     Task<Result<SubmissionParsedAnswerDTO>> GetByIdAsync(
         Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
 
+    Task<Result<StoredFileDownload>> GetImageAsync(
+        Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
+
     Task<Result<SubmissionParsedAnswerDTO>> CreateAsync(
         SaveSubmissionParsedAnswerRequest request, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
 
