@@ -20,6 +20,8 @@ public enum SubmissionStatus
     Lecturer_Reviewed = 2,
 
     /// <summary>Đã chốt điểm.</summary>
-    Final = 3
+    Final = 3, 
+    ReGrading = 4, 
+    
 }
 
