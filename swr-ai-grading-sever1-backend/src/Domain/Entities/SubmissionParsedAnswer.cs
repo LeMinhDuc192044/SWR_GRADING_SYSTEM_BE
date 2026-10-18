@@ -39,4 +39,5 @@ public class SubmissionParsedAnswer
     public DateTime CreatedAt { get; set; }
 
     public ICollection<EvaluationItemDetail> EvaluationDetails { get; set; } = [];
+
 }

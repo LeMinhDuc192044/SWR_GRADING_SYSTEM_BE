@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Domain.Entities;
 
 namespace Application.DTOs.GradingDiaries;
 
@@ -45,4 +46,19 @@ public sealed class DocxExtractedContentDto
 {
     public string Text { get; set; } = string.Empty;
     public List<DocxImageDto> Images { get; set; } = [];
+}
+
+public sealed class ExtractedQuestionAnswerDto
+{
+    [JsonPropertyName("question_id")]
+    public Guid QuestionId { get; set; }
+
+    [JsonPropertyName("extracted_text")]
+    public string ExtractedText { get; set; } = string.Empty;
+}
+
+public sealed class ExtractedQuestionAnswersDto
+{
+    [JsonPropertyName("answers")]
+    public List<ExtractedQuestionAnswerDto> Answers { get; set; } = [];
 }

@@ -108,30 +108,7 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 2: Kích hoạt Gemini AI tự động chấm bài theo Rubric.
-    /// </summary>
-    [HttpPost("{id:guid}/ai-grade")]
-    public async Task<IActionResult> TriggerAiGrade(Guid id, CancellationToken ct)
-    {
-        if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
-
-        var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND" || result.ErrorCode == "PAPER_SET_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
-
-    /// <summary>
-    /// FLOW 3: Giảng viên xem xét bài nộp và nhập điểm/nhận xét (trạng thái chuyển sang Lecturer_Reviewed).
+    /// FLOW 2: Giảng viên xem xét bài nộp và nhập điểm/nhận xét (trạng thái chuyển sang Lecturer_Reviewed).
     /// </summary>
     [HttpPut("{id:guid}/review")]
     public async Task<IActionResult> Review(
@@ -160,7 +137,7 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 4: Chốt điểm cuối cùng cho bài nộp (trạng thái chuyển sang Final).
+    /// FLOW 3: Chốt điểm cuối cùng cho bài nộp (trạng thái chuyển sang Final).
     /// </summary>
     [HttpPut("{id:guid}/finalize")]
     public async Task<IActionResult> Finalize(Guid id, CancellationToken ct)
