@@ -27,25 +27,38 @@ public static partial class PaperSetQuestionDocumentParser
 
             var questions = new List<CreateQuestionInput>();
             QuestionBlock? current = null;
+
             foreach (var paragraph in paragraphs)
             {
                 var match = QuestionHeaderRegex().Match(paragraph);
                 if (match.Success)
                 {
                     AddQuestion(questions, current);
+                    var qNumStr = match.Groups["number"].Value;
+                    int.TryParse(qNumStr, out var qNum);
+                    var rawPoint = match.Groups["point"].Value;
+                    var subtitle = match.Groups["content"].Value.Trim();
+                    var title = string.IsNullOrWhiteSpace(subtitle)
+                        ? $"Question {qNumStr}"
+                        : $"Question {qNumStr}: {subtitle}";
+
                     current = new QuestionBlock(
-                        $"Question {match.Groups["number"].Value}",
-                        ParsePoint(match.Groups["point"].Value),
-                        match.Groups["content"].Value.Trim());
+                        qNum,
+                        title,
+                        ParsePoint(rawPoint),
+                        subtitle);
                     continue;
                 }
 
-                if (current is not null) current.Content.AppendLine(paragraph);
+                if (current is not null)
+                {
+                    current.Content.AppendLine(paragraph);
+                }
             }
 
             AddQuestion(questions, current);
             return questions.Count == 0
-                ? Result<IReadOnlyList<CreateQuestionInput>>.Failure("The question document does not contain any headings such as 'Question 1'.", "NO_QUESTIONS_FOUND")
+                ? Result<IReadOnlyList<CreateQuestionInput>>.Failure("The question document does not contain any headings such as 'Question 1' or 'Câu 1'.", "NO_QUESTIONS_FOUND")
                 : Result<IReadOnlyList<CreateQuestionInput>>.Success(questions);
         }
         catch (Exception ex) when (ex is OpenXmlPackageException or InvalidDataException)
@@ -91,7 +104,11 @@ public static partial class PaperSetQuestionDocumentParser
             if (match.Success)
             {
                 AddQuestion(questions, current);
-                current = new QuestionBlock($"Question {match.Groups["number"].Value}", ParsePoint(match.Groups["point"].Value), match.Groups["content"].Value.Trim());
+                var qNumStr = match.Groups["number"].Value;
+                int.TryParse(qNumStr, out var qNum);
+                var subtitle = match.Groups["content"].Value.Trim();
+                var title = string.IsNullOrWhiteSpace(subtitle) ? $"Question {qNumStr}" : $"Question {qNumStr}: {subtitle}";
+                current = new QuestionBlock(qNum, title, ParsePoint(match.Groups["point"].Value), subtitle);
                 continue;
             }
 
@@ -107,22 +124,43 @@ public static partial class PaperSetQuestionDocumentParser
     private static void AddQuestion(List<CreateQuestionInput> questions, QuestionBlock? question)
     {
         if (question is null || question.Content.Length == 0) return;
+        var fullText = $"{question.Title} {question.Content}";
         questions.Add(new CreateQuestionInput
         {
+            QuestionNumber = question.Number,
             Title = question.Title,
             Content = question.Content.ToString().Trim(),
-            Point = question.Point
+            Point = question.Point,
+            DetectedDiagramType = DetectDiagramType(fullText)
         });
     }
 
-    private static decimal ParsePoint(string value) =>
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var point) ? point : 0;
+    public static string? DetectDiagramType(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var lower = text.ToLowerInvariant();
+        if (lower.Contains("context diagram") || lower.Contains("ngữ cảnh")) return "Context Diagram";
+        if (lower.Contains("use case") || lower.Contains("usecase")) return "Use Case Diagram";
+        if (lower.Contains("erd") || lower.Contains("entity-relationship") || lower.Contains("thực thể liên kết")) return "ERD";
+        if (lower.Contains("swimlane") || lower.Contains("phân làn") || lower.Contains("activity")) return "Swimlane Diagram";
+        if (lower.Contains("dfd") || lower.Contains("data flow")) return "DFD";
+        if (lower.Contains("dialog map") || lower.Contains("hội thoại")) return "Dialog Map";
+        return null;
+    }
 
-    [GeneratedRegex(@"^Question\s+(?<number>\d+)\s*(?:\((?<point>[\d.,]+)\s*point[s]?\))?\s*:\s*(?<content>.*)$", RegexOptions.IgnoreCase)]
+    private static decimal ParsePoint(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return 0;
+        value = value.Trim().Replace(',', '.');
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var point) ? point : 0;
+    }
+
+    [GeneratedRegex(@"^(?:Question|Câu)\s+(?<number>\d+)\s*(?:\((?<point>[\d.,]+)\s*(?:points?|pts?|điểm|đ)\))?\s*[:\-–—]?\s*(?<content>.*)$", RegexOptions.IgnoreCase)]
     private static partial Regex QuestionHeaderRegex();
 
-    private sealed class QuestionBlock(string title, decimal point, string initialContent)
+    private sealed class QuestionBlock(int number, string title, decimal point, string initialContent)
     {
+        public int Number { get; } = number;
         public string Title { get; } = title;
         public decimal Point { get; } = point;
         public StringBuilder Content { get; } = new(initialContent);

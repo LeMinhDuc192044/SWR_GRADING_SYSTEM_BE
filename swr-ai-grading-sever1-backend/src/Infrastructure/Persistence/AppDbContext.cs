@@ -24,6 +24,8 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
+    public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
 
