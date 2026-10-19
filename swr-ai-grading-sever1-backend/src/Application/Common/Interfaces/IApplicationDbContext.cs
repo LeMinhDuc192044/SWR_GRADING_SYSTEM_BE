@@ -18,7 +18,6 @@ public interface IApplicationDbContext
     DbSet<Diagram> Diagrams { get; }
     DbSet<Question> Questions { get; }
     DbSet<QuestionRubric> QuestionRubrics { get; }
-    DbSet<Diagram> Diagrams { get; }
     DbSet<DiagramElement> DiagramElements { get; }
     DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
