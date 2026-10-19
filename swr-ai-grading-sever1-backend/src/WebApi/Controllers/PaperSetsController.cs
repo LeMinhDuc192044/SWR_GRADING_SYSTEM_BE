@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Application.Common;
 using Application.DTOs.PaperSets;
+using Application.DTOs.Questions;
+using Application.DTOs.Rubrics;
 using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -47,6 +49,25 @@ public sealed class PaperSetsController : ControllerBase
             : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
+    [HttpPost("preview")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> PreviewPaperSet(
+        IFormFile question,
+        IFormFile? answerRubric,
+        CancellationToken ct)
+    {
+        if (question is null || question.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+
+        var questionUpload = ToUpload(question, PaperSetFileType.Question)!;
+        var rubricUpload = ToUpload(answerRubric, PaperSetFileType.AnswerRubric);
+
+        var result = await _service.PreviewPaperSetAsync(questionUpload, rubricUpload, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
     [HttpPost("read-document")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(52_428_800)]
@@ -85,6 +106,24 @@ public sealed class PaperSetsController : ControllerBase
     {
         var result = await _service.GetByIdAsync(id, ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
+    }
+
+    [HttpGet("{id:guid}/questions")]
+    public async Task<IActionResult> GetQuestions(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GetQuestionsByPaperSetIdAsync(id, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : NotFound(ApiResponse.Failure(404, result.Error!));
+    }
+
+    [HttpGet("{id:guid}/rubrics")]
+    public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
     [HttpGet("{id:guid}/content")]

@@ -11,12 +11,22 @@ public sealed class PaperSetRepository : Repository<PaperSet>, IPaperSetReposito
     public override async Task<PaperSet?> GetByIdAsync(object id, CancellationToken ct = default)
         => await _set
             .Include(material => material.Questions)
+                .ThenInclude(q => q.Diagram)
+            .Include(material => material.Questions)
+                .ThenInclude(q => q.Rubric)
+            .Include(material => material.Rubrics)
+                .ThenInclude(r => r.Diagram)
             .Include(material => material.CreateBy)
             .FirstOrDefaultAsync(material => material.PaperSetId == (Guid)id, ct);
 
     public override async Task<IReadOnlyList<PaperSet>> GetAllAsync(CancellationToken ct = default)
         => await _set
             .Include(material => material.Questions)
+                .ThenInclude(q => q.Diagram)
+            .Include(material => material.Questions)
+                .ThenInclude(q => q.Rubric)
+            .Include(material => material.Rubrics)
+                .ThenInclude(r => r.Diagram)
             .Include(material => material.CreateBy)
             .AsNoTracking()
             .ToListAsync(ct);
