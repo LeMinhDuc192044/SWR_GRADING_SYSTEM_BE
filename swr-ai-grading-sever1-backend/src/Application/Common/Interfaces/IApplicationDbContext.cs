@@ -16,12 +16,9 @@ public interface IApplicationDbContext
     DbSet<StudentExamination> StudentExaminations { get; }
     DbSet<GradingDiary> GradingDiaries { get; }
     DbSet<Question> Questions { get; }
-<<<<<<< HEAD
     DbSet<QuestionRubric> QuestionRubrics { get; }
     DbSet<Diagram> Diagrams { get; }
-=======
     DbSet<DiagramElement> DiagramElements { get; }
     DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers { get; }
->>>>>>> origin/main
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

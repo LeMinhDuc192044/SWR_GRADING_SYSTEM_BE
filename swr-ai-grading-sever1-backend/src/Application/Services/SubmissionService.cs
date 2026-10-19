@@ -214,33 +214,10 @@ public sealed partial class SubmissionService : ISubmissionService
                 await _submissionRepository.AddAsync(submission, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
                 summary.SubmissionId = submission.SubmissionId;
-<<<<<<< HEAD
-                summary.FilePath = submission.FileSubmissions;
-
-                // 6. Tùy chọn: Chấm AI tự động ngay sau khi upload
-                try
-                {
-                    var gradeResult = await _geminiService.GradeSubmissionAsync(studentText, rubricText, ct: ct);
-                    AddEvaluation(submission, EvaluationType.AI, gradeResult.TotalScore, gradeResult.RawAiLogJson);
-                    submission.Status = SubmissionStatus.AI_Graded; // 1 = AI_Graded
-
-                    _submissionRepository.Update(submission);
-                    await _unitOfWork.SaveChangesAsync(ct);
-
-                    summary.AiScore = gradeResult.TotalScore;
-                    summary.CriteriaScores = gradeResult.CriteriaScores;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Chưa thể hoàn tất chấm AI ngay lúc upload cho bài {File}. Trạng thái giữ nguyên Submitted.", file.FileName);
-                }
-
-=======
                 summary.FileSubmissions = submission.FileSubmissions;
                 summary.StudentId = submission.StudentId;
                 summary.DiaryId = submission.DiaryId;
                 summary.StudentExaminationId = submission.StudentExaminationId;
->>>>>>> origin/main
                 summary.IsSuccess = true;
                 summary.Status = submission.Status.ToString();
                 successCount++;
