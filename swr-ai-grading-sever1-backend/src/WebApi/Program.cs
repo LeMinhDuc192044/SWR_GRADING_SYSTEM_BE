@@ -121,7 +121,6 @@ builder.Services.AddScoped<IGradingDiaryRepository, GradingDiaryRepository>();
 builder.Services.AddScoped<IGradingDiaryService, GradingDiaryService>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
-builder.Services.AddScoped<ISubmissionParsedAnswerService, SubmissionParsedAnswerService>();
 builder.Services.AddScoped<ILecturerService, LecturerService>();
 builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();

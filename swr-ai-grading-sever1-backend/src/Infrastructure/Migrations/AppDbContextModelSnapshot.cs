@@ -635,8 +635,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("ParsedAnswerId");
 
-                    b.HasIndex("ElementId")
-                        .IsUnique();
+                    b.HasIndex("ElementId");
 
                     b.HasIndex("QuestionId");
 
@@ -933,8 +932,8 @@ namespace Infrastructure.Migrations
             modelBuilder.Entity("Domain.Entities.SubmissionParsedAnswer", b =>
                 {
                     b.HasOne("Domain.Entities.DiagramElement", "Element")
-                        .WithOne("ParsedAnswer")
-                        .HasForeignKey("Domain.Entities.SubmissionParsedAnswer", "ElementId");
+                        .WithMany("ParsedAnswers")
+                        .HasForeignKey("ElementId");
 
                     b.HasOne("Domain.Entities.Question", "Question")
                         .WithMany("ParsedAnswers")
@@ -982,7 +981,7 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.DiagramElement", b =>
                 {
-                    b.Navigation("ParsedAnswer");
+                    b.Navigation("ParsedAnswers");
 
                     b.Navigation("ReferencedBy");
                 });
