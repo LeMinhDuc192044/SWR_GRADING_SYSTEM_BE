@@ -23,12 +23,29 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Question> Questions => Set<Question>();
+<<<<<<< HEAD
     public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
+=======
+    public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
+    public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
+>>>>>>> origin/main
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        builder.Entity<StudentSubmission>()
+            .HasMany(submission => submission.ParsedAnswers)
+            .WithOne(answer => answer.Submission)
+            .HasForeignKey(answer => answer.SubmissionId)
+            .IsRequired();
+
+        builder.Entity<SubmissionParsedAnswer>()
+            .HasOne(answer => answer.Element)
+            .WithOne(element => element.ParsedAnswer)
+            .HasForeignKey<SubmissionParsedAnswer>(answer => answer.ElementId);
+
         base.OnModelCreating(builder);
     }
 }

@@ -14,13 +14,6 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
-    Task<Result<UploadSubmissionsResultDTO>> UploadAndGradeBatchAsync(
-        Guid gradingDiaryId,
-        IReadOnlyList<IDocumentFile> files,
-        Guid currentUserId,
-        CancellationToken ct = default
-    );
-
     // List submissions under a diary
     Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListByDiaryIdAsync(
         Guid diaryId,
@@ -45,23 +38,7 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
-    // FLOW 2: AI Grading
-    Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
-        Guid diaryId,
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
-    Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
-    // FLOW 3: Lecturer Review
+    // FLOW 2: Lecturer Review
     Task<Result<SubmissionDetailDTO>> ReviewAsync(
         Guid diaryId,
         Guid submissionId,
@@ -89,7 +66,7 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
-    // FLOW 4: Finalize
+    // FLOW 3: Finalize
     Task<Result<SubmissionDetailDTO>> FinalizeAsync(
         Guid diaryId,
         Guid submissionId,

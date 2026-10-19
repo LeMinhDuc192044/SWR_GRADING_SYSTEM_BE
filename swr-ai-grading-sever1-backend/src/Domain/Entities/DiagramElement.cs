@@ -34,6 +34,13 @@ public class DiagramElement
     [Column("is_requirement")]
     public bool IsRequirement { get; set; }
 
+    [NotMapped]
+    public bool IsRequired
+    {
+        get => IsRequirement;
+        set => IsRequirement = value;
+    }
+
     [Column("file_template_url")]
     public string? FileTemplateUrl { get; set; }
 
@@ -52,5 +59,5 @@ public class DiagramElement
     [Column("software_type")]
     public string? SoftwareType { get; set; }
 
-    public ICollection<SubmissionParsedAnswer>? ParsedAnswers { get; set; } = [];
+    public SubmissionParsedAnswer? ParsedAnswer { get; set; }
 }
