@@ -10,8 +10,11 @@ public sealed class SubmitLecturerScoreRequest
 
 public sealed class ReviewSubmissionRequest
 {
-    public decimal LecturerScore { get; set; }
+    public decimal? LecturerScore { get; set; }
     public string? Comment { get; set; }
+    public bool PickAiScore { get; set; }
+    public bool IsFinal { get; set; }
+    public string? SelectionReason { get; set; }
 }
 
 public sealed class SubmissionDetailDTO
@@ -30,6 +33,8 @@ public sealed class SubmissionDetailDTO
     public string? AiLogs { get; set; }
     public decimal? LecturerScore { get; set; }
     public string Comment { get; set; } = string.Empty;
+    public bool IsFinalScore { get; set; }
+    public string? SelectionReason { get; set; }
     public SubmissionStatus Status { get; set; }
     public string StatusName => Status.ToString();
     public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();

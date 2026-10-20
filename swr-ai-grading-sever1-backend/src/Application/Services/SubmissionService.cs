@@ -327,27 +327,171 @@ public sealed partial class SubmissionService : ISubmissionService
         return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
     }
 
-    // FLOW 2: Lecturer Review
-    public async Task<Result<SubmissionDetailDTO>> ReviewAsync(
+    // FLOW 2: AI Grading
+    public async Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
         Guid diaryId,
         Guid submissionId,
-        decimal lecturerScore,
-        string? comment,
         Guid currentUserId,
         bool isElevatedRole,
         CancellationToken ct = default)
     {
-        // TODO: Lấy max từ PaperSet.MaxScore khi schema được bổ sung
-        if (lecturerScore < 0 || lecturerScore > 10)
+        var submission = await _dbContext.StudentSubmissions
+            .Include(s => s.GradingDiary)
+                .ThenInclude(gd => gd.PaperSet)
+            .Include(s => s.StudentExamination)
+                .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
+                    .ThenInclude(q => q.Rubric)
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
+
+        if (submission is null)
         {
-            return Result<SubmissionDetailDTO>.Failure("Điểm số phải nằm trong thang điểm từ 0 đến 10.", "INVALID_SCORE");
+            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy bài nộp.", "SUBMISSION_NOT_FOUND");
         }
 
-        var submission = await _dbContext.Submissions
+        if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền kích hoạt chấm AI cho bài nộp này.", "FORBIDDEN");
+        }
+
+        var paperSet = submission.GradingDiary.PaperSet
+            ?? await _paperSetRepository.GetByIdAsync(submission.GradingDiary.PaperSetId, ct);
+
+        if (paperSet is null)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy đề thi để lấy rubric.", "PAPER_SET_NOT_FOUND");
+        }
+
+        // Tải nội dung Rubric
+        var rubricText = await LoadRubricTextAsync(paperSet, ct);
+
+        // Chuẩn bị danh sách (Question, ParsedAnswer)
+        var questionAnswers = submission.ParsedAnswers
+            .Where(pa => pa.Question is not null)
+            .Select(pa => (Question: pa.Question!, ParsedAnswer: pa))
+            .ToList();
+
+        if (questionAnswers.Count == 0)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Bài nộp chưa có câu trả lời nào được trích xuất để chấm.", "NO_PARSED_ANSWERS");
+        }
+
+        // Tải các hình ảnh nếu có đính kèm
+        var docxImages = new List<DocxImageDto>();
+        foreach (var qa in questionAnswers)
+        {
+            if (!string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl))
+            {
+                try
+                {
+                    var imgDownload = await _storage.DownloadAsync(qa.ParsedAnswer.ExtractedImageUrl, "submissions", ct);
+                    using var ms = new MemoryStream();
+                    await imgDownload.Content.CopyToAsync(ms, ct);
+                    var imgBytes = ms.ToArray();
+                    if (imgBytes.Length > 0)
+                    {
+                        var ext = Path.GetExtension(qa.ParsedAnswer.ExtractedImageUrl).ToLowerInvariant();
+                        var mime = ext switch
+                        {
+                            ".jpg" or ".jpeg" => "image/jpeg",
+                            ".webp" => "image/webp",
+                            ".gif" => "image/gif",
+                            _ => "image/png"
+                        };
+                        docxImages.Add(new DocxImageDto
+                        {
+                            MimeType = mime,
+                            Base64Data = Convert.ToBase64String(imgBytes)
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Không thể tải hình ảnh đính kèm của câu {Title}: {Url}", qa.Question.Title, qa.ParsedAnswer.ExtractedImageUrl);
+                }
+            }
+        }
+
+        // Gọi Gemini AI chấm bài
+        var gradingResult = await _geminiService.GradeSubmissionAnswersAsync(questionAnswers, rubricText, docxImages, ct);
+
+        // Tính vòng lặp tiếp theo cho AI
+        var nextRound = submission.Evaluations
+            .Where(e => e.EvaluationType == EvaluationType.AI)
+            .Select(e => e.EvaluationRound)
+            .DefaultIfEmpty(-1)
+            .Max() + 1;
+
+        var aiEvaluation = new SubmissionEvaluation
+        {
+            EvaluationId = Guid.NewGuid(),
+            SubmissionId = submission.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            EvaluationRound = nextRound,
+            TotalScore = gradingResult.TotalScore,
+            GeneralFeedback = gradingResult.RawAiLogJson,
+            IsFinalScore = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // Tạo chi tiết EvaluationItemDetail cho từng parsed_answer
+        foreach (var qa in questionAnswers)
+        {
+            var matchedCrit = gradingResult.CriteriaScores.FirstOrDefault(c =>
+                c.QuestionId == qa.Question.QuestionId ||
+                (!string.IsNullOrWhiteSpace(c.Criterion) && c.Criterion.Contains(qa.Question.Title, StringComparison.OrdinalIgnoreCase)));
+
+            var itemDetail = new EvaluationItemDetail
+            {
+                DetailId = Guid.NewGuid(),
+                EvaluationId = aiEvaluation.EvaluationId,
+                Evaluation = aiEvaluation,
+                ParsedAnswerId = qa.ParsedAnswer.ParsedAnswerId,
+                ParsedAnswer = qa.ParsedAnswer,
+                Score = matchedCrit?.ActualScore ?? 0m,
+                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
+            };
+
+            aiEvaluation.Details.Add(itemDetail);
+        }
+
+        submission.Evaluations.Add(aiEvaluation);
+        submission.Status = SubmissionStatus.AI_Graded;
+        submission.UpdatedDate = DateTime.UtcNow;
+
+        _submissionRepository.Update(submission);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
+    }
+
+    public Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
+        Guid submissionId,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        return TriggerAiGradingAsync(Guid.Empty, submissionId, currentUserId, isElevatedRole, ct);
+    }
+
+    // FLOW 3: Lecturer Review & Pick AI Score
+    public async Task<Result<SubmissionDetailDTO>> ReviewAsync(
+        Guid diaryId,
+        Guid submissionId,
+        ReviewSubmissionRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        var submission = await _dbContext.StudentSubmissions
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
 
         if (submission is null)
@@ -360,16 +504,151 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền chấm bài nộp này.", "FORBIDDEN");
         }
 
-        // Cập nhật điểm giảng viên và nhận xét (chuyển sang trạng thái Lecturer_Reviewed)
-        // KHÔNG sửa ai_score hay ai_logs!
-        AddEvaluation(submission, EvaluationType.Lecturer, lecturerScore, comment?.Trim());
-        submission.Status = SubmissionStatus.Lecturer_Reviewed; // 2 = Lecturer_Reviewed
-        submission.UpdatedDate = DateTime.UtcNow;
+        var aiEvaluation = GetLatestEvaluation(submission, EvaluationType.AI);
 
-        _submissionRepository.Update(submission);
-        await _unitOfWork.SaveChangesAsync(ct);
+        if (request.PickAiScore)
+        {
+            if (aiEvaluation is null || !aiEvaluation.TotalScore.HasValue)
+            {
+                return Result<SubmissionDetailDTO>.Failure("Bài làm chưa được AI chấm nên không thể pick điểm AI.", "AI_EVALUATION_NOT_FOUND");
+            }
 
-        return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
+            // Người chấm chọn pick điểm AI:
+            // Tạo một bản ghi Review của Giảng viên với điểm và nhận xét kế thừa từ AI
+            var nextRound = submission.Evaluations
+                .Where(e => e.EvaluationType == EvaluationType.Lecturer)
+                .Select(e => e.EvaluationRound)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+
+            var chosenFeedback = !string.IsNullOrWhiteSpace(request.Comment)
+                ? request.Comment.Trim()
+                : $"Giảng viên đồng ý với điểm và nhận xét của AI.";
+
+            // Reset tất cả IsFinalScore trước đó của bài làm
+            foreach (var eval in submission.Evaluations)
+            {
+                eval.IsFinalScore = false;
+            }
+
+            var lecturerEval = new SubmissionEvaluation
+            {
+                EvaluationId = Guid.NewGuid(),
+                SubmissionId = submission.SubmissionId,
+                EvaluationType = EvaluationType.Lecturer,
+                EvaluationRound = nextRound,
+                TotalScore = aiEvaluation.TotalScore.Value,
+                GeneralFeedback = chosenFeedback,
+                IsFinalScore = request.IsFinal,
+                AdminSelectedId = currentUserId,
+                SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
+                    ? request.SelectionReason.Trim() 
+                    : "Giảng viên xác nhận pick điểm của AI",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Sao chép chi tiết từng câu từ AI sang Lecturer
+            foreach (var aiDetail in aiEvaluation.Details)
+            {
+                lecturerEval.Details.Add(new EvaluationItemDetail
+                {
+                    DetailId = Guid.NewGuid(),
+                    EvaluationId = lecturerEval.EvaluationId,
+                    Evaluation = lecturerEval,
+                    ParsedAnswerId = aiDetail.ParsedAnswerId,
+                    Score = aiDetail.Score,
+                    Comment = aiDetail.Comment,
+                    AiExtractionId = aiDetail.DetailId
+                });
+            }
+
+            submission.Evaluations.Add(lecturerEval);
+            submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
+            submission.UpdatedDate = DateTime.UtcNow;
+
+            _submissionRepository.Update(submission);
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
+        }
+        else
+        {
+            if (!request.LecturerScore.HasValue)
+            {
+                return Result<SubmissionDetailDTO>.Failure("Vui lòng cung cấp lecturerScore khi không pick điểm AI.", "SCORE_REQUIRED");
+            }
+
+            var score = request.LecturerScore.Value;
+            if (score < 0 || score > 10)
+            {
+                return Result<SubmissionDetailDTO>.Failure("Điểm số phải nằm trong thang điểm từ 0 đến 10.", "INVALID_SCORE");
+            }
+
+            var nextRound = submission.Evaluations
+                .Where(e => e.EvaluationType == EvaluationType.Lecturer)
+                .Select(e => e.EvaluationRound)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+
+            if (request.IsFinal)
+            {
+                foreach (var eval in submission.Evaluations)
+                {
+                    eval.IsFinalScore = false;
+                }
+            }
+
+            var lecturerEval = new SubmissionEvaluation
+            {
+                EvaluationId = Guid.NewGuid(),
+                SubmissionId = submission.SubmissionId,
+                EvaluationType = EvaluationType.Lecturer,
+                EvaluationRound = nextRound,
+                TotalScore = score,
+                GeneralFeedback = request.Comment?.Trim(),
+                IsFinalScore = request.IsFinal,
+                AdminSelectedId = currentUserId,
+                SelectionReason = request.SelectionReason?.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            submission.Evaluations.Add(lecturerEval);
+            submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
+            submission.UpdatedDate = DateTime.UtcNow;
+
+            _submissionRepository.Update(submission);
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
+        }
+    }
+
+    public Task<Result<SubmissionDetailDTO>> ReviewAsync(
+        Guid diaryId,
+        Guid submissionId,
+        decimal lecturerScore,
+        string? comment,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        return ReviewAsync(diaryId, submissionId, new ReviewSubmissionRequest
+        {
+            LecturerScore = lecturerScore,
+            Comment = comment,
+            PickAiScore = false,
+            IsFinal = false
+        }, currentUserId, isElevatedRole, ct);
+    }
+
+    public Task<Result<SubmissionDetailDTO>> ReviewAsync(
+        Guid submissionId,
+        ReviewSubmissionRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        return ReviewAsync(Guid.Empty, submissionId, request, currentUserId, isElevatedRole, ct);
     }
 
     public Task<Result<SubmissionDetailDTO>> ReviewAsync(
@@ -380,7 +659,13 @@ public sealed partial class SubmissionService : ISubmissionService
         bool isElevatedRole,
         CancellationToken ct = default)
     {
-        return ReviewAsync(Guid.Empty, submissionId, lecturerScore, comment, currentUserId, isElevatedRole, ct);
+        return ReviewAsync(Guid.Empty, submissionId, new ReviewSubmissionRequest
+        {
+            LecturerScore = lecturerScore,
+            Comment = comment,
+            PickAiScore = false,
+            IsFinal = false
+        }, currentUserId, isElevatedRole, ct);
     }
 
     public Task<Result<SubmissionDetailDTO>> DecideScoreAsync(
@@ -390,10 +675,15 @@ public sealed partial class SubmissionService : ISubmissionService
         bool isElevatedRole,
         CancellationToken ct = default)
     {
-        return ReviewAsync(Guid.Empty, submissionId, lecturerScore, null, currentUserId, isElevatedRole, ct);
+        return ReviewAsync(Guid.Empty, submissionId, new ReviewSubmissionRequest
+        {
+            LecturerScore = lecturerScore,
+            PickAiScore = false,
+            IsFinal = false
+        }, currentUserId, isElevatedRole, ct);
     }
 
-    // FLOW 3: Finalize
+    // FLOW 4: Finalize
     public async Task<Result<SubmissionDetailDTO>> FinalizeAsync(
         Guid diaryId,
         Guid submissionId,
@@ -401,7 +691,7 @@ public sealed partial class SubmissionService : ISubmissionService
         bool isElevatedRole,
         CancellationToken ct = default)
     {
-        var query = _dbContext.Submissions
+        var query = _dbContext.StudentSubmissions
             .Include(s => s.GradingDiary)
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
@@ -431,9 +721,16 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bài nộp phải được giảng viên review trước khi chốt điểm.", "INVALID_STATUS");
         }
 
-        // Chuyển sang trạng thái Final (3). KHÔNG cập nhật lại điểm số và giữ nguyên ngày review (UpdatedDate).
-        lecturerEvaluation!.IsFinalScore = true;
+        // Đảm bảo chỉ có một evaluation được IsFinalScore
+        foreach (var eval in submission.Evaluations)
+        {
+            eval.IsFinalScore = false;
+        }
+
+        lecturerEvaluation.IsFinalScore = true;
+        lecturerEvaluation.AdminSelectedId = currentUserId;
         submission.Status = SubmissionStatus.Final; // 3 = Final
+        submission.UpdatedDate = DateTime.UtcNow;
 
         _submissionRepository.Update(submission);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -457,6 +754,63 @@ public sealed partial class SubmissionService : ISubmissionService
         CancellationToken ct = default)
     {
         return FinalizeAsync(Guid.Empty, submissionId, currentUserId, isElevatedRole, ct);
+    }
+
+    private async Task<string> LoadRubricTextAsync(PaperSet paperSet, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(paperSet.FileAnswerRubric))
+        {
+            try
+            {
+                var download = await _storage.DownloadAsync(paperSet.FileAnswerRubric, "rubric", ct);
+                var extension = Path.GetExtension(paperSet.FileAnswerRubric);
+
+                if (string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase))
+                {
+                    var text = await _geminiService.ExtractTextFromDocxAsync(download.Content, ct);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+                else if (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase))
+                {
+                    var text = await _geminiService.ExtractTextFromXlsxAsync(download.Content, ct);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+                else
+                {
+                    using var reader = new StreamReader(download.Content);
+                    var text = await reader.ReadToEndAsync(ct);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Không thể tải hoặc đọc rubric từ storage: {Path}", paperSet.FileAnswerRubric);
+            }
+        }
+
+        // Fallback: Xây dựng rubric từ danh sách câu hỏi và QuestionRubrics của đề thi
+        var questions = await _dbContext.Questions
+            .Include(q => q.Rubric)
+            .Where(q => q.PaperSetId == paperSet.PaperSetId)
+            .ToListAsync(ct);
+
+        if (questions.Count > 0)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"[ĐỀ THI: {paperSet.PaperSetCode} - {paperSet.Description}]");
+            sb.AppendLine("DANH SÁCH CÂU HỎI VÀ THANG ĐIỂM CHI TIẾT:");
+            foreach (var q in questions)
+            {
+                sb.AppendLine($"- {q.Title}: {q.Content} (Điểm tối đa: {q.Point}đ)");
+                if (q.Rubric is not null && !string.IsNullOrWhiteSpace(q.Rubric.Content))
+                {
+                    sb.AppendLine($"  + Tiêu chí rubric: {q.Rubric.Content}");
+                }
+            }
+            return sb.ToString();
+        }
+
+        return $"Đề thi mã {paperSet.PaperSetCode}. Hãy chấm điểm bài làm chi tiết từng câu theo thang điểm 10.";
     }
 
     private async Task<Result<StudentExamination>> ResolveStudentExaminationAsync(string filename, Guid examId, CancellationToken ct)
@@ -510,6 +864,7 @@ public sealed partial class SubmissionService : ISubmissionService
     {
         var aiEvaluation = GetLatestEvaluation(submission, EvaluationType.AI);
         var lecturerEvaluation = GetLatestEvaluation(submission, EvaluationType.Lecturer);
+        var finalEvaluation = submission.Evaluations.FirstOrDefault(e => e.IsFinalScore) ?? lecturerEvaluation;
         var criteriaScores = ParseCriteriaScores(aiEvaluation?.GeneralFeedback);
 
         return new SubmissionDetailDTO
@@ -528,6 +883,8 @@ public sealed partial class SubmissionService : ISubmissionService
             AiLogs = aiEvaluation?.GeneralFeedback,
             LecturerScore = lecturerEvaluation?.TotalScore,
             Comment = lecturerEvaluation?.GeneralFeedback ?? string.Empty,
+            IsFinalScore = finalEvaluation?.IsFinalScore ?? false,
+            SelectionReason = finalEvaluation?.SelectionReason,
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             CreatedDate = submission.CreatedDate,

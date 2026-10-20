@@ -108,18 +108,15 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 2: Giảng viên xem xét bài nộp và nhập điểm/nhận xét (trạng thái chuyển sang Lecturer_Reviewed).
+    /// FLOW 2: Kích hoạt AI chấm điểm tự động dựa trên câu trả lời bóc tách và rubric.
     /// </summary>
-    [HttpPut("{id:guid}/review")]
-    public async Task<IActionResult> Review(
-        Guid id,
-        [FromBody] ReviewSubmissionRequest request,
-        CancellationToken ct)
+    [HttpPost("{id:guid}/ai-grade")]
+    public async Task<IActionResult> AiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
-        var result = await _submissionService.ReviewAsync(id, request.LecturerScore, request.Comment, userId, IsElevatedRole(), ct);
+        var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
@@ -130,7 +127,33 @@ public sealed class SubmissionsController : ControllerBase
         if (result.ErrorCode == "FORBIDDEN")
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
 
-        if (result.ErrorCode == "INVALID_SCORE")
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    /// <summary>
+    /// FLOW 3: Giảng viên xem xét bài nộp, nhập điểm hoặc chọn pick điểm AI (is_final_score).
+    /// </summary>
+    [HttpPut("{id:guid}/review")]
+    public async Task<IActionResult> Review(
+        Guid id,
+        [FromBody] ReviewSubmissionRequest request,
+        CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _submissionService.ReviewAsync(id, request, userId, IsElevatedRole(), ct);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+
+        if (result.ErrorCode == "FORBIDDEN")
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+
+        if (result.ErrorCode is "INVALID_SCORE" or "SCORE_REQUIRED" or "AI_EVALUATION_NOT_FOUND")
             return BadRequest(ApiResponse.Failure(400, result.Error!));
 
         return BadRequest(ApiResponse.Failure(400, result.Error!));

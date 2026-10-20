@@ -27,6 +27,8 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
+    public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
+    public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

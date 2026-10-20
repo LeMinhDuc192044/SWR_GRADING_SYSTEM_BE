@@ -38,12 +38,35 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
-    // FLOW 2: Lecturer Review
+    // FLOW 2: AI Grading
+    Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
+        Guid diaryId,
+        Guid submissionId,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
+
+    Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
+        Guid submissionId,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
+
+    // FLOW 3: Lecturer Review
     Task<Result<SubmissionDetailDTO>> ReviewAsync(
         Guid diaryId,
         Guid submissionId,
-        decimal lecturerScore,
-        string? comment,
+        ReviewSubmissionRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
+
+    Task<Result<SubmissionDetailDTO>> ReviewAsync(
+        Guid submissionId,
+        ReviewSubmissionRequest request,
         Guid currentUserId,
         bool isElevatedRole,
         CancellationToken ct = default
