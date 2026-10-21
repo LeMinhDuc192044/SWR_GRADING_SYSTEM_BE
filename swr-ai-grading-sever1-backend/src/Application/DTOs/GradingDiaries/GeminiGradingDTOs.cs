@@ -19,6 +19,9 @@ public sealed class CriterionScoreDto
 
     [JsonPropertyName("comment")]
     public string Comment { get; set; } = string.Empty;
+
+    [JsonPropertyName("not_recognized")]
+    public string? NotRecognized { get; set; }
 }
 
 public sealed class GradingResultDto

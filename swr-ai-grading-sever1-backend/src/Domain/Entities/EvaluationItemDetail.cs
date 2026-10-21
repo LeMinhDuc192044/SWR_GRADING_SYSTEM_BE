@@ -29,6 +29,9 @@ public class EvaluationItemDetail
     [Column("comment")]
     public string? Comment { get; set; }
 
+    [Column("not_recognized")]
+    public string? NotRecognized { get; set; }
+
     [Column("ai_extraction_id")]
     public Guid? AiExtractionId { get; set; }
 }

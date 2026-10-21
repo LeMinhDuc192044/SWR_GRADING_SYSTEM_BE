@@ -130,6 +130,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("evaluation_id");
 
+                    b.Property<string>("NotRecognized")
+                        .HasColumnType("text")
+                        .HasColumnName("not_recognized");
+
                     b.Property<Guid>("ParsedAnswerId")
                         .HasColumnType("uuid")
                         .HasColumnName("parsed_answer_id");

@@ -25,7 +25,7 @@ public sealed class GeminiAIService : IGeminiAIService
 
         _model = configuration["GEMINI_MODEL"]
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-3.8-flash";
+            ?? "gemini-3-flash-preview";
     }
 
     public async Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
@@ -340,7 +340,8 @@ public sealed class GeminiAIService : IGeminiAIService
                   "criterion": "Tiêu đề câu hỏi / Tiêu chí",
                   "max_score": 3.0,
                   "actual_score": 2.5,
-                  "comment": "Nhận xét chi tiết đạt được gì, thiếu sót gì dựa trên bài làm và rubric của câu hỏi này"
+                  "comment": "Nhận xét chi tiết đạt được gì, thiếu sót gì dựa trên bài làm và rubric của câu hỏi này",
+                  "not_recognized": "Ghi chú những phần AI không nhận diện được rõ (chữ mờ, sơ đồ không đọc được chi tiết, công thức mờ, v.v.), hoặc để trống/null nếu nhận diện tốt"
                 }
               ],
               "missing_items": [
@@ -397,7 +398,7 @@ public sealed class GeminiAIService : IGeminiAIService
         HttpResponseMessage response = null!;
         string responseBody = string.Empty;
         var success = false;
-        foreach (var currentModel in new[] { _model, "gemini-2.5-flash" })
+        foreach (var currentModel in new[] { _model, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.5-flash-lite" })
         {
             for (var attempt = 1; attempt <= 5; attempt++)
             {

@@ -437,7 +437,9 @@ public sealed partial class SubmissionService : ISubmissionService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Tạo chi tiết EvaluationItemDetail cho từng parsed_answer
+        // Thêm Evaluation và EvaluationItemDetail trực tiếp vào DbContext
+        await _dbContext.SubmissionEvaluations.AddAsync(aiEvaluation, ct);
+
         foreach (var qa in questionAnswers)
         {
             var matchedCrit = gradingResult.CriteriaScores.FirstOrDefault(c =>
@@ -448,22 +450,20 @@ public sealed partial class SubmissionService : ISubmissionService
             {
                 DetailId = Guid.NewGuid(),
                 EvaluationId = aiEvaluation.EvaluationId,
-                Evaluation = aiEvaluation,
                 ParsedAnswerId = qa.ParsedAnswer.ParsedAnswerId,
-                ParsedAnswer = qa.ParsedAnswer,
                 Score = matchedCrit?.ActualScore ?? 0m,
-                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
+                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI.",
+                NotRecognized = matchedCrit?.NotRecognized
             };
 
-            aiEvaluation.Details.Add(itemDetail);
+            await _dbContext.EvaluationItemDetails.AddAsync(itemDetail, ct);
         }
 
         submission.Evaluations.Add(aiEvaluation);
         submission.Status = SubmissionStatus.AI_Graded;
         submission.UpdatedDate = DateTime.UtcNow;
 
-        _submissionRepository.Update(submission);
-        await _unitOfWork.SaveChangesAsync(ct);
+        await _dbContext.SaveChangesAsync(ct);
 
         return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
     }
@@ -547,27 +547,34 @@ public sealed partial class SubmissionService : ISubmissionService
                 CreatedAt = DateTime.UtcNow
             };
 
-            // Sao chép chi tiết từng câu từ AI sang Lecturer
+            await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+
+            // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm NotRecognized nếu người chấm có gửi lên
             foreach (var aiDetail in aiEvaluation.Details)
             {
-                lecturerEval.Details.Add(new EvaluationItemDetail
+                var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
+                    (i.DetailId.HasValue && i.DetailId == aiDetail.DetailId) ||
+                    (i.ParsedAnswerId.HasValue && i.ParsedAnswerId == aiDetail.ParsedAnswerId));
+
+                var lecturerDetail = new EvaluationItemDetail
                 {
                     DetailId = Guid.NewGuid(),
                     EvaluationId = lecturerEval.EvaluationId,
-                    Evaluation = lecturerEval,
                     ParsedAnswerId = aiDetail.ParsedAnswerId,
-                    Score = aiDetail.Score,
-                    Comment = aiDetail.Comment,
+                    Score = overrideItem?.Score ?? aiDetail.Score,
+                    Comment = !string.IsNullOrWhiteSpace(overrideItem?.Comment) ? overrideItem.Comment : aiDetail.Comment,
+                    NotRecognized = !string.IsNullOrWhiteSpace(overrideItem?.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                     AiExtractionId = aiDetail.DetailId
-                });
+                };
+
+                await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
             }
 
             submission.Evaluations.Add(lecturerEval);
             submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
             submission.UpdatedDate = DateTime.UtcNow;
 
-            _submissionRepository.Update(submission);
-            await _unitOfWork.SaveChangesAsync(ct);
+            await _dbContext.SaveChangesAsync(ct);
 
             return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
         }
@@ -612,12 +619,35 @@ public sealed partial class SubmissionService : ISubmissionService
                 CreatedAt = DateTime.UtcNow
             };
 
+            await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+
+            // Nếu người chấm nhập chi tiết từng câu khi chấm thủ công
+            if (request.ItemDetails is not null && request.ItemDetails.Count > 0)
+            {
+                foreach (var item in request.ItemDetails)
+                {
+                    if (item.ParsedAnswerId.HasValue)
+                    {
+                        var lecturerDetail = new EvaluationItemDetail
+                        {
+                            DetailId = Guid.NewGuid(),
+                            EvaluationId = lecturerEval.EvaluationId,
+                            ParsedAnswerId = item.ParsedAnswerId.Value,
+                            Score = item.Score ?? 0m,
+                            Comment = item.Comment,
+                            NotRecognized = item.NotRecognized
+                        };
+
+                        await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
+                    }
+                }
+            }
+
             submission.Evaluations.Add(lecturerEval);
             submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
             submission.UpdatedDate = DateTime.UtcNow;
 
-            _submissionRepository.Update(submission);
-            await _unitOfWork.SaveChangesAsync(ct);
+            await _dbContext.SaveChangesAsync(ct);
 
             return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
         }
@@ -732,8 +762,7 @@ public sealed partial class SubmissionService : ISubmissionService
         submission.Status = SubmissionStatus.Final; // 3 = Final
         submission.UpdatedDate = DateTime.UtcNow;
 
-        _submissionRepository.Update(submission);
-        await _unitOfWork.SaveChangesAsync(ct);
+        await _dbContext.SaveChangesAsync(ct);
 
         return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
     }
@@ -867,6 +896,28 @@ public sealed partial class SubmissionService : ISubmissionService
         var finalEvaluation = submission.Evaluations.FirstOrDefault(e => e.IsFinalScore) ?? lecturerEvaluation;
         var criteriaScores = ParseCriteriaScores(aiEvaluation?.GeneralFeedback);
 
+        var displayEvaluation = finalEvaluation ?? lecturerEvaluation ?? aiEvaluation;
+        var itemDetails = displayEvaluation?.Details?
+            .GroupBy(d => d.DetailId)
+            .Select(g => g.First())
+            .Select(d =>
+            {
+                var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == d.ParsedAnswerId);
+                return new EvaluationItemDetailDto
+                {
+                    DetailId = d.DetailId,
+                    EvaluationId = d.EvaluationId,
+                    ParsedAnswerId = d.ParsedAnswerId,
+                    QuestionId = pa?.QuestionId,
+                    QuestionTitle = pa?.Question?.Title ?? string.Empty,
+                    Score = d.Score,
+                    Comment = d.Comment,
+                    NotRecognized = d.NotRecognized,
+                    AiExtractionId = d.AiExtractionId
+                };
+            })
+            .ToList() ?? new List<EvaluationItemDetailDto>();
+
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
@@ -887,6 +938,7 @@ public sealed partial class SubmissionService : ISubmissionService
             SelectionReason = finalEvaluation?.SelectionReason,
             Status = submission.Status,
             CriteriaScores = criteriaScores,
+            ItemDetails = itemDetails,
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate
         };
