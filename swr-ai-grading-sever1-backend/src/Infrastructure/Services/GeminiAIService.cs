@@ -392,7 +392,7 @@ public sealed class GeminiAIService : IGeminiAIService
         var requestJson = JsonSerializer.Serialize(new
         {
             contents = new[] { new { parts = partsList.ToArray() } },
-            generationConfig = new { temperature = 0.2, maxOutputTokens = 8192, responseMimeType = "application/json" }
+            generationConfig = new { temperature = 0.2, maxOutputTokens = 16384, responseMimeType = "application/json" }
         });
 
         HttpResponseMessage response = null!;
@@ -452,11 +452,29 @@ public sealed class GeminiAIService : IGeminiAIService
             candidates.GetArrayLength() > 0)
         {
             var firstCandidate = candidates[0];
+
+            if (firstCandidate.TryGetProperty("finishReason", out var finishReasonProp))
+            {
+                var finishReason = finishReasonProp.GetString();
+                if (string.Equals(finishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Câu trả lời của Gemini bị cắt ngang giữa chừng do chạm ngưỡng giới hạn token (finishReason = MAX_TOKENS).");
+                }
+            }
+
             if (firstCandidate.TryGetProperty("content", out var content) &&
                 content.TryGetProperty("parts", out var parts) &&
                 parts.GetArrayLength() > 0)
             {
-                return parts[0].GetProperty("text").GetString() ?? string.Empty;
+                var sb = new StringBuilder();
+                foreach (var part in parts.EnumerateArray())
+                {
+                    if (part.TryGetProperty("text", out var textProp))
+                    {
+                        sb.Append(textProp.GetString());
+                    }
+                }
+                return sb.ToString();
             }
         }
 
