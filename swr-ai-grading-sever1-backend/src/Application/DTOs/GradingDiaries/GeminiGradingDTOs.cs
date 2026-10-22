@@ -5,6 +5,9 @@ namespace Application.DTOs.GradingDiaries;
 
 public sealed class CriterionScoreDto
 {
+    [JsonPropertyName("question_id")]
+    public Guid? QuestionId { get; set; }
+
     [JsonPropertyName("criterion")]
     public string Criterion { get; set; } = string.Empty;
 
@@ -16,6 +19,9 @@ public sealed class CriterionScoreDto
 
     [JsonPropertyName("comment")]
     public string Comment { get; set; } = string.Empty;
+
+    [JsonPropertyName("not_recognized")]
+    public string? NotRecognized { get; set; }
 }
 
 public sealed class GradingResultDto

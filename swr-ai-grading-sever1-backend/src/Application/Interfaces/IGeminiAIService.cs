@@ -13,5 +13,10 @@ public interface IGeminiAIService
         IReadOnlyList<Question> questions,
         List<DocxImageDto>? images = null,
         CancellationToken ct = default);
+    Task<GradingResultDto> GradeSubmissionAnswersAsync(
+        IReadOnlyList<(Question Question, SubmissionParsedAnswer ParsedAnswer)> questionAnswers,
+        string rubricContent,
+        List<DocxImageDto>? images = null,
+        CancellationToken ct = default);
 }
 

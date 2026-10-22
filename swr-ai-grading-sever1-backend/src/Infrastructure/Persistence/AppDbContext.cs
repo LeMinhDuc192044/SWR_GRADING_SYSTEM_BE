@@ -27,6 +27,8 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
+    public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
+    public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -42,6 +44,24 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasOne(answer => answer.Element)
             .WithOne(element => element.ParsedAnswer)
             .HasForeignKey<SubmissionParsedAnswer>(answer => answer.ElementId);
+
+        builder.Entity<SubmissionEvaluation>()
+            .HasOne(e => e.Submission)
+            .WithMany(s => s.Evaluations)
+            .HasForeignKey(e => e.SubmissionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<EvaluationItemDetail>()
+            .HasOne(d => d.Evaluation)
+            .WithMany(e => e.Details)
+            .HasForeignKey(d => d.EvaluationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<EvaluationItemDetail>()
+            .HasOne(d => d.ParsedAnswer)
+            .WithMany(pa => pa.EvaluationDetails)
+            .HasForeignKey(d => d.ParsedAnswerId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         base.OnModelCreating(builder);
     }

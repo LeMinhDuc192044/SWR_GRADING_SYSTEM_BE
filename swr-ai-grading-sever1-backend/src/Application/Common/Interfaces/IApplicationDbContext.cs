@@ -20,5 +20,7 @@ public interface IApplicationDbContext
     DbSet<QuestionRubric> QuestionRubrics { get; }
     DbSet<DiagramElement> DiagramElements { get; }
     DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers { get; }
+    DbSet<SubmissionEvaluation> SubmissionEvaluations { get; }
+    DbSet<EvaluationItemDetail> EvaluationItemDetails { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

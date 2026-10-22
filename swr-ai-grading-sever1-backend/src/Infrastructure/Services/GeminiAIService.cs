@@ -25,7 +25,7 @@ public sealed class GeminiAIService : IGeminiAIService
 
         _model = configuration["GEMINI_MODEL"]
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-3.8-flash";
+            ?? "gemini-3-flash-preview";
     }
 
     public async Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
@@ -289,6 +289,90 @@ public sealed class GeminiAIService : IGeminiAIService
         }
     }
 
+    public async Task<GradingResultDto> GradeSubmissionAnswersAsync(
+        IReadOnlyList<(Question Question, SubmissionParsedAnswer ParsedAnswer)> questionAnswers,
+        string rubricContent,
+        List<DocxImageDto>? images = null,
+        CancellationToken ct = default)
+    {
+        if (questionAnswers.Count == 0)
+        {
+            return new GradingResultDto();
+        }
+
+        var studentAnswersData = questionAnswers.Select(qa => new
+        {
+            question_id = qa.Question.QuestionId,
+            question_title = qa.Question.Title,
+            question_content = qa.Question.Content,
+            max_point = qa.Question.Point,
+            student_answer = string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedText) 
+                ? "[Không có nội dung văn bản]" 
+                : qa.ParsedAnswer.ExtractedText,
+            diagram_element_attached = qa.ParsedAnswer.ElementId.HasValue,
+            image_attached = !string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl)
+        });
+
+        var prompt = $$$"""
+            Bạn là giảng viên chấm thi đại học chuyên nghiệp, công tâm và vô cùng cẩn thận.
+            Nhiệm vụ của bạn là xem xét toàn bộ câu trả lời của sinh viên cho từng câu hỏi (bao gồm cả VĂN BẢN TRẢ LỜI CỦA TỪNG CÂU và CÁC HÌNH ÁNH / SƠ ĐỒ ĐÍNH KÈM) và chấm điểm chi tiết từng câu dựa trên Rubric đáp án được cung cấp.
+
+            [RUBRIC ĐÁP ÁN & THANG ĐIỂM CHI TIẾT]
+            {{{rubricContent}}}
+
+            [BÀI LÀM ĐÃ ĐƯỢC PHÂN TÁCH THEO TỪNG CÂU HỎI CỦA SINH VIÊN]
+            {{{JsonSerializer.Serialize(studentAnswersData)}}}
+
+            [QUY TẮC CHẤM ĐIỂM HÌNH ÁNH / SƠ ĐỒ & BÀI LÀM - BẮT BUỘC THỰC HIỆN]
+            1. Các hình ảnh/sơ đồ được đính kèm theo thứ tự trong bài làm tương ứng với các câu hỏi.
+            2. Bạn PHẢI quan sát kỹ hình ảnh/sơ đồ nếu câu hỏi yêu cầu vẽ biểu đồ/sơ đồ.
+            3. RẤT QUAN TRỌNG: Nếu một câu hỏi có sơ đồ hoặc hình ảnh làm bài hoặc có văn bản trả lời, bạn PHẢI quan sát để chấm điểm. TUYỆT ĐỐI KHÔNG ĐƯỢC kết luận là sinh viên bỏ trống khi có câu trả lời hoặc sơ đồ.
+            4. Điểm actual_score của từng câu không được vượt quá max_score của câu đó.
+            5. Tổng điểm total_score bằng tổng điểm actual_score của tất cả các câu hỏi.
+
+            [YÊU CẦU ĐẦU RA JSON CHUẨN]
+            Bạn PHẢI trả về JSON đúng định dạng theo cấu trúc sau (bắt buộc có question_id cho từng tiêu chí):
+            {
+              "total_score": 8.0,
+              "criteria_scores": [
+                {
+                  "question_id": "GUID của câu hỏi tương ứng trong danh sách trên",
+                  "criterion": "Tiêu đề câu hỏi / Tiêu chí",
+                  "max_score": 3.0,
+                  "actual_score": 2.5,
+                  "comment": "Nhận xét chi tiết đạt được gì, thiếu sót gì dựa trên bài làm và rubric của câu hỏi này",
+                  "not_recognized": "Ghi chú những phần AI không nhận diện được rõ (chữ mờ, sơ đồ không đọc được chi tiết, công thức mờ, v.v.), hoặc để trống/null nếu nhận diện tốt"
+                }
+              ],
+              "missing_items": [
+                "Nội dung hoặc sơ đồ còn thiếu"
+              ],
+              "overall_comment": "Nhận xét tổng quan toàn bộ bài làm của sinh viên"
+            }
+            """;
+
+        var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct);
+
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+            };
+
+            var gradingResult = JsonSerializer.Deserialize<GradingResultDto>(cleanJson, options)
+                ?? new GradingResultDto();
+
+            gradingResult.RawAiLogJson = cleanJson;
+            return gradingResult;
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException($"Không thể phân tích kết quả JSON chấm điểm từ Gemini: {cleanJson}", ex);
+        }
+    }
+
     private async Task<string> GenerateJsonResponseAsync(string prompt, List<DocxImageDto>? images, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
@@ -308,13 +392,13 @@ public sealed class GeminiAIService : IGeminiAIService
         var requestJson = JsonSerializer.Serialize(new
         {
             contents = new[] { new { parts = partsList.ToArray() } },
-            generationConfig = new { temperature = 0.2, maxOutputTokens = 8192, responseMimeType = "application/json" }
+            generationConfig = new { temperature = 0.2, maxOutputTokens = 16384, responseMimeType = "application/json" }
         });
 
         HttpResponseMessage response = null!;
         string responseBody = string.Empty;
         var success = false;
-        foreach (var currentModel in new[] { _model, "gemini-2.5-flash" })
+        foreach (var currentModel in new[] { _model, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.5-flash-lite" })
         {
             for (var attempt = 1; attempt <= 5; attempt++)
             {
@@ -368,11 +452,29 @@ public sealed class GeminiAIService : IGeminiAIService
             candidates.GetArrayLength() > 0)
         {
             var firstCandidate = candidates[0];
+
+            if (firstCandidate.TryGetProperty("finishReason", out var finishReasonProp))
+            {
+                var finishReason = finishReasonProp.GetString();
+                if (string.Equals(finishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Câu trả lời của Gemini bị cắt ngang giữa chừng do chạm ngưỡng giới hạn token (finishReason = MAX_TOKENS).");
+                }
+            }
+
             if (firstCandidate.TryGetProperty("content", out var content) &&
                 content.TryGetProperty("parts", out var parts) &&
                 parts.GetArrayLength() > 0)
             {
-                return parts[0].GetProperty("text").GetString() ?? string.Empty;
+                var sb = new StringBuilder();
+                foreach (var part in parts.EnumerateArray())
+                {
+                    if (part.TryGetProperty("text", out var textProp))
+                    {
+                        sb.Append(textProp.GetString());
+                    }
+                }
+                return sb.ToString();
             }
         }
 
