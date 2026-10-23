@@ -131,9 +131,9 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 3: Giảng viên xem xét bài nộp, nhập điểm hoặc chọn pick điểm AI (is_final_score).
+    /// FLOW 3: Giảng viên chấm / đánh giá bài nộp lần đầu (nhập điểm hoặc chọn pick điểm AI).
     /// </summary>
-    [HttpPut("{id:guid}/review")]
+    [HttpPost("{id:guid}/review")]
     public async Task<IActionResult> Review(
         Guid id,
         [FromBody] ReviewSubmissionRequest request,
@@ -154,6 +154,36 @@ public sealed class SubmissionsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
 
         if (result.ErrorCode is "INVALID_SCORE" or "SCORE_REQUIRED" or "AI_EVALUATION_NOT_FOUND")
+            return BadRequest(ApiResponse.Failure(400, result.Error!));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    /// <summary>
+    /// Chỉnh sửa trực tiếp 1 chi tiết chấm điểm (item detail) theo detailId mà không tạo thêm evaluation mới.
+    /// Tự động cập nhật lại tổng điểm của bài nộp.
+    /// </summary>
+    [HttpPut("item-details/{detailId:guid}")]
+    public async Task<IActionResult> UpdateItemDetail(
+        Guid detailId,
+        [FromBody] UpdateEvaluationItemDetailRequest request,
+        CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _submissionService.UpdateItemDetailAsync(detailId, request, userId, IsElevatedRole(), ct);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        if (result.ErrorCode is "DETAIL_NOT_FOUND" or "SUBMISSION_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+
+        if (result.ErrorCode == "FORBIDDEN")
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+
+        if (result.ErrorCode == "INVALID_SCORE")
             return BadRequest(ApiResponse.Failure(400, result.Error!));
 
         return BadRequest(ApiResponse.Failure(400, result.Error!));
