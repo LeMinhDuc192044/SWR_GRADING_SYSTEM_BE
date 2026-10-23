@@ -81,6 +81,14 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
+    Task<Result<SubmissionDetailDTO>> UpdateItemDetailAsync(
+        Guid detailId,
+        UpdateEvaluationItemDetailRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
+
     Task<Result<SubmissionDetailDTO>> DecideScoreAsync(
         Guid submissionId,
         decimal lecturerScore,

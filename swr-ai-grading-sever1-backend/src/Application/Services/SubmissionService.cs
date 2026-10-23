@@ -265,6 +265,9 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
             .Where(s => s.DiaryId == diaryId)
             .OrderByDescending(s => s.CreatedDate)
             .ToListAsync(ct);
@@ -286,6 +289,9 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && s.DiaryId == diaryId, ct);
 
         if (submission is null)
@@ -312,6 +318,9 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
 
         if (submission is null)
@@ -492,6 +501,8 @@ public sealed partial class SubmissionService : ISubmissionService
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
                 .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && (diaryId == Guid.Empty || s.DiaryId == diaryId), ct);
 
         if (submission is null)
@@ -514,63 +525,107 @@ public sealed partial class SubmissionService : ISubmissionService
             }
 
             // Người chấm chọn pick điểm AI:
-            // Tạo một bản ghi Review của Giảng viên với điểm và nhận xét kế thừa từ AI
-            var nextRound = submission.Evaluations
-                .Where(e => e.EvaluationType == EvaluationType.Lecturer)
-                .Select(e => e.EvaluationRound)
-                .DefaultIfEmpty(-1)
-                .Max() + 1;
-
+            // Tạo hoặc cập nhật bản ghi Review của Giảng viên với điểm và nhận xét kế thừa từ AI
             var chosenFeedback = !string.IsNullOrWhiteSpace(request.Comment)
                 ? request.Comment.Trim()
                 : $"Giảng viên đồng ý với điểm và nhận xét của AI.";
 
-            // Reset tất cả IsFinalScore trước đó của bài làm
-            foreach (var eval in submission.Evaluations)
+            if (request.IsFinal)
             {
-                eval.IsFinalScore = false;
+                // Reset tất cả IsFinalScore trước đó của bài làm
+                foreach (var eval in submission.Evaluations)
+                {
+                    eval.IsFinalScore = false;
+                }
             }
 
-            var lecturerEval = new SubmissionEvaluation
+            var lecturerEval = submission.Evaluations
+                .FirstOrDefault(e => e.EvaluationType == EvaluationType.Lecturer);
+
+            if (lecturerEval == null)
             {
-                EvaluationId = Guid.NewGuid(),
-                SubmissionId = submission.SubmissionId,
-                EvaluationType = EvaluationType.Lecturer,
-                EvaluationRound = nextRound,
-                TotalScore = aiEvaluation.TotalScore.Value,
-                GeneralFeedback = chosenFeedback,
-                IsFinalScore = request.IsFinal,
-                AdminSelectedId = currentUserId,
-                SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
-                    ? request.SelectionReason.Trim() 
-                    : "Giảng viên xác nhận pick điểm của AI",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
-
-            // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm override (questionId, score, comment, notRecognized) nếu có
-            foreach (var aiDetail in aiEvaluation.Details)
-            {
-                var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == aiDetail.ParsedAnswerId);
-                var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
-                    (pa is not null && i.QuestionId == pa.QuestionId));
-
-                var lecturerDetail = new EvaluationItemDetail
+                lecturerEval = new SubmissionEvaluation
                 {
-                    DetailId = Guid.NewGuid(),
-                    EvaluationId = lecturerEval.EvaluationId,
-                    ParsedAnswerId = aiDetail.ParsedAnswerId,
-                    Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
-                    Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                    NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
-                    AiExtractionId = aiDetail.DetailId
+                    EvaluationId = Guid.NewGuid(),
+                    SubmissionId = submission.SubmissionId,
+                    EvaluationType = EvaluationType.Lecturer,
+                    EvaluationRound = 1,
+                    TotalScore = aiEvaluation.TotalScore.Value,
+                    GeneralFeedback = chosenFeedback,
+                    IsFinalScore = request.IsFinal,
+                    AdminSelectedId = currentUserId,
+                    SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
+                        ? request.SelectionReason.Trim() 
+                        : "Giảng viên xác nhận pick điểm của AI",
+                    CreatedAt = DateTime.UtcNow
                 };
 
-                await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
-            }
+                await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+                submission.Evaluations.Add(lecturerEval);
 
-            submission.Evaluations.Add(lecturerEval);
+                // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm override nếu có
+                foreach (var aiDetail in aiEvaluation.Details)
+                {
+                    var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == aiDetail.ParsedAnswerId);
+                    var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
+                        (pa is not null && i.QuestionId == pa.QuestionId));
+
+                    var lecturerDetail = new EvaluationItemDetail
+                    {
+                        DetailId = Guid.NewGuid(),
+                        EvaluationId = lecturerEval.EvaluationId,
+                        ParsedAnswerId = aiDetail.ParsedAnswerId,
+                        Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
+                        Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
+                        NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
+                        AiExtractionId = aiDetail.DetailId
+                    };
+
+                    await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
+                    lecturerEval.Details.Add(lecturerDetail);
+                }
+            }
+            else
+            {
+                lecturerEval.TotalScore = aiEvaluation.TotalScore.Value;
+                lecturerEval.GeneralFeedback = chosenFeedback;
+                lecturerEval.IsFinalScore = request.IsFinal;
+                lecturerEval.AdminSelectedId = currentUserId;
+                lecturerEval.SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
+                    ? request.SelectionReason.Trim() 
+                    : "Giảng viên xác nhận pick điểm của AI";
+
+                foreach (var aiDetail in aiEvaluation.Details)
+                {
+                    var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == aiDetail.ParsedAnswerId);
+                    var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
+                        (pa is not null && i.QuestionId == pa.QuestionId));
+
+                    var existingDetail = lecturerEval.Details.FirstOrDefault(d => d.ParsedAnswerId == aiDetail.ParsedAnswerId);
+                    if (existingDetail != null)
+                    {
+                        existingDetail.Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score;
+                        existingDetail.Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment;
+                        existingDetail.NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized;
+                        existingDetail.AiExtractionId = aiDetail.DetailId;
+                    }
+                    else
+                    {
+                        var newDetail = new EvaluationItemDetail
+                        {
+                            DetailId = Guid.NewGuid(),
+                            EvaluationId = lecturerEval.EvaluationId,
+                            ParsedAnswerId = aiDetail.ParsedAnswerId,
+                            Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
+                            Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
+                            NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
+                            AiExtractionId = aiDetail.DetailId
+                        };
+                        await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
+                        lecturerEval.Details.Add(newDetail);
+                    }
+                }
+            }
             submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
             submission.UpdatedDate = DateTime.UtcNow;
 
@@ -591,55 +646,88 @@ public sealed partial class SubmissionService : ISubmissionService
                 return Result<SubmissionDetailDTO>.Failure("Điểm số phải nằm trong thang điểm từ 0 đến 10.", "INVALID_SCORE");
             }
 
-            var nextRound = submission.Evaluations
-                .Where(e => e.EvaluationType == EvaluationType.Lecturer)
-                .Select(e => e.EvaluationRound)
-                .DefaultIfEmpty(-1)
-                .Max() + 1;
+            var lecturerEval = submission.Evaluations
+                .FirstOrDefault(e => e.EvaluationType == EvaluationType.Lecturer);
 
-            if (request.IsFinal)
+            if (lecturerEval == null)
             {
-                foreach (var eval in submission.Evaluations)
+                lecturerEval = new SubmissionEvaluation
                 {
-                    eval.IsFinalScore = false;
+                    EvaluationId = Guid.NewGuid(),
+                    SubmissionId = submission.SubmissionId,
+                    EvaluationType = EvaluationType.Lecturer,
+                    EvaluationRound = 1,
+                    TotalScore = score,
+                    GeneralFeedback = request.Comment?.Trim(),
+                    IsFinalScore = request.IsFinal,
+                    AdminSelectedId = currentUserId,
+                    SelectionReason = request.SelectionReason?.Trim(),
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+                submission.Evaluations.Add(lecturerEval);
+
+                // Chấm thủ công: tạo chi tiết cho từng câu hỏi dựa vào QuestionId
+                foreach (var pa in submission.ParsedAnswers)
+                {
+                    var reviewItem = request.ItemDetails?.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
+
+                    var lecturerDetail = new EvaluationItemDetail
+                    {
+                        DetailId = Guid.NewGuid(),
+                        EvaluationId = lecturerEval.EvaluationId,
+                        ParsedAnswerId = pa.ParsedAnswerId,
+                        Score = reviewItem?.Score ?? 0m,
+                        Comment = reviewItem?.Comment,
+                        NotRecognized = reviewItem?.NotRecognized
+                    };
+
+                    await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
+                    lecturerEval.Details.Add(lecturerDetail);
+                }
+            }
+            else
+            {
+                // Cập nhật lại evaluation của Lecturer đã tồn tại
+                lecturerEval.TotalScore = score;
+                lecturerEval.GeneralFeedback = request.Comment?.Trim();
+                lecturerEval.IsFinalScore = request.IsFinal;
+                lecturerEval.AdminSelectedId = currentUserId;
+                lecturerEval.SelectionReason = request.SelectionReason?.Trim();
+
+                if (request.ItemDetails != null && request.ItemDetails.Count > 0)
+                {
+                    foreach (var pa in submission.ParsedAnswers)
+                    {
+                        var reviewItem = request.ItemDetails.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
+                        if (reviewItem == null) continue;
+
+                        var existingDetail = lecturerEval.Details.FirstOrDefault(d => d.ParsedAnswerId == pa.ParsedAnswerId);
+                        if (existingDetail != null)
+                        {
+                            existingDetail.Score = reviewItem.Score;
+                            existingDetail.Comment = reviewItem.Comment;
+                            existingDetail.NotRecognized = reviewItem.NotRecognized;
+                        }
+                        else
+                        {
+                            var newDetail = new EvaluationItemDetail
+                            {
+                                DetailId = Guid.NewGuid(),
+                                EvaluationId = lecturerEval.EvaluationId,
+                                ParsedAnswerId = pa.ParsedAnswerId,
+                                Score = reviewItem.Score,
+                                Comment = reviewItem.Comment,
+                                NotRecognized = reviewItem.NotRecognized
+                            };
+                            await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
+                            lecturerEval.Details.Add(newDetail);
+                        }
+                    }
                 }
             }
 
-            var lecturerEval = new SubmissionEvaluation
-            {
-                EvaluationId = Guid.NewGuid(),
-                SubmissionId = submission.SubmissionId,
-                EvaluationType = EvaluationType.Lecturer,
-                EvaluationRound = nextRound,
-                TotalScore = score,
-                GeneralFeedback = request.Comment?.Trim(),
-                IsFinalScore = request.IsFinal,
-                AdminSelectedId = currentUserId,
-                SelectionReason = request.SelectionReason?.Trim(),
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
-
-            // Chấm thủ công: tạo chi tiết cho từng câu hỏi dựa vào QuestionId
-            foreach (var pa in submission.ParsedAnswers)
-            {
-                var reviewItem = request.ItemDetails?.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
-
-                var lecturerDetail = new EvaluationItemDetail
-                {
-                    DetailId = Guid.NewGuid(),
-                    EvaluationId = lecturerEval.EvaluationId,
-                    ParsedAnswerId = pa.ParsedAnswerId,
-                    Score = reviewItem?.Score ?? 0m,
-                    Comment = reviewItem?.Comment,
-                    NotRecognized = reviewItem?.NotRecognized
-                };
-
-                await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
-            }
-
-            submission.Evaluations.Add(lecturerEval);
             submission.Status = request.IsFinal ? SubmissionStatus.Final : SubmissionStatus.Lecturer_Reviewed;
             submission.UpdatedDate = DateTime.UtcNow;
 
@@ -692,6 +780,74 @@ public sealed partial class SubmissionService : ISubmissionService
             PickAiScore = false,
             IsFinal = false
         }, currentUserId, isElevatedRole, ct);
+    }
+
+    public async Task<Result<SubmissionDetailDTO>> UpdateItemDetailAsync(
+        Guid detailId,
+        UpdateEvaluationItemDetailRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default)
+    {
+        var detail = await _dbContext.EvaluationItemDetails
+            .Include(d => d.Evaluation)
+            .FirstOrDefaultAsync(d => d.DetailId == detailId, ct);
+
+        if (detail == null)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy chi tiết chấm điểm.", "DETAIL_NOT_FOUND");
+        }
+
+        var submission = await _dbContext.StudentSubmissions
+            .Include(s => s.GradingDiary)
+            .Include(s => s.StudentExamination)
+                .ThenInclude(se => se.Student)
+            .Include(s => s.Evaluations)
+                .ThenInclude(e => e.Details)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(pa => pa.Question)
+            .FirstOrDefaultAsync(s => s.SubmissionId == detail.Evaluation.SubmissionId, ct);
+
+        if (submission == null)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Không tìm thấy bài nộp liên kết.", "SUBMISSION_NOT_FOUND");
+        }
+
+        if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền chỉnh sửa bài nộp này.", "FORBIDDEN");
+        }
+
+        if (request.Score < 0 || request.Score > 10)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Điểm số phải nằm trong thang điểm từ 0 đến 10.", "INVALID_SCORE");
+        }
+
+        // Cập nhật chi tiết câu hỏi
+        detail.Score = request.Score;
+        detail.Comment = request.Comment?.Trim();
+        if (request.NotRecognized != null)
+        {
+            detail.NotRecognized = request.NotRecognized.Trim();
+        }
+
+        // Tự động tính lại tổng điểm của evaluation nếu là evaluation của Lecturer
+        var eval = detail.Evaluation;
+        if (eval != null)
+        {
+            // Lấy tất cả details của evaluation này để sum lại điểm
+            var allDetails = eval.Details.ToList();
+            if (allDetails.Count > 0)
+            {
+                var newTotal = allDetails.Sum(d => d.DetailId == detailId ? request.Score : d.Score);
+                eval.TotalScore = Math.Min(10m, Math.Round(newTotal, 2));
+            }
+        }
+
+        submission.UpdatedDate = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(ct);
+
+        return Result<SubmissionDetailDTO>.Success(ToDetailDto(submission));
     }
 
     public Task<Result<SubmissionDetailDTO>> DecideScoreAsync(
@@ -892,8 +1048,13 @@ public sealed partial class SubmissionService : ISubmissionService
         var finalEvaluation = submission.Evaluations.FirstOrDefault(e => e.IsFinalScore) ?? lecturerEvaluation;
         var criteriaScores = ParseCriteriaScores(aiEvaluation?.GeneralFeedback);
 
-        var displayEvaluation = finalEvaluation ?? lecturerEvaluation ?? aiEvaluation;
-        var itemDetails = displayEvaluation?.Details?
+        // criteriaScores: Điểm & nhận xét theo tiêu chí của AI (EvaluationType.AI)
+        // itemDetails: Chi tiết điểm từng câu do Giảng viên (Lecturer) chấm
+        var lecturerDisplayEvaluation = (finalEvaluation != null && finalEvaluation.EvaluationType == EvaluationType.Lecturer)
+            ? finalEvaluation
+            : lecturerEvaluation;
+
+        var itemDetails = lecturerDisplayEvaluation?.Details?
             .GroupBy(d => d.DetailId)
             .Select(g => g.First())
             .Select(d =>
