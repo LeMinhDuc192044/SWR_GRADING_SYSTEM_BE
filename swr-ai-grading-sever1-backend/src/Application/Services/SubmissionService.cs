@@ -549,21 +549,21 @@ public sealed partial class SubmissionService : ISubmissionService
 
             await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
 
-            // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm NotRecognized nếu người chấm có gửi lên
+            // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm override (questionId, score, comment, notRecognized) nếu có
             foreach (var aiDetail in aiEvaluation.Details)
             {
+                var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == aiDetail.ParsedAnswerId);
                 var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
-                    (i.DetailId.HasValue && i.DetailId == aiDetail.DetailId) ||
-                    (i.ParsedAnswerId.HasValue && i.ParsedAnswerId == aiDetail.ParsedAnswerId));
+                    (pa is not null && i.QuestionId == pa.QuestionId));
 
                 var lecturerDetail = new EvaluationItemDetail
                 {
                     DetailId = Guid.NewGuid(),
                     EvaluationId = lecturerEval.EvaluationId,
                     ParsedAnswerId = aiDetail.ParsedAnswerId,
-                    Score = overrideItem?.Score ?? aiDetail.Score,
-                    Comment = !string.IsNullOrWhiteSpace(overrideItem?.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                    NotRecognized = !string.IsNullOrWhiteSpace(overrideItem?.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
+                    Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
+                    Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
+                    NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                     AiExtractionId = aiDetail.DetailId
                 };
 
@@ -621,26 +621,22 @@ public sealed partial class SubmissionService : ISubmissionService
 
             await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
 
-            // Nếu người chấm nhập chi tiết từng câu khi chấm thủ công
-            if (request.ItemDetails is not null && request.ItemDetails.Count > 0)
+            // Chấm thủ công: tạo chi tiết cho từng câu hỏi dựa vào QuestionId
+            foreach (var pa in submission.ParsedAnswers)
             {
-                foreach (var item in request.ItemDetails)
-                {
-                    if (item.ParsedAnswerId.HasValue)
-                    {
-                        var lecturerDetail = new EvaluationItemDetail
-                        {
-                            DetailId = Guid.NewGuid(),
-                            EvaluationId = lecturerEval.EvaluationId,
-                            ParsedAnswerId = item.ParsedAnswerId.Value,
-                            Score = item.Score ?? 0m,
-                            Comment = item.Comment,
-                            NotRecognized = item.NotRecognized
-                        };
+                var reviewItem = request.ItemDetails?.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
 
-                        await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
-                    }
-                }
+                var lecturerDetail = new EvaluationItemDetail
+                {
+                    DetailId = Guid.NewGuid(),
+                    EvaluationId = lecturerEval.EvaluationId,
+                    ParsedAnswerId = pa.ParsedAnswerId,
+                    Score = reviewItem?.Score ?? 0m,
+                    Comment = reviewItem?.Comment,
+                    NotRecognized = reviewItem?.NotRecognized
+                };
+
+                await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
             }
 
             submission.Evaluations.Add(lecturerEval);
