@@ -10,9 +10,8 @@ public sealed class SubmitLecturerScoreRequest
 
 public sealed class EvaluationItemReviewDto
 {
-    public Guid? DetailId { get; set; }
-    public Guid? ParsedAnswerId { get; set; }
-    public decimal? Score { get; set; }
+    public Guid QuestionId { get; set; }
+    public decimal Score { get; set; }
     public string? Comment { get; set; }
     public string? NotRecognized { get; set; }
 }
