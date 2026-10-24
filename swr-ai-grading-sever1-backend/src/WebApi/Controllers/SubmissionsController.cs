@@ -23,6 +23,45 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy danh sách bài nộp có phân trang, tìm kiếm và lọc không bắt buộc diaryId (cho Admin và Giảng viên).
+    /// </summary>
+    [HttpGet]
+    [HttpGet("~/api/admin/submissions")]
+    public async Task<IActionResult> GetSubmissions([FromQuery] Application.DTOs.Submissions.GetSubmissionsRequest request, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _submissionService.GetSubmissionsAsync(request, userId, IsElevatedRole(), ct);
+        return Ok(ApiResponse.Success(result.Data));
+    }
+
+    /// <summary>
+    /// Điều chỉnh trạng thái của một bài nộp (Submitted, AI_Graded, Lecturer_Reviewed, Final, ReGrading, ReGraded).
+    /// </summary>
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(
+        Guid id,
+        [FromBody] Application.DTOs.Submissions.UpdateSubmissionStatusRequest request,
+        CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+
+        var result = await _submissionService.UpdateSubmissionStatusAsync(id, request, userId, IsElevatedRole(), ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data, 200, "Cập nhật trạng thái bài nộp thành công."));
+
+        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+
+        if (result.ErrorCode == "FORBIDDEN")
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    /// <summary>
     /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
     /// </summary>
     [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/upload")]

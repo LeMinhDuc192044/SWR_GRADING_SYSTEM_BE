@@ -74,7 +74,9 @@ builder.Services.Configure<JwtSettings>(options =>
     options.ExpirationMinutes = jwtSettings.ExpirationMinutes;
 });
 
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -127,6 +129,7 @@ builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
 builder.Services.AddScoped<IDiagramElementService, DiagramElementService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>
 {

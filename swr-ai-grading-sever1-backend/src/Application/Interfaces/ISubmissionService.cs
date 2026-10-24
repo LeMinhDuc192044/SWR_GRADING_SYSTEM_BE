@@ -129,4 +129,25 @@ public interface ISubmissionService
         bool isElevatedRole,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Lấy danh sách bài nộp có phân trang, tìm kiếm, lọc (không bắt buộc diaryId, dùng cho Admin hoặc Giảng viên)
+    /// </summary>
+    Task<Result<PagedResult<Application.DTOs.Submissions.AdminSubmissionItemDto>>> GetSubmissionsAsync(
+        Application.DTOs.Submissions.GetSubmissionsRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Điều chỉnh trạng thái của một bài nộp
+    /// </summary>
+    Task<Result<Application.DTOs.Submissions.AdminSubmissionItemDto>> UpdateSubmissionStatusAsync(
+        Guid submissionId,
+        Application.DTOs.Submissions.UpdateSubmissionStatusRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        CancellationToken ct = default
+    );
 }
