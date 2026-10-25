@@ -23,6 +23,36 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy danh sách bài nộp có phân trang, tìm kiếm và lọc không bắt buộc diaryId (cho Admin và Giảng viên).
+    /// </summary>
+    [HttpGet]
+    [HttpGet("~/api/admin/submissions")]
+    public async Task<IActionResult> GetSubmissions([FromQuery] Application.DTOs.Submissions.GetSubmissionsRequest request, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+
+        var result = await _submissionService.GetSubmissionsAsync(request, userId, IsElevatedRole(), ct);
+        return result.ToActionResult(this);
+    }
+
+    /// <summary>
+    /// Điều chỉnh trạng thái của một bài nộp (Submitted, AI_Graded, Lecturer_Reviewed, Final, ReGrading, ReGraded).
+    /// </summary>
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(
+        Guid id,
+        [FromBody] Application.DTOs.Submissions.UpdateSubmissionStatusRequest request,
+        CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+
+        var result = await _submissionService.UpdateSubmissionStatusAsync(id, request, userId, IsElevatedRole(), ct);
+        return result.ToActionResult(this, successMessage: "Cập nhật trạng thái bài nộp thành công.");
+    }
+
+    /// <summary>
     /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
     /// </summary>
     [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/upload")]
@@ -34,27 +64,17 @@ public sealed class SubmissionsController : ControllerBase
         CancellationToken ct)
     {
         if (diaryId == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route.", "INVALID_DIARY_ID"));
 
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         if (files is null || files.Count == 0)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx hoặc .rar bài làm của sinh viên."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx hoặc .rar bài làm của sinh viên.", "FILES_REQUIRED"));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
         var result = await _submissionService.UploadSubmissionsAsync(diaryId, docFiles, userId, ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -66,23 +86,13 @@ public sealed class SubmissionsController : ControllerBase
         CancellationToken ct)
     {
         if (diaryId == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route.", "INVALID_DIARY_ID"));
 
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetListByDiaryIdAsync(diaryId, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -92,19 +102,10 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetByIdAsync(id, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -114,20 +115,10 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> AiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -140,23 +131,10 @@ public sealed class SubmissionsController : ControllerBase
         CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.ReviewAsync(id, request, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode is "INVALID_SCORE" or "SCORE_REQUIRED" or "AI_EVALUATION_NOT_FOUND")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -170,23 +148,10 @@ public sealed class SubmissionsController : ControllerBase
         CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.UpdateItemDetailAsync(detailId, request, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode is "DETAIL_NOT_FOUND" or "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode == "INVALID_SCORE")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -196,23 +161,10 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> Finalize(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.FinalizeAsync(id, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode == "INVALID_STATUS")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this, successMessage: "Chốt điểm bài nộp thành công.");
     }
 
     /// <summary>
@@ -223,20 +175,10 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> GetHistory(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetHistoryAsync(id, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     private bool TryGetCurrentUserId(out Guid userId)
