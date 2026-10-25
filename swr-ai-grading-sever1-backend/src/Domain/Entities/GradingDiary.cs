@@ -12,7 +12,7 @@ public class GradingDiary
 
     [Required]
     [MaxLength(21)]
-    [Column("examination_code")]
+    [Column("Content")]
     public string Content { get; set; } = string.Empty;
 
     [Required]
