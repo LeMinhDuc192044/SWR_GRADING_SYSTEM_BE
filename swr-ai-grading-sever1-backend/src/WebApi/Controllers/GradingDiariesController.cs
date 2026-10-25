@@ -5,6 +5,7 @@ using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WebApi.Common;
 
 namespace WebApi.Controllers;
 
@@ -26,22 +27,13 @@ public sealed class GradingDiariesController : ControllerBase
         CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.CreateAsync(request, userId, ct);
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetById), new { id = result.Data!.GradingDiaryId }, ApiResponse.Success(result.Data));
+            return CreatedAtAction(nameof(GetById), new { id = result.Data!.GradingDiaryId }, ApiResponse.Success(result.Data, 201, "Tạo sổ chấm thành công."));
 
-        if (result.ErrorCode == "PAPER_SET_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "LECTURER_REQUIRED")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode == "PAPER_SET_ALREADY_HAS_DIARY")
-            return Conflict(ApiResponse.Failure(409, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     [HttpGet]
@@ -50,7 +42,7 @@ public sealed class GradingDiariesController : ControllerBase
         CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         Guid? lecturerFilter = IsElevatedRole() ? null : userId;
         var pagedResult = await _service.GetPagedAsync(request, lecturerFilter, ct);
@@ -61,19 +53,10 @@ public sealed class GradingDiariesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.GetByIdAsync(id, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     [HttpPut("{id:guid}")]
@@ -83,41 +66,20 @@ public sealed class GradingDiariesController : ControllerBase
         CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.UpdateAsync(id, request, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this, successMessage: "Cập nhật sổ chấm thành công.");
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.DeleteAsync(id, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success("Xóa sổ chấm thành công."));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode == "DIARY_HAS_SUBMISSIONS")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this, successMessage: "Xóa sổ chấm thành công.");
     }
 
     /// <summary>
@@ -128,19 +90,10 @@ public sealed class GradingDiariesController : ControllerBase
     public async Task<IActionResult> GetProgress(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.GetProgressAsync(id, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -151,19 +104,10 @@ public sealed class GradingDiariesController : ControllerBase
     public async Task<IActionResult> CompareWithAi(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _service.CompareWithAiAsync(id, userId, IsElevatedRole(), ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return result.ToActionResult(this);
     }
 
 

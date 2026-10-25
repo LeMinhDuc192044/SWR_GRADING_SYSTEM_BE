@@ -193,7 +193,9 @@ public sealed partial class SubmissionService : ISubmissionService
                     CreatedAt = createdAt
                 }).ToList();
 
-                var storagePath = $"submissions/{safePaperSetCode}/{file.FileName}";
+                var safeFileBaseName = NormalizeStorageKeySegment(Path.GetFileNameWithoutExtension(file.FileName));
+                var fileExt = Path.GetExtension(file.FileName);
+                var storagePath = $"submissions/{safePaperSetCode}/{Guid.NewGuid():N}_{safeFileBaseName}{fileExt}";
                 uploadStream.Position = 0;
                 await _storage.UploadAsync(storagePath, uploadStream,
                     file.ContentType ?? (isRar ? "application/vnd.rar" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), ct);

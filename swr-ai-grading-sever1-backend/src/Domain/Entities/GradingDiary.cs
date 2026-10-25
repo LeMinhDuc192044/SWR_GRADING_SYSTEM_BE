@@ -15,6 +15,13 @@ public class GradingDiary
     [Column("examination_code")]
     public string Content { get; set; } = string.Empty;
 
+    [NotMapped]
+    public string ExaminationCode
+    {
+        get => Content;
+        set => Content = value;
+    }
+
     [Required]
     [MaxLength(200)]
     [Column("name")]
