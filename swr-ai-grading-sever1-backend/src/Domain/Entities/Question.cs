@@ -11,7 +11,7 @@ public class Question
     [Column("question_id")]
     public Guid QuestionId { get; set; } = Guid.NewGuid();
 
-    [Required, MaxLength(50)]
+    [Required]
     [Column("title")]
     public string Title { get; set; } = string.Empty;
 

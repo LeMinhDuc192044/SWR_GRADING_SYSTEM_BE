@@ -160,7 +160,8 @@ builder.Services.AddFluentValidationClientsideAdapters();
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePaperSetRequestValidator>();
 
 // CORS
-var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "")
+var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ??
+    "http://localhost:5173,https://swr-grading-git-dev-huynguyens-projects-3b39a813.vercel.app,https://swr-grading-ochre.vercel.app")
     .Split(
         ',',
         StringSplitOptions.RemoveEmptyEntries |

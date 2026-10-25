@@ -452,8 +452,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 EvaluationId = aiEvaluation.EvaluationId,
                 ParsedAnswerId = qa.ParsedAnswer.ParsedAnswerId,
                 Score = matchedCrit?.ActualScore ?? 0m,
-                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI.",
-                NotRecognized = matchedCrit?.NotRecognized
+                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
             };
 
             await _dbContext.EvaluationItemDetails.AddAsync(itemDetail, ct);
@@ -563,7 +562,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     ParsedAnswerId = aiDetail.ParsedAnswerId,
                     Score = overrideItem?.Score ?? aiDetail.Score,
                     Comment = !string.IsNullOrWhiteSpace(overrideItem?.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                    NotRecognized = !string.IsNullOrWhiteSpace(overrideItem?.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                     AiExtractionId = aiDetail.DetailId
                 };
 
@@ -634,8 +632,7 @@ public sealed partial class SubmissionService : ISubmissionService
                             EvaluationId = lecturerEval.EvaluationId,
                             ParsedAnswerId = item.ParsedAnswerId.Value,
                             Score = item.Score ?? 0m,
-                            Comment = item.Comment,
-                            NotRecognized = item.NotRecognized
+                            Comment = item.Comment
                         };
 
                         await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
@@ -912,7 +909,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     QuestionTitle = pa?.Question?.Title ?? string.Empty,
                     Score = d.Score,
                     Comment = d.Comment,
-                    NotRecognized = d.NotRecognized,
                     AiExtractionId = d.AiExtractionId
                 };
             })

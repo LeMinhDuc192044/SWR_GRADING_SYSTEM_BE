@@ -6,4 +6,5 @@ public interface IExaminationRepository : IRepository<Examination>
 {
     Task<bool> IsCodeExistsAsync(string code, CancellationToken ct = default);
     Task<bool> HasPaperSetsAsync(Guid examinationId, CancellationToken ct = default);
+    Task<(int Total, int Final)> GetSubmissionCountsAsync(Guid examinationId, CancellationToken ct = default);
 }

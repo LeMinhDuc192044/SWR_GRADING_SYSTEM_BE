@@ -14,7 +14,6 @@ public sealed class EvaluationItemReviewDto
     public Guid? ParsedAnswerId { get; set; }
     public decimal? Score { get; set; }
     public string? Comment { get; set; }
-    public string? NotRecognized { get; set; }
 }
 
 public sealed class ReviewSubmissionRequest
@@ -36,7 +35,6 @@ public sealed class EvaluationItemDetailDto
     public string QuestionTitle { get; set; } = string.Empty;
     public decimal Score { get; set; }
     public string? Comment { get; set; }
-    public string? NotRecognized { get; set; }
     public Guid? AiExtractionId { get; set; }
 }
 
