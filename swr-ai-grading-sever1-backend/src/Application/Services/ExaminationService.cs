@@ -29,12 +29,17 @@ public class ExaminationService : IExaminationService
     public async Task<PagedResult<ExaminationDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
     {
         var examinations = await _repository.GetAllAsync(ct);
-        var items = await Task.WhenAll(examinations
+        var pagedExaminations = examinations
             .OrderByDescending(e => e.StartDate)
             .ThenBy(e => e.StartTime)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(ToDtoAsync));
+            .ToList();
+        var items = new List<ExaminationDTO>();
+        foreach (var examination in pagedExaminations)
+        {
+            items.Add(await ToDtoAsync(examination));
+        }
 
         return new PagedResult<ExaminationDTO>
         {
