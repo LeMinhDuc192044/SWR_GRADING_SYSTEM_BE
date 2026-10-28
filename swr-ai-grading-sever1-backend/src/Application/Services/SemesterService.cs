@@ -205,19 +205,28 @@ public class SemesterService : ISemesterService
 				SemesterId = e.SemesterId,
 				PaperSetId = materials.FirstOrDefault(m => m.ExaminationId == e.ExaminationId)?.PaperSetId
 			}).ToList(),
-			PaperSets = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterPaperSetDTO
+			PaperSets = materials.OrderByDescending(m => m.CreatedDate).Select(m =>
 			{
-				PaperSetId = m.PaperSetId,
-				PaperSetCode = m.PaperSetCode,
-				Description = m.Description,
-				TotalQuestions = m.TotalQuestions,
-				Status = m.Status,
-				ExaminationId = m.ExaminationId,
-				CreatedDate = m.CreatedDate,
-				UpdatedDate = m.UpdatedDate,
-				FileQuestionDocs = m.FileQuestionDocs,
-				FileAnswerRubric = m.FileAnswerRubric,
-				FileAnswerTemplate = m.FileAnswerTemplate
+				var linkedExam = examinations.FirstOrDefault(e => e.ExaminationId == m.ExaminationId);
+				return new SemesterPaperSetDTO
+				{
+					PaperSetId = m.PaperSetId,
+					PaperSetCode = m.PaperSetCode,
+					Description = m.Description,
+					TotalQuestions = m.TotalQuestions,
+					Status = m.Status,
+					ExaminationId = m.ExaminationId,
+					ExaminationCode = linkedExam?.ExaminationCode,
+					ExaminationName = linkedExam?.Name,
+					ExaminationType = linkedExam?.ExaminationType,
+					ExaminationStartDate = linkedExam?.StartDate,
+					ExaminationStatus = linkedExam?.Status,
+					CreatedDate = m.CreatedDate,
+					UpdatedDate = m.UpdatedDate,
+					FileQuestionDocs = m.FileQuestionDocs,
+					FileAnswerRubric = m.FileAnswerRubric,
+					FileAnswerTemplate = m.FileAnswerTemplate
+				};
 			}).ToList()
 		};
 	}
