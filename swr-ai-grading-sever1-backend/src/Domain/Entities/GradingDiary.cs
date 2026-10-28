@@ -11,9 +11,8 @@ public class GradingDiary
     public Guid GradingDiaryId { get; set; } = Guid.NewGuid();
 
     [Required]
-    [MaxLength(21)]
-    [Column("Content")]
-    public string Content { get; set; } = string.Empty;
+    [Column("content")]
+    public string? Content { get; set; } = string.Empty;
 
     [Required]
     [MaxLength(200)]

@@ -53,10 +53,14 @@ public sealed class GradingDiaryService : IGradingDiaryService
             return Result<GradingDiaryResponseDTO>.Failure("Đề thi không tồn tại.", "PAPER_SET_NOT_FOUND");
         }
 
-        var alreadyHasDiary = await _diaryRepository.ExistsByPaperSetIdAsync(request.PaperSetId, ct);
-        if (alreadyHasDiary)
+        var diaryCount = await _diaryRepository.CountAsync(
+            diary => diary.PaperSetId == request.PaperSetId,
+            ct);
+        if (diaryCount >= 5)
         {
-            return Result<GradingDiaryResponseDTO>.Failure("Đề thi này đã được tạo sổ chấm.", "PAPER_SET_ALREADY_HAS_DIARY");
+            return Result<GradingDiaryResponseDTO>.Failure(
+                "Đề thi này đã có đủ 5 Grading Diaries.",
+                "PAPER_SET_MAX_DIARY_REACHED");
         }
 
         var diary = new GradingDiary

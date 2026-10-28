@@ -38,7 +38,7 @@ public sealed class GradingDiariesController : ControllerBase
         if (result.ErrorCode == "LECTURER_REQUIRED")
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
 
-        if (result.ErrorCode == "PAPER_SET_ALREADY_HAS_DIARY")
+        if (result.ErrorCode == "PAPER_SET_MAX_DIARY_REACHED")
             return Conflict(ApiResponse.Failure(409, result.Error!));
 
         return BadRequest(ApiResponse.Failure(400, result.Error!));

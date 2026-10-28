@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateExamMaterialEntity : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -235,7 +235,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     grading_diary_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    examination_code = table.Column<string>(type: "character varying(21)", maxLength: 21, nullable: false),
+                    Content = table.Column<string>(type: "character varying(21)", maxLength: 21, nullable: false),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     create_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false)
@@ -324,7 +324,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     question_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    title = table.Column<string>(type: "text", nullable: false),
                     content = table.Column<string>(type: "text", nullable: false),
                     point = table.Column<decimal>(type: "numeric(5,2)", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -486,8 +486,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_grading_diary_paper_set_id",
                 table: "grading_diary",
-                column: "paper_set_id",
-                unique: true);
+                column: "paper_set_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_paper_sets_create_by_id",
@@ -573,7 +572,8 @@ namespace Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_submission_parsed_answers_element_id",
                 table: "submission_parsed_answers",
-                column: "element_id");
+                column: "element_id",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_submission_parsed_answers_question_id",
