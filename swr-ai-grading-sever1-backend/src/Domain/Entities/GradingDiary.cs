@@ -10,7 +10,6 @@ public class GradingDiary
     [Column("grading_diary_id")]
     public Guid GradingDiaryId { get; set; } = Guid.NewGuid();
 
-    [Required]
     [Column("content")]
     public string? Content { get; set; } = string.Empty;
 

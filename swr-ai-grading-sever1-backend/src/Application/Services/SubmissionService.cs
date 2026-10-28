@@ -265,6 +265,8 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(answer => answer.Question)
             .Where(s => s.DiaryId == diaryId)
             .OrderByDescending(s => s.CreatedDate)
             .ToListAsync(ct);
@@ -286,6 +288,8 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(answer => answer.Question)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId && s.DiaryId == diaryId, ct);
 
         if (submission is null)
@@ -312,6 +316,8 @@ public sealed partial class SubmissionService : ISubmissionService
             .Include(s => s.StudentExamination)
                 .ThenInclude(se => se.Student)
             .Include(s => s.Evaluations)
+            .Include(s => s.ParsedAnswers)
+                .ThenInclude(answer => answer.Question)
             .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
 
         if (submission is null)
@@ -914,6 +920,19 @@ public sealed partial class SubmissionService : ISubmissionService
             })
             .ToList() ?? new List<EvaluationItemDetailDto>();
 
+        var studentAnswers = submission.ParsedAnswers
+            .OrderBy(answer => answer.CreatedAt)
+            .Select(answer => new StudentAnswerDto
+            {
+                QuestionNumber = GetQuestionNumber(answer.Question),
+                Question = !string.IsNullOrWhiteSpace(answer.Question?.Title)
+                    ? answer.Question.Title
+                    : answer.Question?.Content ?? string.Empty,
+                ExtractedText = answer.ExtractedText,
+                ExtractedImageUrl = answer.ExtractedImageUrl
+            })
+            .ToList();
+
         return new SubmissionDetailDTO
         {
             SubmissionId = submission.SubmissionId,
@@ -935,9 +954,30 @@ public sealed partial class SubmissionService : ISubmissionService
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             ItemDetails = itemDetails,
+            StudentAnswers = studentAnswers,
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate
         };
+    }
+
+    private static int GetQuestionNumber(Question? question)
+    {
+        if (question is null)
+            return 0;
+
+        var match = Regex.Match(
+            question.Title,
+            @"(?:Question|Câu)\s*(?<number>\d+)|(?:^|\s)Q\s*(?<number>\d+)",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+        {
+            match = Regex.Match(question.Content ?? string.Empty, @"(?:Question|Câu)\s*(?<number>\d+)", RegexOptions.IgnoreCase);
+        }
+
+        return match.Success && int.TryParse(match.Groups["number"].Value, out var number)
+            ? number
+            : 0;
     }
 
     private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)

@@ -38,6 +38,14 @@ public sealed class EvaluationItemDetailDto
     public Guid? AiExtractionId { get; set; }
 }
 
+public sealed class StudentAnswerDto
+{
+    public int QuestionNumber { get; set; }
+    public string Question { get; set; } = string.Empty;
+    public string? ExtractedText { get; set; }
+    public string? ExtractedImageUrl { get; set; }
+}
+
 public sealed class SubmissionDetailDTO
 {
     public Guid SubmissionId { get; set; }
@@ -60,6 +68,7 @@ public sealed class SubmissionDetailDTO
     public string StatusName => Status.ToString();
     public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();
     public IReadOnlyList<EvaluationItemDetailDto> ItemDetails { get; set; } = Array.Empty<EvaluationItemDetailDto>();
+    public IReadOnlyList<StudentAnswerDto> StudentAnswers { get; set; } = Array.Empty<StudentAnswerDto>();
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
 }
