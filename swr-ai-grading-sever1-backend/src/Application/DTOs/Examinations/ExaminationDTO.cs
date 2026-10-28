@@ -1,6 +1,13 @@
 using Domain.Enums;
+using Application.Common;
 
 namespace Application.DTOs.Examinations;
+
+public class GetExaminationsRequest : PagedRequest
+{
+    public Guid? SemesterId { get; set; }
+    public string? Name { get; set; }
+}
 
 public class ExaminationDTO
 {
