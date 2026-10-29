@@ -575,7 +575,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         ParsedAnswerId = aiDetail.ParsedAnswerId,
                         Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                         Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                        NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                         AiExtractionId = aiDetail.DetailId
                     };
 
@@ -595,20 +594,15 @@ public sealed partial class SubmissionService : ISubmissionService
 
                 foreach (var aiDetail in aiEvaluation.Details)
                 {
-                    DetailId = Guid.NewGuid(),
-                    EvaluationId = lecturerEval.EvaluationId,
-                    ParsedAnswerId = aiDetail.ParsedAnswerId,
-                    Score = overrideItem?.Score ?? aiDetail.Score,
-                    Comment = !string.IsNullOrWhiteSpace(overrideItem?.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                    AiExtractionId = aiDetail.DetailId
-                };
+                    var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == aiDetail.ParsedAnswerId);
+                    var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
+                        pa is not null && i.QuestionId == pa.QuestionId);
 
                     var existingDetail = lecturerEval.Details.FirstOrDefault(d => d.ParsedAnswerId == aiDetail.ParsedAnswerId);
                     if (existingDetail != null)
                     {
                         existingDetail.Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score;
                         existingDetail.Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment;
-                        existingDetail.NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized;
                         existingDetail.AiExtractionId = aiDetail.DetailId;
                     }
                     else
@@ -620,7 +614,6 @@ public sealed partial class SubmissionService : ISubmissionService
                             ParsedAnswerId = aiDetail.ParsedAnswerId,
                             Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                             Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                            NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                             AiExtractionId = aiDetail.DetailId
                         };
                         await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
@@ -682,7 +675,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         ParsedAnswerId = pa.ParsedAnswerId,
                         Score = reviewItem?.Score ?? 0m,
                         Comment = reviewItem?.Comment,
-                        NotRecognized = reviewItem?.NotRecognized
                     };
 
                     await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
@@ -702,21 +694,17 @@ public sealed partial class SubmissionService : ISubmissionService
                 {
                     foreach (var pa in submission.ParsedAnswers)
                     {
-                        var lecturerDetail = new EvaluationItemDetail
+                        var reviewItem = request.ItemDetails.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
+                        if (reviewItem is null)
                         {
-                            DetailId = Guid.NewGuid(),
-                            EvaluationId = lecturerEval.EvaluationId,
-                            ParsedAnswerId = item.ParsedAnswerId.Value,
-                            Score = item.Score ?? 0m,
-                            Comment = item.Comment
-                        };
+                            continue;
+                        }
 
                         var existingDetail = lecturerEval.Details.FirstOrDefault(d => d.ParsedAnswerId == pa.ParsedAnswerId);
                         if (existingDetail != null)
                         {
                             existingDetail.Score = reviewItem.Score;
-                            existingDetail.Comment = reviewItem.Comment;
-                            existingDetail.NotRecognized = reviewItem.NotRecognized;
+                            existingDetail.Comment = reviewItem.Comment?.Trim();
                         }
                         else
                         {
@@ -726,8 +714,7 @@ public sealed partial class SubmissionService : ISubmissionService
                                 EvaluationId = lecturerEval.EvaluationId,
                                 ParsedAnswerId = pa.ParsedAnswerId,
                                 Score = reviewItem.Score,
-                                Comment = reviewItem.Comment,
-                                NotRecognized = reviewItem.NotRecognized
+                                Comment = reviewItem.Comment?.Trim(),
                             };
                             await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
                             lecturerEval.Details.Add(newDetail);
@@ -834,10 +821,7 @@ public sealed partial class SubmissionService : ISubmissionService
         // Cập nhật chi tiết câu hỏi
         detail.Score = request.Score;
         detail.Comment = request.Comment?.Trim();
-        if (request.NotRecognized != null)
-        {
-            detail.NotRecognized = request.NotRecognized.Trim();
-        }
+
 
         // Tự động tính lại tổng điểm của evaluation nếu là evaluation của Lecturer
         var eval = detail.Evaluation;
