@@ -244,6 +244,7 @@ public class ExaminationService : IExaminationService
     private async Task<ExaminationDTO> ToDtoAsync(Examination examination)
     {
         var material = (await _paperSetRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
+        var (totalSubmissions, finalSubmissions) = await _repository.GetSubmissionCountsAsync(examination.ExaminationId);
         return new ExaminationDTO
         {
             ExaminationId = examination.ExaminationId,
@@ -259,7 +260,9 @@ public class ExaminationService : IExaminationService
             UpdatedDay = examination.UpdatedDay,
             Status = examination.Status,
             SemesterId = examination.SemesterId,
-            PaperSetId = material?.PaperSetId
+            PaperSetId = material?.PaperSetId,
+            TotalSubmissions = totalSubmissions,
+            TotalFinalSubmissions = finalSubmissions
         };
     }
 
