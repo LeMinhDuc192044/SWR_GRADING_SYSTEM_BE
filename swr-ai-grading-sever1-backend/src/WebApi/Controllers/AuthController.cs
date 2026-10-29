@@ -14,20 +14,17 @@ public sealed class AuthController : ControllerBase
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
     private readonly IJwtTokenService _tokens;
-    private readonly IRefreshTokenService _refreshTokens;
     private readonly JwtSettings _settings;
 
     public AuthController(
         IUserRepository users,
         IUnitOfWork uow,
         IJwtTokenService tokens,
-        IRefreshTokenService refreshTokens,
         IOptions<JwtSettings> options)
     {
         _users = users;
         _uow = uow;
         _tokens = tokens;
-        _refreshTokens = refreshTokens;
         _settings = options.Value;
     }
 
@@ -51,12 +48,9 @@ public sealed class AuthController : ControllerBase
             (int)user.Role,
             user.Role.ToString());
 
-        var refreshToken = _refreshTokens.GenerateRefreshToken(user.Id, user.Role.ToString());
-
         return Ok(ApiResponse.Success(new
         {
             accessToken = token,
-            refreshToken = refreshToken,
             tokenType = "Bearer",
             expiresInMinutes = _settings.ExpirationMinutes,
             user = new { user.Id, user.FullName, role = user.Role.ToString() }
@@ -168,70 +162,13 @@ public sealed class AuthController : ControllerBase
             (int)user.Role,
             user.Role.ToString());
 
-        var refreshToken = _refreshTokens.GenerateRefreshToken(user.Id, user.Role.ToString());
-
         return Ok(ApiResponse.Success(new
         {
             accessToken = token,
-            refreshToken = refreshToken,
             tokenType = "Bearer",
             expiresInMinutes = _settings.ExpirationMinutes,
             user = new { user.Id, user.FullName, role = user.Role.ToString() }
         }));
-    }
-
-    [HttpPost("refresh-token")]
-    public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            return BadRequest(ApiResponse.Failure(400, "RefreshToken là bắt buộc."));
-
-        var (isValid, userId, role) = _refreshTokens.ValidateRefreshToken(request.RefreshToken);
-        if (!isValid)
-            return Unauthorized(ApiResponse.Failure(401, "RefreshToken không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại."));
-
-        var user = await _users.GetByIdAsync(userId, ct);
-        if (user is null || user.IsDeleted || !user.IsActive)
-            return Unauthorized(ApiResponse.Failure(401, "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa."));
-
-        // Rotate token: Revoke old refresh token and issue new pair
-        _refreshTokens.RevokeRefreshToken(request.RefreshToken);
-
-        var newAccessToken = _tokens.GenerateToken(
-            user.Id,
-            user.FullName,
-            (int)user.Role,
-            user.Role.ToString());
-
-        var newRefreshToken = _refreshTokens.GenerateRefreshToken(user.Id, user.Role.ToString());
-
-        return Ok(ApiResponse.Success(new
-        {
-            accessToken = newAccessToken,
-            refreshToken = newRefreshToken,
-            tokenType = "Bearer",
-            expiresInMinutes = _settings.ExpirationMinutes,
-            user = new { user.Id, user.FullName, role = user.Role.ToString() }
-        }));
-    }
-
-    [HttpPost("logout")]
-    public IActionResult Logout([FromBody] LogoutRequest? request)
-    {
-        if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
-        {
-            _refreshTokens.RevokeRefreshToken(request.RefreshToken);
-        }
-
-        // If user is authenticated, also revoke all active tokens for this user
-        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value;
-        if (Guid.TryParse(userIdStr, out var userId))
-        {
-            _refreshTokens.RevokeAllUserTokens(userId);
-        }
-
-        return Ok(ApiResponse.Success(new { message = "Đăng xuất thành công và vô hiệu hóa refreshToken." }));
     }
 }
 

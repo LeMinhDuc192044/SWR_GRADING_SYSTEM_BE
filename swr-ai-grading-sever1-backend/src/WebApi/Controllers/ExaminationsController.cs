@@ -20,7 +20,7 @@ public class ExaminationsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
-        [FromQuery] GetExaminationsRequest request,
+        [FromQuery] PagedRequest request,
         CancellationToken ct)
         => Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 

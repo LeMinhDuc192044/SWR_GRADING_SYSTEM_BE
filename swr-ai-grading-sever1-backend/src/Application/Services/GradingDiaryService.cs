@@ -63,18 +63,11 @@ public sealed class GradingDiaryService : IGradingDiaryService
                 "PAPER_SET_MAX_DIARY_REACHED");
         }
 
-        var content = string.IsNullOrWhiteSpace(request.Content) ? paperSet.PaperSetCode : request.Content.Trim();
-
-        if (content.Length > 21)
-        {
-            return Result<GradingDiaryResponseDTO>.Failure("Nội dung (Content) không được vượt quá 21 ký tự.", "CONTENT_TOO_LONG");
-        }
-
         var diary = new GradingDiary
         {
             GradingDiaryId = Guid.NewGuid(),
             Name = request.Name.Trim(),
-            Content = content,
+            Content = string.IsNullOrWhiteSpace(request.Content) ? paperSet.PaperSetCode : request.Content.Trim(),
             CreateById = currentUserId,
             PaperSetId = request.PaperSetId
         };
@@ -207,12 +200,7 @@ public sealed class GradingDiaryService : IGradingDiaryService
 
         if (!string.IsNullOrWhiteSpace(request.Content))
         {
-            var trimmedContent = request.Content.Trim();
-            if (trimmedContent.Length > 21)
-            {
-                return Result<GradingDiaryResponseDTO>.Failure("Nội dung (Content) không được vượt quá 21 ký tự.", "CONTENT_TOO_LONG");
-            }
-            diary.Content = trimmedContent;
+            diary.Content = request.Content.Trim();
         }
 
         _diaryRepository.Update(diary);
