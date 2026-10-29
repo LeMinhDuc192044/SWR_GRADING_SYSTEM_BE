@@ -52,32 +52,6 @@ public sealed class PaperSetService : IPaperSetService
     public Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default)
         => GetPagedInternalAsync(request, lecturerId, ct);
 
-    public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> GetAvailableForExamBySemesterIdAsync(Guid semesterId, CancellationToken ct = default)
-    {
-        var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
-        if (semester is null)
-            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-
-        var materials = await _dbContext.PaperSets
-            .AsNoTracking()
-            .Include(m => m.Questions)
-                .ThenInclude(q => q.Diagram)
-            .Include(m => m.Questions)
-                .ThenInclude(q => q.Rubric)
-            .Include(m => m.Rubrics)
-                .ThenInclude(r => r.Diagram)
-            .Include(m => m.CreateBy)
-            .Where(m => m.SemesterId == semesterId
-                     && !m.IsDeleted
-                     && m.ExaminationId == null
-                     && m.Status == PaperSetStatus.Ready)
-            .OrderByDescending(m => m.CreatedDate)
-            .ToListAsync(ct);
-
-        var items = await Task.WhenAll(materials.Select(ToMetadataAsync));
-        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(items);
-    }
-
     private async Task<PagedResult<PaperSetMetadataDTO>> GetPagedInternalAsync(PagedRequest request, Guid? lecturerId, CancellationToken ct)
     {
         var materials = (await _repository.GetAllAsync(ct))

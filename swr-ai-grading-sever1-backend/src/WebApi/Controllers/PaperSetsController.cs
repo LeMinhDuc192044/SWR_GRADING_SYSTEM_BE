@@ -35,21 +35,6 @@ public sealed class PaperSetsController : ControllerBase
         CancellationToken ct) =>
         Ok(ApiResponse.Success(await _service.GetLecturerByIdAsync(lecturerId, request, ct)));
 
-    [HttpGet("semester/{semesterId:guid}/available-for-exam")]
-    [HttpGet("semester/{semesterId:guid}/available")]
-    public async Task<IActionResult> GetAvailableForExam(
-        Guid semesterId,
-        CancellationToken ct)
-    {
-        var result = await _service.GetAvailableForExamBySemesterIdAsync(semesterId, ct);
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        return result.ErrorCode == "SEMESTER_NOT_FOUND"
-            ? NotFound(ApiResponse.Failure(404, result.Error!))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
-
     [HttpPost("preview-questions")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> PreviewQuestions(IFormFile question, CancellationToken ct)
