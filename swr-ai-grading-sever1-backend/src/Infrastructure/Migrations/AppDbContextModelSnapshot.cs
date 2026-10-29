@@ -229,10 +229,8 @@ namespace Infrastructure.Migrations
                         .HasColumnName("grading_diary_id");
 
                     b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(21)
-                        .HasColumnType("character varying(21)")
-                        .HasColumnName("Content");
+                        .HasColumnType("text")
+                        .HasColumnName("content");
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")

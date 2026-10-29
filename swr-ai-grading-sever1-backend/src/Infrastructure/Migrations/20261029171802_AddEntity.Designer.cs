@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261026194343_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20261029171802_AddEntity")]
+    partial class AddEntity
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -232,10 +232,8 @@ namespace Infrastructure.Migrations
                         .HasColumnName("grading_diary_id");
 
                     b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(21)
-                        .HasColumnType("character varying(21)")
-                        .HasColumnName("Content");
+                        .HasColumnType("text")
+                        .HasColumnName("content");
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")
