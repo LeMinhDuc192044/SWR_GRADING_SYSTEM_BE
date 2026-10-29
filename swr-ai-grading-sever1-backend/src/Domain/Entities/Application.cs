@@ -16,15 +16,6 @@ public class Application
     [Column("status")]
     public ApplicationStatus Status { get; set; } = ApplicationStatus.Pending;
 
-    [Column("created_day")]
-    public DateTime CreatedDay { get; set; } = DateTime.UtcNow;
+    public Student student { get; set; } = new Student();
 
-    [Column("updated_day")]
-    public DateTime UpdatedDay { get; set; } = DateTime.UtcNow;
-
-    [Column("student_id")]
-    [ForeignKey(nameof(Student))]
-    public Guid StudentId { get; set; }
-
-    public Student Student { get; set; } = new Student();
 }

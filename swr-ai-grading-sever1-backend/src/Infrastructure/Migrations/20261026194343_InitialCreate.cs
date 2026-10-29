@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class AddEntity : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -235,7 +235,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     grading_diary_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    content = table.Column<string>(type: "text", nullable: true),
+                    Content = table.Column<string>(type: "character varying(21)", maxLength: 21, nullable: false),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     create_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false)
