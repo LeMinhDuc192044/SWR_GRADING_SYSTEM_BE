@@ -223,27 +223,25 @@ dotnet ef database update <PreviousMigrationName> --project src/Infrastructure -
 
 ### Hiện có
 
-| Method | URL | Mô tả | Role |
+| Method | URL | Mô tả | Auth |
 |---|---|---|---|
-| GET | `/health` | Health check | Public |
-| POST | `/api/auth/register` | Đăng ký tài khoản (Student / Lecturer) | Public |
-| POST | `/api/auth/login` | Đăng nhập (trả accessToken + refreshToken) | Public |
-| POST | `/api/auth/refresh-token` | Cấp mới accessToken qua refreshToken | Public |
-| POST | `/api/auth/logout` | Đăng xuất và vô hiệu hóa refreshToken | All |
-| GET | `/api/submissions` | Lấy danh sách bài nộp có phân trang, tìm kiếm, lọc | Admin, Lecturer |
-| GET | `/api/admin/submissions` | Alias lấy danh sách bài nộp phân trang | Admin |
-| PATCH | `/api/submissions/{id}/status` | Điều chỉnh trạng thái bài nộp (Submitted -> AI -> Reviewed -> Final...) | Admin, Lecturer |
-| GET | `/api/lecturer/dashboard` | Dashboard tổng quan chấm điểm (KPI, phổ điểm 10 cột, donut, so sánh kỳ) | Lecturer, Admin |
-| GET | `/api/admin/dashboard/semesters-statistics` | Thống kê điểm số và phổ điểm theo từng học kỳ | Admin |
-| GET | `/api/admin/dashboard/lecturers-performance` | Thống kê hiệu suất và tiến độ chấm của từng giảng viên | Admin |
-| POST | `/api/grading-diaries/{diaryId}/submissions/upload` | Upload bài nộp sinh viên (.docx / .rar) | Lecturer, Admin |
-| GET | `/api/grading-diaries/{diaryId}/submissions` | Lấy danh sách bài nộp trong sổ chấm | Lecturer, Admin |
-| GET | `/api/submissions/{id}` | Chi tiết bài nộp và điểm thành phần | Lecturer, Admin |
-| POST | `/api/submissions/{id}/ai-grade` | Kích hoạt AI chấm điểm tự động | Lecturer, Admin |
-| POST | `/api/submissions/{id}/review` | Giảng viên chấm / đánh giá bài nộp | Lecturer, Admin |
-| PUT | `/api/submissions/{id}/finalize` | Chốt điểm bài nộp sang Final | Lecturer, Admin |
-| GET | `/api/submissions/{id}/history` | Xem lịch sử / audit timeline bài nộp | Lecturer, Admin |
-| GET | `/api/paper-sets/semester/{semesterId}/available-for-exam` | Lấy danh sách đề thi khả dụng (chưa dùng/thi) của 1 học kỳ để khảo thí gán vào đợt thi mới (hỗ trợ cả alias `/available`) | Lecturer, Admin |
+| GET | `/health` | Health check | ❌ |
+| GET | `/api/health` | Health check (controller) | ❌ |
+| GET | `/swagger` | Swagger UI (chỉ Development) | ❌ |
+
+### Sắp thêm (theo Flow 1)
+
+| Module | Endpoints |
+|---|---|
+| Auth | `/api/auth/register`, `/api/auth/login`, `/api/auth/me` |
+| Users | `/api/users` (CRUD) |
+| Semesters | `/api/semesters` (CRUD) |
+| Examinations | `/api/examinations` (CRUD) |
+| ExamMaterials | `/api/examinations/{id}/materials` (upload/list) |
+| Submissions | `/api/submissions` (CRUD, submit) |
+| Gradings | `/api/gradings` (CRUD) |
+| Diagrams | `/api/diagrams` (CRUD, get/create elements) |
+| DiagramElements | `/api/diagram-elements` (CRUD, self-ref) |
 
 ---
 

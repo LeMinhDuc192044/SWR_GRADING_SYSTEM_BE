@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace Application.DTOs.AuthDTOs;
 public record LoginRequest(
@@ -16,9 +16,3 @@ public record RegisterRequest(
     string? Major = null,
     string? LecturerCode = null,
     string? Subject = null);
-
-public record RefreshTokenRequest(
-    [property: Required] string RefreshToken);
-
-public record LogoutRequest(
-    string? RefreshToken = null);
