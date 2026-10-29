@@ -15,7 +15,6 @@ using Infrastructure.Configurations;
 using Infrastructure.Services;
 using WebApi;
 using System.Text;
-using WebApi.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -176,10 +175,6 @@ builder.Services.AddScoped<ISupabaseStorage>(sp =>
     return new EncryptedSupabaseStorage(inner);
 });
 
-// Exception handling
-builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
-
 // Controllers
 builder.Services.AddControllers();
 builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -276,7 +271,8 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-app.UseExceptionHandler();
+app.UseMiddleware<WebApi.Common.GlobalExceptionMiddleware>();
+
 app.UseSwagger();
 app.UseSwaggerUI();
 

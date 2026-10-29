@@ -130,6 +130,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("evaluation_id");
 
+                    b.Property<string>("NotRecognized")
+                        .HasColumnType("text")
+                        .HasColumnName("not_recognized");
+
                     b.Property<Guid>("ParsedAnswerId")
                         .HasColumnType("uuid")
                         .HasColumnName("parsed_answer_id");
@@ -232,7 +236,11 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(21)
                         .HasColumnType("character varying(21)")
+<<<<<<< HEAD
                         .HasColumnName("Content");
+=======
+                        .HasColumnName("examination_code");
+>>>>>>> parent of 73297de (Merge branch 'Fix-submission' into main)
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")
@@ -252,7 +260,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CreateById");
 
-                    b.HasIndex("PaperSetId");
+                    b.HasIndex("PaperSetId")
+                        .IsUnique();
 
                     b.ToTable("grading_diary");
                 });
@@ -368,7 +377,8 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedDay")
@@ -790,8 +800,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.PaperSet", "PaperSet")
-                        .WithMany("GradingDiaries")
-                        .HasForeignKey("PaperSetId")
+                        .WithOne("GradingDiary")
+                        .HasForeignKey("Domain.Entities.GradingDiary", "PaperSetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -999,7 +1009,7 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.PaperSet", b =>
                 {
-                    b.Navigation("GradingDiaries");
+                    b.Navigation("GradingDiary");
 
                     b.Navigation("Questions");
 
