@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261021150935_AddNotRecognizedToEvaluationItemDetail")]
-    partial class AddNotRecognizedToEvaluationItemDetail
+    [Migration("20261029171802_AddEntity")]
+    partial class AddEntity
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -133,10 +133,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("evaluation_id");
 
-                    b.Property<string>("NotRecognized")
-                        .HasColumnType("text")
-                        .HasColumnName("not_recognized");
-
                     b.Property<Guid>("ParsedAnswerId")
                         .HasColumnType("uuid")
                         .HasColumnName("parsed_answer_id");
@@ -236,10 +232,8 @@ namespace Infrastructure.Migrations
                         .HasColumnName("grading_diary_id");
 
                     b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(21)
-                        .HasColumnType("character varying(21)")
-                        .HasColumnName("examination_code");
+                        .HasColumnType("text")
+                        .HasColumnName("content");
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")
@@ -259,8 +253,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CreateById");
 
-                    b.HasIndex("PaperSetId")
-                        .IsUnique();
+                    b.HasIndex("PaperSetId");
 
                     b.ToTable("grading_diary");
                 });
@@ -376,8 +369,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("text")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedDay")
@@ -799,8 +791,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.PaperSet", "PaperSet")
-                        .WithOne("GradingDiary")
-                        .HasForeignKey("Domain.Entities.GradingDiary", "PaperSetId")
+                        .WithMany("GradingDiaries")
+                        .HasForeignKey("PaperSetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1008,7 +1000,7 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.PaperSet", b =>
                 {
-                    b.Navigation("GradingDiary");
+                    b.Navigation("GradingDiaries");
 
                     b.Navigation("Questions");
 
