@@ -1,0 +1,19 @@
+* [33md1b5127[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mbackup-main-before-revert[m[33m)[m Update for revert
+* [33me1d05a5[m Revert "Update entity"
+* [33m83b2fab[m Revert "Update entity"
+*   [33m73297de[m Merge branch 'Fix-submission' into main
+[32m|[m[33m\[m  
+[32m|[m * [33m68130e0[m Update entity
+[32m|[m * [33m51adf3f[m Update entity
+[32m|[m * [33m608304c[m Update student answer to submission
+[32m|[m * [33m2903fb8[m Update Grading Diaries
+[32m|[m * [33m1734528[m Add applcation entity
+[32m|[m * [33mf9c8e17[m Update GradingDiary.cs
+[32m|[m * [33m179523b[m Update exmination get
+* [33m|[m   [33m8e2baec[m Merge pull request #39 from LeMinhDuc192044/Phu
+[34m|[m[35m\[m [33m\[m  
+[34m|[m * [33m|[m [33m6eccbdf[m[33m ([m[1;31morigin/Phu[m[33m)[m update
+* [35m|[m [33m|[m   [33mc114332[m Merge pull request #38 from LeMinhDuc192044/Examination_Details
+[36m|[m[1;31m\[m [35m\[m [33m\[m  
+[36m|[m * [35m|[m [33m|[m [33m0bc01b5[m[33m ([m[1;31morigin/Examination_Details[m[33m)[m Update Examination API
+[36m|[m[36m/[m [35m/[m [33m/[m  
