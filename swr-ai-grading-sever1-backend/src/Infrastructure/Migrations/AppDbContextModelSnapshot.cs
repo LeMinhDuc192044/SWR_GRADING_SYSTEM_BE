@@ -236,11 +236,7 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(21)
                         .HasColumnType("character varying(21)")
-<<<<<<< HEAD
-                        .HasColumnName("Content");
-=======
                         .HasColumnName("examination_code");
->>>>>>> parent of 73297de (Merge branch 'Fix-submission' into main)
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")
