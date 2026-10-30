@@ -28,6 +28,11 @@ public sealed class SemesterPaperSetDTO
     public int TotalQuestions { get; set; }
     public PaperSetStatus Status { get; set; }
     public Guid? ExaminationId { get; set; }
+    public string? ExaminationCode { get; set; }
+    public string? ExaminationName { get; set; }
+    public ExaminationType? ExaminationType { get; set; }
+    public DateOnly? ExaminationStartDate { get; set; }
+    public ExaminationStatus? ExaminationStatus { get; set; }
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
     public string? FileQuestionDocs { get; set; }
