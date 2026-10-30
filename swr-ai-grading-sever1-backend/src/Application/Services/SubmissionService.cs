@@ -578,7 +578,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         ParsedAnswerId = aiDetail.ParsedAnswerId,
                         Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                         Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                        NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                         AiExtractionId = aiDetail.DetailId
                     };
 
@@ -607,7 +606,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     {
                         existingDetail.Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score;
                         existingDetail.Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment;
-                        existingDetail.NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized;
                         existingDetail.AiExtractionId = aiDetail.DetailId;
                     }
                     else
@@ -619,7 +617,6 @@ public sealed partial class SubmissionService : ISubmissionService
                             ParsedAnswerId = aiDetail.ParsedAnswerId,
                             Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                             Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                            NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                             AiExtractionId = aiDetail.DetailId
                         };
                         await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
@@ -680,8 +677,7 @@ public sealed partial class SubmissionService : ISubmissionService
                         EvaluationId = lecturerEval.EvaluationId,
                         ParsedAnswerId = pa.ParsedAnswerId,
                         Score = reviewItem?.Score ?? 0m,
-                        Comment = reviewItem?.Comment,
-                        NotRecognized = reviewItem?.NotRecognized
+                        Comment = reviewItem?.Comment
                     };
 
                     await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
@@ -709,7 +705,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         {
                             existingDetail.Score = reviewItem.Score;
                             existingDetail.Comment = reviewItem.Comment;
-                            existingDetail.NotRecognized = reviewItem.NotRecognized;
                         }
                         else
                         {
@@ -720,7 +715,6 @@ public sealed partial class SubmissionService : ISubmissionService
                                 ParsedAnswerId = pa.ParsedAnswerId,
                                 Score = reviewItem.Score,
                                 Comment = reviewItem.Comment,
-                                NotRecognized = reviewItem.NotRecognized
                             };
                             await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
                             lecturerEval.Details.Add(newDetail);
@@ -827,10 +821,6 @@ public sealed partial class SubmissionService : ISubmissionService
         // Cập nhật chi tiết câu hỏi
         detail.Score = request.Score;
         detail.Comment = request.Comment?.Trim();
-        if (request.NotRecognized != null)
-        {
-            detail.NotRecognized = request.NotRecognized.Trim();
-        }
 
         // Tự động tính lại tổng điểm của evaluation nếu là evaluation của Lecturer
         var eval = detail.Evaluation;
