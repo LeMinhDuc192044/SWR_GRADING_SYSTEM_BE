@@ -158,6 +158,18 @@ builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ISubmissionParsedAnswerService, SubmissionParsedAnswerService>();
 builder.Services.AddScoped<ILecturerService, LecturerService>();
+// Smtp Settings
+builder.Services.Configure<SmtpSettings>(options =>
+{
+    options.Host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? string.Empty;
+    options.Port = int.TryParse(Environment.GetEnvironmentVariable("SMTP_PORT"), out var port) ? port : 587;
+    options.SenderEmail = Environment.GetEnvironmentVariable("SMTP_SENDER_EMAIL") ?? string.Empty;
+    options.SenderName = Environment.GetEnvironmentVariable("SMTP_SENDER_NAME") ?? "SWR Grading System";
+    options.Password = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? string.Empty;
+    options.EnableSsl = !bool.TryParse(Environment.GetEnvironmentVariable("SMTP_ENABLE_SSL"), out var enableSsl) || enableSsl;
+});
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IStudentService, StudentService>();
 builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
