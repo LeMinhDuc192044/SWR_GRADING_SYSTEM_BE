@@ -10,10 +10,8 @@ public class GradingDiary
     [Column("grading_diary_id")]
     public Guid GradingDiaryId { get; set; } = Guid.NewGuid();
 
-    [Required]
-    [MaxLength(21)]
-    [Column("examination_code")]
-    public string Content { get; set; } = string.Empty;
+    [Column("content")]
+    public string? Content { get; set; } = string.Empty;
 
     [NotMapped]
     public string ExaminationCode

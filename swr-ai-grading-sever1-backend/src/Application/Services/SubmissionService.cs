@@ -463,8 +463,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 EvaluationId = aiEvaluation.EvaluationId,
                 ParsedAnswerId = qa.ParsedAnswer.ParsedAnswerId,
                 Score = matchedCrit?.ActualScore ?? 0m,
-                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI.",
-                NotRecognized = matchedCrit?.NotRecognized
+                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
             };
 
             await _dbContext.EvaluationItemDetails.AddAsync(itemDetail, ct);
@@ -1071,11 +1070,23 @@ public sealed partial class SubmissionService : ISubmissionService
                     QuestionTitle = pa?.Question?.Title ?? string.Empty,
                     Score = d.Score,
                     Comment = d.Comment,
-                    NotRecognized = d.NotRecognized,
                     AiExtractionId = d.AiExtractionId
                 };
             })
             .ToList() ?? new List<EvaluationItemDetailDto>();
+
+        var studentAnswers = submission.ParsedAnswers
+            .OrderBy(answer => answer.CreatedAt)
+            .Select(answer => new StudentAnswerDto
+            {
+                QuestionNumber = GetQuestionNumber(answer.Question),
+                Question = !string.IsNullOrWhiteSpace(answer.Question?.Title)
+                    ? answer.Question.Title
+                    : answer.Question?.Content ?? string.Empty,
+                ExtractedText = answer.ExtractedText,
+                ExtractedImageUrl = answer.ExtractedImageUrl
+            })
+            .ToList();
 
         return new SubmissionDetailDTO
         {
@@ -1098,9 +1109,30 @@ public sealed partial class SubmissionService : ISubmissionService
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             ItemDetails = itemDetails,
+            StudentAnswers = studentAnswers,
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate
         };
+    }
+
+    private static int GetQuestionNumber(Question? question)
+    {
+        if (question is null)
+            return 0;
+
+        var match = Regex.Match(
+            question.Title,
+            @"(?:Question|Câu)\s*(?<number>\d+)|(?:^|\s)Q\s*(?<number>\d+)",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+        {
+            match = Regex.Match(question.Content ?? string.Empty, @"(?:Question|Câu)\s*(?<number>\d+)", RegexOptions.IgnoreCase);
+        }
+
+        return match.Success && int.TryParse(match.Groups["number"].Value, out var number)
+            ? number
+            : 0;
     }
 
     private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
