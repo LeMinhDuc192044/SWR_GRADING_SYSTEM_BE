@@ -13,7 +13,6 @@ public sealed class EvaluationItemReviewDto
     public Guid QuestionId { get; set; }
     public decimal Score { get; set; }
     public string? Comment { get; set; }
-    public string? NotRecognized { get; set; }
 }
 
 public sealed class UpdateEvaluationItemDetailRequest

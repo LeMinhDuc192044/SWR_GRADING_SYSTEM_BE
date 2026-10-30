@@ -368,6 +368,16 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền kích hoạt chấm AI cho bài nộp này.", "FORBIDDEN");
         }
 
+        var hasAiEvaluation = submission.Evaluations
+            .Any(e => e.EvaluationType == EvaluationType.AI);
+        var hasLecturerEvaluation = submission.Evaluations
+            .Any(e => e.EvaluationType == EvaluationType.Lecturer);
+
+        if (hasAiEvaluation && hasLecturerEvaluation)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Bài nộp đã có đầy đủ kết quả chấm AI và giảng viên.", "EVALUATIONS_COMPLETED");
+        }
+
         var paperSet = submission.GradingDiary.PaperSet
             ?? await _paperSetRepository.GetByIdAsync(submission.GradingDiary.PaperSetId, ct);
 
