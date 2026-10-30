@@ -48,9 +48,4 @@ public sealed class GradingDiaryRepository : Repository<GradingDiary>, IGradingD
 
         return await _set.CountAsync(ct);
     }
-
-    public Task<bool> ExistsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default)
-    {
-        return _set.AnyAsync(gd => gd.PaperSetId == paperSetId, ct);
-    }
 }
