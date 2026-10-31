@@ -29,6 +29,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
     public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
+    public DbSet<RegradeApplication> RegradeApplications => Set<RegradeApplication>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -66,6 +67,30 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .WithMany(pa => pa.EvaluationDetails)
             .HasForeignKey(d => d.ParsedAnswerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<RegradeApplication>()
+            .HasOne(r => r.Submission)
+            .WithMany(s => s.RegradeApplications)
+            .HasForeignKey(r => r.SubmissionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<RegradeApplication>()
+            .HasOne(r => r.Student)
+            .WithMany(s => s.RegradeApplications)
+            .HasForeignKey(r => r.StudentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<RegradeApplication>()
+            .HasOne(r => r.AssignedLecturer)
+            .WithMany(l => l.AssignedRegrades)
+            .HasForeignKey(r => r.AssignedLecturerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.Entity<RegradeApplication>()
+            .HasOne(r => r.Admin)
+            .WithMany()
+            .HasForeignKey(r => r.AdminId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         base.OnModelCreating(builder);
     }
