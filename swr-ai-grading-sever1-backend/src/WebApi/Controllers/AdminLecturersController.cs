@@ -23,12 +23,13 @@ public sealed class AdminLecturersController : ControllerBase
 
     /// <summary>
     /// GET /api/admin/lecturers
-    /// Danh sách tất cả giảng viên kèm số đề thi và sổ chấm đang phụ trách.
+    /// Danh sách giảng viên có phân trang và tìm kiếm (kèm số đề thi và sổ chấm đang phụ trách).
+    /// Query params: page, pageSize, search.
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
+    public async Task<IActionResult> GetAll([FromQuery] GetLecturersRequest request, CancellationToken ct)
     {
-        var result = await _lecturerService.GetLecturersAsync(ct);
+        var result = await _lecturerService.GetLecturersAsync(request, ct);
         return Ok(ApiResponse.Success(result.Data));
     }
 
