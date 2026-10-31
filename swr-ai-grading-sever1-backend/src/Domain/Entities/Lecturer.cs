@@ -19,4 +19,6 @@ public class Lecturer : User
     public ICollection<GradingDiary> GradingDiaries { get; set; }  = [];
 
     public ICollection<PaperSet> PaperSetsCreated { get; set; }  = [];
+
+    public ICollection<RegradeApplication> AssignedRegrades { get; set; } = [];
 }
