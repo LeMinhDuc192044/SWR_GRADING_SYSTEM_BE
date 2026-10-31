@@ -1,4 +1,14 @@
+using Application.Common;
+
 namespace Application.DTOs.Lecturers;
+
+/// <summary>
+/// Tham số tìm kiếm và phân trang danh sách Giảng viên dành cho Admin.
+/// </summary>
+public sealed class GetLecturersRequest : PagedRequest
+{
+    public string? Search { get; set; }
+}
 
 /// <summary>
 /// DTO tóm tắt thông tin Giảng viên trong hệ thống dành cho Admin.

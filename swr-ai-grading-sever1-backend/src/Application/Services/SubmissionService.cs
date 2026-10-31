@@ -368,6 +368,16 @@ public sealed partial class SubmissionService : ISubmissionService
             return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền kích hoạt chấm AI cho bài nộp này.", "FORBIDDEN");
         }
 
+        var hasAiEvaluation = submission.Evaluations
+            .Any(e => e.EvaluationType == EvaluationType.AI);
+        var hasLecturerEvaluation = submission.Evaluations
+            .Any(e => e.EvaluationType == EvaluationType.Lecturer);
+
+        if (hasAiEvaluation && hasLecturerEvaluation)
+        {
+            return Result<SubmissionDetailDTO>.Failure("Bài nộp đã có đầy đủ kết quả chấm AI và giảng viên.", "EVALUATIONS_COMPLETED");
+        }
+
         var paperSet = submission.GradingDiary.PaperSet
             ?? await _paperSetRepository.GetByIdAsync(submission.GradingDiary.PaperSetId, ct);
 
@@ -463,8 +473,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 EvaluationId = aiEvaluation.EvaluationId,
                 ParsedAnswerId = qa.ParsedAnswer.ParsedAnswerId,
                 Score = matchedCrit?.ActualScore ?? 0m,
-                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI.",
-                NotRecognized = matchedCrit?.NotRecognized
+                Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
             };
 
             await _dbContext.EvaluationItemDetails.AddAsync(itemDetail, ct);
@@ -579,7 +588,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         ParsedAnswerId = aiDetail.ParsedAnswerId,
                         Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                         Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                        NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                         AiExtractionId = aiDetail.DetailId
                     };
 
@@ -608,7 +616,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     {
                         existingDetail.Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score;
                         existingDetail.Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment;
-                        existingDetail.NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized;
                         existingDetail.AiExtractionId = aiDetail.DetailId;
                     }
                     else
@@ -620,7 +627,6 @@ public sealed partial class SubmissionService : ISubmissionService
                             ParsedAnswerId = aiDetail.ParsedAnswerId,
                             Score = overrideItem is not null ? overrideItem.Score : aiDetail.Score,
                             Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
-                            NotRecognized = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.NotRecognized) ? overrideItem.NotRecognized : aiDetail.NotRecognized,
                             AiExtractionId = aiDetail.DetailId
                         };
                         await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
@@ -681,8 +687,7 @@ public sealed partial class SubmissionService : ISubmissionService
                         EvaluationId = lecturerEval.EvaluationId,
                         ParsedAnswerId = pa.ParsedAnswerId,
                         Score = reviewItem?.Score ?? 0m,
-                        Comment = reviewItem?.Comment,
-                        NotRecognized = reviewItem?.NotRecognized
+                        Comment = reviewItem?.Comment
                     };
 
                     await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
@@ -710,7 +715,6 @@ public sealed partial class SubmissionService : ISubmissionService
                         {
                             existingDetail.Score = reviewItem.Score;
                             existingDetail.Comment = reviewItem.Comment;
-                            existingDetail.NotRecognized = reviewItem.NotRecognized;
                         }
                         else
                         {
@@ -721,7 +725,6 @@ public sealed partial class SubmissionService : ISubmissionService
                                 ParsedAnswerId = pa.ParsedAnswerId,
                                 Score = reviewItem.Score,
                                 Comment = reviewItem.Comment,
-                                NotRecognized = reviewItem.NotRecognized
                             };
                             await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
                             lecturerEval.Details.Add(newDetail);
@@ -828,10 +831,6 @@ public sealed partial class SubmissionService : ISubmissionService
         // Cập nhật chi tiết câu hỏi
         detail.Score = request.Score;
         detail.Comment = request.Comment?.Trim();
-        if (request.NotRecognized != null)
-        {
-            detail.NotRecognized = request.NotRecognized.Trim();
-        }
 
         // Tự động tính lại tổng điểm của evaluation nếu là evaluation của Lecturer
         var eval = detail.Evaluation;
@@ -1071,11 +1070,23 @@ public sealed partial class SubmissionService : ISubmissionService
                     QuestionTitle = pa?.Question?.Title ?? string.Empty,
                     Score = d.Score,
                     Comment = d.Comment,
-                    NotRecognized = d.NotRecognized,
                     AiExtractionId = d.AiExtractionId
                 };
             })
             .ToList() ?? new List<EvaluationItemDetailDto>();
+
+        var studentAnswers = submission.ParsedAnswers
+            .OrderBy(answer => answer.CreatedAt)
+            .Select(answer => new StudentAnswerDto
+            {
+                QuestionNumber = GetQuestionNumber(answer.Question),
+                Question = !string.IsNullOrWhiteSpace(answer.Question?.Title)
+                    ? answer.Question.Title
+                    : answer.Question?.Content ?? string.Empty,
+                ExtractedText = answer.ExtractedText,
+                ExtractedImageUrl = answer.ExtractedImageUrl
+            })
+            .ToList();
 
         return new SubmissionDetailDTO
         {
@@ -1098,9 +1109,30 @@ public sealed partial class SubmissionService : ISubmissionService
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             ItemDetails = itemDetails,
+            StudentAnswers = studentAnswers,
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate
         };
+    }
+
+    private static int GetQuestionNumber(Question? question)
+    {
+        if (question is null)
+            return 0;
+
+        var match = Regex.Match(
+            question.Title,
+            @"(?:Question|Câu)\s*(?<number>\d+)|(?:^|\s)Q\s*(?<number>\d+)",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+        {
+            match = Regex.Match(question.Content ?? string.Empty, @"(?:Question|Câu)\s*(?<number>\d+)", RegexOptions.IgnoreCase);
+        }
+
+        return match.Success && int.TryParse(match.Groups["number"].Value, out var number)
+            ? number
+            : 0;
     }
 
     private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)

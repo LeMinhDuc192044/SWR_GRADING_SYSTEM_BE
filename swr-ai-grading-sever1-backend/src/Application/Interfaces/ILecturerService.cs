@@ -9,9 +9,9 @@ namespace Application.Interfaces;
 public interface ILecturerService
 {
     /// <summary>
-    /// Danh sách tất cả giảng viên kèm số đề thi và sổ chấm phụ trách.
+    /// Danh sách giảng viên có phân trang và tìm kiếm (kèm số đề thi và sổ chấm phụ trách).
     /// </summary>
-    Task<Result<IReadOnlyList<LecturerSummaryDto>>> GetLecturersAsync(CancellationToken ct = default);
+    Task<Result<PagedResult<LecturerSummaryDto>>> GetLecturersAsync(GetLecturersRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// Cập nhật thông tin giảng viên (Họ tên, email, bộ môn).

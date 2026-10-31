@@ -243,6 +243,7 @@ dotnet ef database update <PreviousMigrationName> --project src/Infrastructure -
 | POST | `/api/submissions/{id}/review` | Giảng viên chấm / đánh giá bài nộp | Lecturer, Admin |
 | PUT | `/api/submissions/{id}/finalize` | Chốt điểm bài nộp sang Final | Lecturer, Admin |
 | GET | `/api/submissions/{id}/history` | Xem lịch sử / audit timeline bài nộp | Lecturer, Admin |
+| GET | `/api/paper-sets/semester/{semesterId}/available-for-exam` | Lấy danh sách đề thi khả dụng (chưa dùng/thi) của 1 học kỳ để khảo thí gán vào đợt thi mới (hỗ trợ cả alias `/available`) | Lecturer, Admin |
 
 ---
 

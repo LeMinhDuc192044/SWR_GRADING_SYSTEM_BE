@@ -16,12 +16,31 @@ public sealed class LecturerService : ILecturerService
     }
 
     /// <summary>
-    /// Lấy danh sách toàn bộ giảng viên trong hệ thống.
+    /// Lấy danh sách giảng viên trong hệ thống có phân trang và tìm kiếm.
     /// </summary>
-    public async Task<Result<IReadOnlyList<LecturerSummaryDto>>> GetLecturersAsync(CancellationToken ct = default)
+    public async Task<Result<PagedResult<LecturerSummaryDto>>> GetLecturersAsync(GetLecturersRequest request, CancellationToken ct = default)
     {
-        var lecturers = await _dbContext.Lecturers
-            .AsNoTracking()
+        request ??= new GetLecturersRequest();
+
+        var query = _dbContext.Lecturers
+            .AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = request.Search.Trim().ToLower();
+            query = query.Where(l =>
+                l.FullName.ToLower().Contains(search) ||
+                l.Email.ToLower().Contains(search) ||
+                l.LecturerCode.ToLower().Contains(search) ||
+                l.Subject.ToLower().Contains(search));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(l => l.LecturerCode)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .Select(l => new LecturerSummaryDto
             {
                 Id = l.Id,
@@ -33,10 +52,17 @@ public sealed class LecturerService : ILecturerService
                 PaperSetsCount = _dbContext.PaperSets.Count(p => p.CreateById == l.Id && !p.IsDeleted),
                 GradingDiariesCount = _dbContext.GradingDiaries.Count(d => d.CreateById == l.Id)
             })
-            .OrderBy(l => l.LecturerCode)
             .ToListAsync(ct);
 
-        return Result<IReadOnlyList<LecturerSummaryDto>>.Success(lecturers);
+        var pagedResult = new PagedResult<LecturerSummaryDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<LecturerSummaryDto>>.Success(pagedResult);
     }
 
     /// <summary>

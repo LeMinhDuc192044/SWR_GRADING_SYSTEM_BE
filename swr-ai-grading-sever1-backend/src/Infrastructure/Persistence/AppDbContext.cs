@@ -52,6 +52,10 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(e => e.SubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.Entity<SubmissionEvaluation>()
+            .HasIndex(e => new { e.SubmissionId, e.EvaluationType })
+            .IsUnique();
+
         builder.Entity<EvaluationItemDetail>()
             .HasOne(d => d.Evaluation)
             .WithMany(e => e.Details)
