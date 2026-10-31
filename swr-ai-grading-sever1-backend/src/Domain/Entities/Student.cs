@@ -20,5 +20,5 @@ public class Student : User
     [Column("major")]
     public string Major { get; set; } = string.Empty;
     public ICollection<StudentExamination> StudentExaminations { get; set; }  = [];
-
+    public ICollection<RegradeApplication> RegradeApplications { get; set; } = [];
 }

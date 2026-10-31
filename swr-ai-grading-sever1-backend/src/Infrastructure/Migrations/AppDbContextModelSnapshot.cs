@@ -425,6 +425,78 @@ namespace Infrastructure.Migrations
                     b.ToTable("question_rubrics");
                 });
 
+            modelBuilder.Entity("Domain.Entities.RegradeApplication", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("AdminFeedback")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("admin_feedback");
+
+                    b.Property<Guid?>("AdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("admin_id");
+
+                    b.Property<Guid?>("AssignedLecturerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_lecturer_id");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_date");
+
+                    b.Property<string>("LecturerFeedback")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("lecturer_feedback");
+
+                    b.Property<decimal?>("OriginalScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("original_score");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.Property<decimal?>("RegradedScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("regraded_score");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_date");
+
+                    b.HasKey("ApplicationId");
+
+                    b.HasIndex("AdminId");
+
+                    b.HasIndex("AssignedLecturerId");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("regrade_applications");
+                });
+
             modelBuilder.Entity("Domain.Entities.Semester", b =>
                 {
                     b.Property<Guid>("SemesterId")
@@ -871,6 +943,39 @@ namespace Infrastructure.Migrations
                     b.Navigation("PaperSet");
                 });
 
+            modelBuilder.Entity("Domain.Entities.RegradeApplication", b =>
+                {
+                    b.HasOne("Domain.Entities.User", "Admin")
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.Lecturer", "AssignedLecturer")
+                        .WithMany("AssignedRegrades")
+                        .HasForeignKey("AssignedLecturerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.Student", "Student")
+                        .WithMany("RegradeApplications")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.StudentSubmission", "Submission")
+                        .WithMany("RegradeApplications")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Admin");
+
+                    b.Navigation("AssignedLecturer");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("Submission");
+                });
+
             modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
                 {
                     b.HasOne("Domain.Entities.Examination", "Examination")
@@ -1039,6 +1144,8 @@ namespace Infrastructure.Migrations
                     b.Navigation("Evaluations");
 
                     b.Navigation("ParsedAnswers");
+
+                    b.Navigation("RegradeApplications");
                 });
 
             modelBuilder.Entity("Domain.Entities.SubmissionEvaluation", b =>
@@ -1053,6 +1160,8 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.Lecturer", b =>
                 {
+                    b.Navigation("AssignedRegrades");
+
                     b.Navigation("GradingDiaries");
 
                     b.Navigation("PaperSetsCreated");
@@ -1060,6 +1169,8 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.Student", b =>
                 {
+                    b.Navigation("RegradeApplications");
+
                     b.Navigation("StudentExaminations");
                 });
 #pragma warning restore 612, 618

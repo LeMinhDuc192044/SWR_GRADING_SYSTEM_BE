@@ -1,4 +1,3 @@
-// StudentSubmission.cs  (replace whole file)
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Domain.Enums;
@@ -48,4 +47,5 @@ public class StudentSubmission
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
     public ICollection<SubmissionEvaluation> Evaluations { get; set; } = [];
+    public ICollection<RegradeApplication> RegradeApplications { get; set; } = [];
 }
