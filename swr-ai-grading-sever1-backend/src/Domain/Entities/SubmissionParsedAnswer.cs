@@ -31,6 +31,9 @@ public class SubmissionParsedAnswer
     [Column("extracted_text")]
     public string? ExtractedText { get; set; }
 
+    [Column("extracted_xml")]
+    public string? Extracted_Xml { get; set; }
+
     [Column("extracted_image_url")]
     public string? ExtractedImageUrl { get; set; }
 

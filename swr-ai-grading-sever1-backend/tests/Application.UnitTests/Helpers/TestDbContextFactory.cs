@@ -16,6 +16,7 @@ public class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
     public DbSet<StudentSubmission> Submissions => StudentSubmissions;
     public DbSet<Semester> Semesters => Set<Semester>();
+    public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
     public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
@@ -25,6 +26,14 @@ public class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
     public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        builder.Entity<StudentSemester>()
+            .HasKey(ss => new { ss.StudentId, ss.SemesterId });
+
+        base.OnModelCreating(builder);
+    }
 }
 
 public static class TestDbContextFactory
@@ -39,4 +48,3 @@ public static class TestDbContextFactory
         return context;
     }
 }
-

@@ -10,16 +10,14 @@ public class GradingDiary
     [Column("grading_diary_id")]
     public Guid GradingDiaryId { get; set; } = Guid.NewGuid();
 
-    [Required]
     [MaxLength(21)]
     [Column("examination_code")]
-    public string Content { get; set; } = string.Empty;
+    public string? Content { get; set; }
 
     [Required]
     [MaxLength(200)]
     [Column("name")]
     public string Name { get; set; } = string.Empty;
-
 
     [Required]
     [Column("create_by_id")]
@@ -40,6 +38,4 @@ public class GradingDiary
 
     [NotMapped]
     public ICollection<StudentSubmission> StudentSubmissions => Submissions;
-
-
 }

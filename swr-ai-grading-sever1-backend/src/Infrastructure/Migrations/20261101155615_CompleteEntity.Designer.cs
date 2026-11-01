@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261018121201_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20261101155615_CompleteEntity")]
+    partial class CompleteEntity
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -35,10 +35,6 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
-
-                    b.Property<string>("FileTemplateUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("file_template_url");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -232,7 +228,6 @@ namespace Infrastructure.Migrations
                         .HasColumnName("grading_diary_id");
 
                     b.Property<string>("Content")
-                        .IsRequired()
                         .HasMaxLength(21)
                         .HasColumnType("character varying(21)")
                         .HasColumnName("examination_code");
@@ -255,8 +250,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CreateById");
 
-                    b.HasIndex("PaperSetId")
-                        .IsUnique();
+                    b.HasIndex("PaperSetId");
 
                     b.ToTable("grading_diary");
                 });
@@ -372,8 +366,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("text")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedDay")
@@ -505,6 +498,23 @@ namespace Infrastructure.Migrations
                     b.ToTable("student_examination");
                 });
 
+            modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
+                {
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
+
+                    b.Property<Guid>("SemesterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("semester_id");
+
+                    b.HasKey("StudentId", "SemesterId");
+
+                    b.HasIndex("SemesterId");
+
+                    b.ToTable("student_semester");
+                });
+
             modelBuilder.Entity("Domain.Entities.StudentSubmission", b =>
                 {
                     b.Property<Guid>("SubmissionId")
@@ -560,10 +570,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("evaluation_id");
 
-                    b.Property<Guid?>("AdminSelectedId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("admin_selected_id");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -584,10 +590,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_final_score");
 
-                    b.Property<string>("SelectionReason")
-                        .HasColumnType("text")
-                        .HasColumnName("selection_reason");
-
                     b.Property<Guid>("SubmissionId")
                         .HasColumnType("uuid")
                         .HasColumnName("submission_id");
@@ -598,9 +600,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("EvaluationId");
 
-                    b.HasIndex("AdminSelectedId");
-
-                    b.HasIndex("SubmissionId");
+                    b.HasIndex("SubmissionId", "EvaluationType")
+                        .IsUnique();
 
                     b.ToTable("submission_evaluations");
                 });
@@ -627,6 +628,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("ExtractedText")
                         .HasColumnType("text")
                         .HasColumnName("extracted_text");
+
+                    b.Property<string>("Extracted_Xml")
+                        .HasColumnType("text")
+                        .HasColumnName("extracted_xml");
 
                     b.Property<Guid>("QuestionId")
                         .HasColumnType("uuid")
@@ -795,8 +800,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.PaperSet", "PaperSet")
-                        .WithOne("GradingDiary")
-                        .HasForeignKey("Domain.Entities.GradingDiary", "PaperSetId")
+                        .WithMany("GradingDiaries")
+                        .HasForeignKey("PaperSetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -889,6 +894,25 @@ namespace Infrastructure.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
+                {
+                    b.HasOne("Domain.Entities.Semester", "Semester")
+                        .WithMany("StudentSemesters")
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.Student", "Student")
+                        .WithMany("StudentSemesters")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Semester");
+
+                    b.Navigation("Student");
+                });
+
             modelBuilder.Entity("Domain.Entities.StudentSubmission", b =>
                 {
                     b.HasOne("Domain.Entities.GradingDiary", "GradingDiary")
@@ -918,17 +942,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.SubmissionEvaluation", b =>
                 {
-                    b.HasOne("Domain.Entities.User", "AdminSelected")
-                        .WithMany()
-                        .HasForeignKey("AdminSelectedId");
-
                     b.HasOne("Domain.Entities.StudentSubmission", "Submission")
                         .WithMany("Evaluations")
                         .HasForeignKey("SubmissionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("AdminSelected");
 
                     b.Navigation("Submission");
                 });
@@ -1004,7 +1022,7 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.PaperSet", b =>
                 {
-                    b.Navigation("GradingDiary");
+                    b.Navigation("GradingDiaries");
 
                     b.Navigation("Questions");
 
@@ -1026,6 +1044,8 @@ namespace Infrastructure.Migrations
                     b.Navigation("Examinations");
 
                     b.Navigation("PaperSets");
+
+                    b.Navigation("StudentSemesters");
                 });
 
             modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
@@ -1060,6 +1080,8 @@ namespace Infrastructure.Migrations
             modelBuilder.Entity("Domain.Entities.Student", b =>
                 {
                     b.Navigation("StudentExaminations");
+
+                    b.Navigation("StudentSemesters");
                 });
 #pragma warning restore 612, 618
         }
