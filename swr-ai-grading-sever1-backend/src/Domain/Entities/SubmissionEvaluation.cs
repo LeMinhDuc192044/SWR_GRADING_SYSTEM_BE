@@ -35,14 +35,6 @@ public class SubmissionEvaluation
     [Column("is_final_score")]
     public bool IsFinalScore { get; set; }
 
-    [Column("admin_selected_id")]
-    [ForeignKey(nameof(AdminSelected))]
-    public Guid? AdminSelectedId { get; set; }
-    public User? AdminSelected { get; set; }
-
-    [Column("selection_reason")]
-    public string? SelectionReason { get; set; }
-
     [Required]
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }

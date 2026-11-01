@@ -564,10 +564,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     TotalScore = aiEvaluation.TotalScore.Value,
                     GeneralFeedback = chosenFeedback,
                     IsFinalScore = request.IsFinal,
-                    AdminSelectedId = currentUserId,
-                    SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
-                        ? request.SelectionReason.Trim() 
-                        : "Giảng viên xác nhận pick điểm của AI",
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -600,10 +596,6 @@ public sealed partial class SubmissionService : ISubmissionService
                 lecturerEval.TotalScore = aiEvaluation.TotalScore.Value;
                 lecturerEval.GeneralFeedback = chosenFeedback;
                 lecturerEval.IsFinalScore = request.IsFinal;
-                lecturerEval.AdminSelectedId = currentUserId;
-                lecturerEval.SelectionReason = !string.IsNullOrWhiteSpace(request.SelectionReason) 
-                    ? request.SelectionReason.Trim() 
-                    : "Giảng viên xác nhận pick điểm của AI";
 
                 foreach (var aiDetail in aiEvaluation.Details)
                 {
@@ -668,8 +660,6 @@ public sealed partial class SubmissionService : ISubmissionService
                     TotalScore = score,
                     GeneralFeedback = request.Comment?.Trim(),
                     IsFinalScore = request.IsFinal,
-                    AdminSelectedId = currentUserId,
-                    SelectionReason = request.SelectionReason?.Trim(),
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -700,8 +690,6 @@ public sealed partial class SubmissionService : ISubmissionService
                 lecturerEval.TotalScore = score;
                 lecturerEval.GeneralFeedback = request.Comment?.Trim();
                 lecturerEval.IsFinalScore = request.IsFinal;
-                lecturerEval.AdminSelectedId = currentUserId;
-                lecturerEval.SelectionReason = request.SelectionReason?.Trim();
 
                 if (request.ItemDetails != null && request.ItemDetails.Count > 0)
                 {
@@ -911,7 +899,6 @@ public sealed partial class SubmissionService : ISubmissionService
         }
 
         lecturerEvaluation.IsFinalScore = true;
-        lecturerEvaluation.AdminSelectedId = currentUserId;
         submission.Status = SubmissionStatus.Final; // 3 = Final
         submission.UpdatedDate = DateTime.UtcNow;
 
@@ -1105,7 +1092,6 @@ public sealed partial class SubmissionService : ISubmissionService
             LecturerScore = lecturerEvaluation?.TotalScore,
             Comment = lecturerEvaluation?.GeneralFeedback ?? string.Empty,
             IsFinalScore = finalEvaluation?.IsFinalScore ?? false,
-            SelectionReason = finalEvaluation?.SelectionReason,
             Status = submission.Status,
             CriteriaScores = criteriaScores,
             ItemDetails = itemDetails,

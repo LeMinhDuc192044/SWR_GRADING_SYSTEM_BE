@@ -20,6 +20,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
     public DbSet<StudentSubmission> Submissions => StudentSubmissions;
     public DbSet<Semester> Semesters => Set<Semester>();
+    public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
     public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
     public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
@@ -29,11 +30,25 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
     public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
-    public DbSet<RegradeApplication> RegradeApplications => Set<RegradeApplication>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        builder.Entity<StudentSemester>()
+            .HasKey(studentSemester => new { studentSemester.StudentId, studentSemester.SemesterId });
+
+        builder.Entity<StudentSemester>()
+            .HasOne(studentSemester => studentSemester.Student)
+            .WithMany(student => student.StudentSemesters)
+            .HasForeignKey(studentSemester => studentSemester.StudentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<StudentSemester>()
+            .HasOne(studentSemester => studentSemester.Semester)
+            .WithMany(semester => semester.StudentSemesters)
+            .HasForeignKey(studentSemester => studentSemester.SemesterId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<StudentSubmission>()
             .HasMany(submission => submission.ParsedAnswers)
@@ -67,30 +82,6 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .WithMany(pa => pa.EvaluationDetails)
             .HasForeignKey(d => d.ParsedAnswerId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.Entity<RegradeApplication>()
-            .HasOne(r => r.Submission)
-            .WithMany(s => s.RegradeApplications)
-            .HasForeignKey(r => r.SubmissionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        builder.Entity<RegradeApplication>()
-            .HasOne(r => r.Student)
-            .WithMany(s => s.RegradeApplications)
-            .HasForeignKey(r => r.StudentId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.Entity<RegradeApplication>()
-            .HasOne(r => r.AssignedLecturer)
-            .WithMany(l => l.AssignedRegrades)
-            .HasForeignKey(r => r.AssignedLecturerId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        builder.Entity<RegradeApplication>()
-            .HasOne(r => r.Admin)
-            .WithMany()
-            .HasForeignKey(r => r.AdminId)
-            .OnDelete(DeleteBehavior.SetNull);
 
         base.OnModelCreating(builder);
     }

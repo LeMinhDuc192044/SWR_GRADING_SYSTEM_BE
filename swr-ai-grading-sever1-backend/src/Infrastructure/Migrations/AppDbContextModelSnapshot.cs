@@ -229,8 +229,9 @@ namespace Infrastructure.Migrations
                         .HasColumnName("grading_diary_id");
 
                     b.Property<string>("Content")
-                        .HasColumnType("text")
-                        .HasColumnName("content");
+                        .HasMaxLength(21)
+                        .HasColumnType("character varying(21)")
+                        .HasColumnName("examination_code");
 
                     b.Property<Guid>("CreateById")
                         .HasColumnType("uuid")
@@ -417,78 +418,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("question_rubrics");
                 });
 
-            modelBuilder.Entity("Domain.Entities.RegradeApplication", b =>
-                {
-                    b.Property<Guid>("ApplicationId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("application_id");
-
-                    b.Property<string>("AdminFeedback")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("admin_feedback");
-
-                    b.Property<Guid?>("AdminId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("admin_id");
-
-                    b.Property<Guid?>("AssignedLecturerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("assigned_lecturer_id");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_date");
-
-                    b.Property<string>("LecturerFeedback")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("lecturer_feedback");
-
-                    b.Property<decimal?>("OriginalScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("original_score");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("reason");
-
-                    b.Property<decimal?>("RegradedScore")
-                        .HasColumnType("decimal(5,2)")
-                        .HasColumnName("regraded_score");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("StudentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("student_id");
-
-                    b.Property<Guid>("SubmissionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("submission_id");
-
-                    b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_date");
-
-                    b.HasKey("ApplicationId");
-
-                    b.HasIndex("AdminId");
-
-                    b.HasIndex("AssignedLecturerId");
-
-                    b.HasIndex("StudentId");
-
-                    b.HasIndex("SubmissionId");
-
-                    b.ToTable("regrade_applications");
-                });
-
             modelBuilder.Entity("Domain.Entities.Semester", b =>
                 {
                     b.Property<Guid>("SemesterId")
@@ -570,6 +499,23 @@ namespace Infrastructure.Migrations
                     b.ToTable("student_examination");
                 });
 
+            modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
+                {
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
+
+                    b.Property<Guid>("SemesterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("semester_id");
+
+                    b.HasKey("StudentId", "SemesterId");
+
+                    b.HasIndex("SemesterId");
+
+                    b.ToTable("student_semester");
+                });
+
             modelBuilder.Entity("Domain.Entities.StudentSubmission", b =>
                 {
                     b.Property<Guid>("SubmissionId")
@@ -625,10 +571,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("evaluation_id");
 
-                    b.Property<Guid?>("AdminSelectedId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("admin_selected_id");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -649,10 +591,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_final_score");
 
-                    b.Property<string>("SelectionReason")
-                        .HasColumnType("text")
-                        .HasColumnName("selection_reason");
-
                     b.Property<Guid>("SubmissionId")
                         .HasColumnType("uuid")
                         .HasColumnName("submission_id");
@@ -663,9 +601,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("EvaluationId");
 
-                    b.HasIndex("AdminSelectedId");
-
-                    b.HasIndex("SubmissionId");
+                    b.HasIndex("SubmissionId", "EvaluationType")
+                        .IsUnique();
 
                     b.ToTable("submission_evaluations");
                 });
@@ -692,6 +629,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("ExtractedText")
                         .HasColumnType("text")
                         .HasColumnName("extracted_text");
+
+                    b.Property<string>("Extracted_Xml")
+                        .HasColumnType("text")
+                        .HasColumnName("extracted_xml");
 
                     b.Property<Guid>("QuestionId")
                         .HasColumnType("uuid")
@@ -935,39 +876,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("PaperSet");
                 });
 
-            modelBuilder.Entity("Domain.Entities.RegradeApplication", b =>
-                {
-                    b.HasOne("Domain.Entities.User", "Admin")
-                        .WithMany()
-                        .HasForeignKey("AdminId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Domain.Entities.Lecturer", "AssignedLecturer")
-                        .WithMany("AssignedRegrades")
-                        .HasForeignKey("AssignedLecturerId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Domain.Entities.Student", "Student")
-                        .WithMany("RegradeApplications")
-                        .HasForeignKey("StudentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.StudentSubmission", "Submission")
-                        .WithMany("RegradeApplications")
-                        .HasForeignKey("SubmissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Admin");
-
-                    b.Navigation("AssignedLecturer");
-
-                    b.Navigation("Student");
-
-                    b.Navigation("Submission");
-                });
-
             modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
                 {
                     b.HasOne("Domain.Entities.Examination", "Examination")
@@ -983,6 +891,25 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Examination");
+
+                    b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
+                {
+                    b.HasOne("Domain.Entities.Semester", "Semester")
+                        .WithMany("StudentSemesters")
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.Student", "Student")
+                        .WithMany("StudentSemesters")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Semester");
 
                     b.Navigation("Student");
                 });
@@ -1016,17 +943,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.SubmissionEvaluation", b =>
                 {
-                    b.HasOne("Domain.Entities.User", "AdminSelected")
-                        .WithMany()
-                        .HasForeignKey("AdminSelectedId");
-
                     b.HasOne("Domain.Entities.StudentSubmission", "Submission")
                         .WithMany("Evaluations")
                         .HasForeignKey("SubmissionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("AdminSelected");
 
                     b.Navigation("Submission");
                 });
@@ -1124,6 +1045,8 @@ namespace Infrastructure.Migrations
                     b.Navigation("Examinations");
 
                     b.Navigation("PaperSets");
+
+                    b.Navigation("StudentSemesters");
                 });
 
             modelBuilder.Entity("Domain.Entities.StudentExamination", b =>
@@ -1136,8 +1059,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("Evaluations");
 
                     b.Navigation("ParsedAnswers");
-
-                    b.Navigation("RegradeApplications");
                 });
 
             modelBuilder.Entity("Domain.Entities.SubmissionEvaluation", b =>
@@ -1152,8 +1073,6 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.Lecturer", b =>
                 {
-                    b.Navigation("AssignedRegrades");
-
                     b.Navigation("GradingDiaries");
 
                     b.Navigation("PaperSetsCreated");
@@ -1161,9 +1080,9 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.Student", b =>
                 {
-                    b.Navigation("RegradeApplications");
-
                     b.Navigation("StudentExaminations");
+
+                    b.Navigation("StudentSemesters");
                 });
 #pragma warning restore 612, 618
         }

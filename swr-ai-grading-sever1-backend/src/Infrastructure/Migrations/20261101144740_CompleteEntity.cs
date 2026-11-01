@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class AddEntity : Migration
+    public partial class CompleteEntity : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -231,11 +231,35 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "student_semester",
+                columns: table => new
+                {
+                    student_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    semester_id = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_student_semester", x => new { x.student_id, x.semester_id });
+                    table.ForeignKey(
+                        name: "FK_student_semester_semesters_semester_id",
+                        column: x => x.semester_id,
+                        principalTable: "semesters",
+                        principalColumn: "semester_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_student_semester_students_student_id",
+                        column: x => x.student_id,
+                        principalTable: "students",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "grading_diary",
                 columns: table => new
                 {
                     grading_diary_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    content = table.Column<string>(type: "text", nullable: true),
+                    examination_code = table.Column<string>(type: "character varying(21)", maxLength: 21, nullable: true),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     create_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false)
@@ -365,8 +389,6 @@ namespace Infrastructure.Migrations
                     total_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     general_feedback = table.Column<string>(type: "text", nullable: true),
                     is_final_score = table.Column<bool>(type: "boolean", nullable: false),
-                    admin_selected_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    selection_reason = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -378,11 +400,6 @@ namespace Infrastructure.Migrations
                         principalTable: "student_submission",
                         principalColumn: "submission_id",
                         onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_submission_evaluations_users_admin_selected_id",
-                        column: x => x.admin_selected_id,
-                        principalTable: "users",
-                        principalColumn: "id");
                 });
 
             migrationBuilder.CreateTable(
@@ -394,6 +411,7 @@ namespace Infrastructure.Migrations
                     question_id = table.Column<Guid>(type: "uuid", nullable: false),
                     element_id = table.Column<Guid>(type: "uuid", nullable: true),
                     extracted_text = table.Column<string>(type: "text", nullable: true),
+                    extracted_xml = table.Column<string>(type: "text", nullable: true),
                     extracted_image_url = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
@@ -545,6 +563,11 @@ namespace Infrastructure.Migrations
                 column: "student_id");
 
             migrationBuilder.CreateIndex(
+                name: "IX_student_semester_semester_id",
+                table: "student_semester",
+                column: "semester_id");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_student_submission_diary_id",
                 table: "student_submission",
                 column: "diary_id");
@@ -560,14 +583,10 @@ namespace Infrastructure.Migrations
                 column: "student_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_submission_evaluations_admin_selected_id",
+                name: "IX_submission_evaluations_submission_id_evaluation_type",
                 table: "submission_evaluations",
-                column: "admin_selected_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_submission_evaluations_submission_id",
-                table: "submission_evaluations",
-                column: "submission_id");
+                columns: new[] { "submission_id", "evaluation_type" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_submission_parsed_answers_element_id",
@@ -591,6 +610,9 @@ namespace Infrastructure.Migrations
         {
             migrationBuilder.DropTable(
                 name: "evaluation_item_details");
+
+            migrationBuilder.DropTable(
+                name: "student_semester");
 
             migrationBuilder.DropTable(
                 name: "submission_evaluations");

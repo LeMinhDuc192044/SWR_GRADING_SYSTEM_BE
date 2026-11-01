@@ -37,7 +37,7 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// Điều chỉnh trạng thái của một bài nộp (Submitted, AI_Graded, Lecturer_Reviewed, Final, ReGrading, ReGraded).
+    /// Điều chỉnh trạng thái của một bài nộp (Submitted, AI_Graded, Lecturer_Reviewed, Final).
     /// </summary>
     [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> UpdateStatus(

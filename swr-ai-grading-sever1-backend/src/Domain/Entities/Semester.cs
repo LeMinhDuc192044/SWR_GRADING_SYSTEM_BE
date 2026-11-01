@@ -43,4 +43,5 @@ public class Semester
 
     public ICollection<Examination> Examinations { get; set; } = [];
     public ICollection<PaperSet> PaperSets { get; set; } = [];
+    public ICollection<StudentSemester> StudentSemesters { get; set; } = [];
 }

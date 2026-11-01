@@ -47,5 +47,4 @@ public class StudentSubmission
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
     public ICollection<SubmissionEvaluation> Evaluations { get; set; } = [];
-    public ICollection<RegradeApplication> RegradeApplications { get; set; } = [];
 }

@@ -60,8 +60,7 @@ public sealed class DashboardService : IDashboardService
         var totalSubmissions = submissionsData.Count;
         var gradedSubmissions = submissionsData.Count(s =>
             s.Status == SubmissionStatus.Lecturer_Reviewed ||
-            s.Status == SubmissionStatus.Final ||
-            s.Status == SubmissionStatus.ReGraded);
+            s.Status == SubmissionStatus.Final);
 
         var ungradedSubmissions = totalSubmissions - gradedSubmissions;
         var gradedPercentage = totalSubmissions > 0
@@ -100,8 +99,6 @@ public sealed class DashboardService : IDashboardService
         int countAiGraded = statusCounts.GetValueOrDefault(SubmissionStatus.AI_Graded, 0);
         int countReviewed = statusCounts.GetValueOrDefault(SubmissionStatus.Lecturer_Reviewed, 0);
         int countFinal = statusCounts.GetValueOrDefault(SubmissionStatus.Final, 0);
-        int countReGrading = statusCounts.GetValueOrDefault(SubmissionStatus.ReGrading, 0);
-        int countReGraded = statusCounts.GetValueOrDefault(SubmissionStatus.ReGraded, 0);
 
         var progressList = new List<GradingProgressItemDto>
         {
@@ -109,8 +106,8 @@ public sealed class DashboardService : IDashboardService
             {
                 StatusKey = "Submitted",
                 StatusName = "Đã nộp (chưa chấm)",
-                Count = countSubmitted + countReGrading,
-                Percentage = totalSubmissions > 0 ? Math.Round((decimal)(countSubmitted + countReGrading) * 100 / totalSubmissions, 1) : 0,
+                Count = countSubmitted,
+                Percentage = totalSubmissions > 0 ? Math.Round((decimal)countSubmitted * 100 / totalSubmissions, 1) : 0,
                 ColorHex = "#BDBDBD" // Xám/bạc theo mockup
             },
             new()
@@ -133,8 +130,8 @@ public sealed class DashboardService : IDashboardService
             {
                 StatusKey = "Final",
                 StatusName = "Hoàn tất",
-                Count = countFinal + countReGraded,
-                Percentage = totalSubmissions > 0 ? Math.Round((decimal)(countFinal + countReGraded) * 100 / totalSubmissions, 1) : 0,
+                Count = countFinal,
+                Percentage = totalSubmissions > 0 ? Math.Round((decimal)countFinal * 100 / totalSubmissions, 1) : 0,
                 ColorHex = "#2E7D32" // Xanh lá theo mockup
             }
         };
@@ -157,8 +154,7 @@ public sealed class DashboardService : IDashboardService
                 TotalSubmissions = g.Count(),
                 GradedSubmissions = g.Count(x =>
                     x.Status == SubmissionStatus.Lecturer_Reviewed ||
-                    x.Status == SubmissionStatus.Final ||
-                    x.Status == SubmissionStatus.ReGraded)
+                    x.Status == SubmissionStatus.Final)
             })
             .OrderBy(s => s.SemesterCode)
             .ToListAsync(ct);
@@ -215,8 +211,7 @@ public sealed class DashboardService : IDashboardService
             var total = submissionsData.Count;
             var graded = submissionsData.Count(s =>
                 s.Status == SubmissionStatus.Lecturer_Reviewed ||
-                s.Status == SubmissionStatus.Final ||
-                s.Status == SubmissionStatus.ReGraded);
+                s.Status == SubmissionStatus.Final);
             var ungraded = total - graded;
             var gradedPercentage = total > 0 ? Math.Round((decimal)graded * 100 / total, 1) : 0;
 
@@ -308,8 +303,7 @@ public sealed class DashboardService : IDashboardService
             var totalSubmissions = submissionsData.Count;
             var gradedSubmissions = submissionsData.Count(s =>
                 s.Status == SubmissionStatus.Lecturer_Reviewed ||
-                s.Status == SubmissionStatus.Final ||
-                s.Status == SubmissionStatus.ReGraded);
+                s.Status == SubmissionStatus.Final);
             var ungradedSubmissions = totalSubmissions - gradedSubmissions;
 
             var completionRate = totalSubmissions > 0

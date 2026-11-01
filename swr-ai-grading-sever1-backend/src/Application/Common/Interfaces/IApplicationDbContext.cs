@@ -22,6 +22,5 @@ public interface IApplicationDbContext
     DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers { get; }
     DbSet<SubmissionEvaluation> SubmissionEvaluations { get; }
     DbSet<EvaluationItemDetail> EvaluationItemDetails { get; }
-    DbSet<RegradeApplication> RegradeApplications { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

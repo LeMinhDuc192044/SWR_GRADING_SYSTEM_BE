@@ -27,8 +27,6 @@ public class AdminSubmissionItemDto
         SubmissionStatus.AI_Graded => "AI đã chấm",
         SubmissionStatus.Lecturer_Reviewed => "GV đã duyệt",
         SubmissionStatus.Final => "Hoàn tất",
-        SubmissionStatus.ReGrading => "Đang phúc khảo",
-        SubmissionStatus.ReGraded => "Đã phúc khảo",
         _ => Status.ToString()
     };
     public DateTime CreatedDate { get; set; }

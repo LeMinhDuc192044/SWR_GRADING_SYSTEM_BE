@@ -171,7 +171,6 @@ builder.Services.Configure<SmtpSettings>(options =>
 });
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IStudentService, StudentService>();
-builder.Services.AddScoped<IRegradeService, RegradeService>();
 builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
