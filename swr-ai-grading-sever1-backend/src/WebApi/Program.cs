@@ -15,7 +15,6 @@ using Infrastructure.Configurations;
 using Infrastructure.Services;
 using WebApi;
 using System.Text;
-using WebApi.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,9 +74,7 @@ builder.Services.Configure<JwtSettings>(options =>
     options.ExpirationMinutes = jwtSettings.ExpirationMinutes;
 });
 
-builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
-builder.Services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -104,45 +101,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 context.HandleResponse();
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-
-                string errorCode;
-                string message;
-
-                if (context.AuthenticateFailure is SecurityTokenExpiredException)
-                {
-                    errorCode = "TOKEN_EXPIRED";
-                    message = "Phiên đăng nhập đã hết hạn. Vui lòng làm mới token hoặc đăng nhập lại.";
-                }
-                else if (!context.Request.Headers.ContainsKey("Authorization"))
-                {
-                    errorCode = "TOKEN_MISSING";
-                    message = "Yêu cầu đăng nhập. Vui lòng cung cấp Access Token.";
-                }
-                else
-                {
-                    errorCode = "TOKEN_INVALID";
-                    message = "Token xác thực không hợp lệ hoặc đã bị vô hiệu hóa.";
-                }
-
-                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(
-                    401,
-                    message,
-                    errorCode,
-                    traceId: context.HttpContext.TraceIdentifier));
+                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(401, "Unauthorized."));
             },
             OnForbidden = async context =>
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                var currentRole = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
-                    ?? context.Principal?.FindFirst("role")?.Value
-                    ?? "Chưa xác định";
-
-                var message = $"Tài khoản với vai trò '{currentRole}' không có quyền truy cập chức năng này.";
-                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(
-                    403,
-                    message,
-                    "INSUFFICIENT_PERMISSIONS",
-                    traceId: context.HttpContext.TraceIdentifier));
+                await context.Response.WriteAsJsonAsync(ApiResponse.Failure(403, "Forbidden."));
             }
         };
     });
@@ -175,7 +139,6 @@ builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
 builder.Services.AddScoped<IDiagramElementService, DiagramElementService>();
-builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>
 {
@@ -188,36 +151,19 @@ builder.Services.AddScoped<ISupabaseStorage>(sp =>
     return new EncryptedSupabaseStorage(inner);
 });
 
-// Exception handling
-builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
-
 // Controllers
 builder.Services.AddControllers();
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = context =>
     {
-        var errors = context.ModelState
-            .Where(ms => ms.Value?.Errors.Count > 0)
-            .ToDictionary(
-                kvp => kvp.Key,
-                kvp => kvp.Value!.Errors
-                    .Select(e => e.ErrorMessage)
-                    .Where(m => !string.IsNullOrWhiteSpace(m))
-                    .ToArray()
-            );
-
-        var firstMessage = errors.Values.FirstOrDefault()?.FirstOrDefault()
-            ?? "Dữ liệu gửi lên không hợp lệ.";
+        var message = string.Join(" ", context.ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(error => error.ErrorMessage)
+            .Where(message => !string.IsNullOrWhiteSpace(message)));
 
         return new BadRequestObjectResult(
-            ApiResponse.Failure(
-                400,
-                firstMessage,
-                "VALIDATION_FAILED",
-                errors,
-                context.HttpContext.TraceIdentifier));
+            ApiResponse.Failure(400, string.IsNullOrWhiteSpace(message) ? "Dữ liệu không hợp lệ." : message));
     };
 });
 
@@ -290,7 +236,6 @@ var app = builder.Build();
 
 app.UseMiddleware<WebApi.Common.GlobalExceptionMiddleware>();
 
-app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI();
 
