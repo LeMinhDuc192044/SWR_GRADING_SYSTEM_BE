@@ -72,7 +72,7 @@ public class PaperSet
     public Lecturer CreateBy { get; set; } = null!;
     public ICollection<Question> Questions { get; set; } = [];
 
-    public ICollection<GradingDiary>? GradingDiaries { get; set; } = [];
+    public GradingDiary? GradingDiary { get; set; }
     public ICollection<QuestionRubric> Rubrics { get; set; } = [];
 
 }

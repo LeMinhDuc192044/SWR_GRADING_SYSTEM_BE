@@ -1,13 +1,6 @@
 using Domain.Enums;
-using Application.Common;
 
 namespace Application.DTOs.Examinations;
-
-public class GetExaminationsRequest : PagedRequest
-{
-    public Guid? SemesterId { get; set; }
-    public string? Name { get; set; }
-}
 
 public class ExaminationDTO
 {
@@ -25,8 +18,6 @@ public class ExaminationDTO
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
-    public int TotalSubmissions { get; set; }
-    public int TotalFinalSubmissions { get; set; }
 }
 
 public class CreateExaminationRequest

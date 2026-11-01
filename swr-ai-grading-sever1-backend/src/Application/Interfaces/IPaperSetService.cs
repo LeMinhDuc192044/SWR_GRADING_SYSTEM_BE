@@ -35,7 +35,6 @@ public interface IPaperSetService
     Task<Result<QuestionDTO>> GetQuestionByIdAsync(Guid questionId, CancellationToken ct = default);
     Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
     Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default);
-    Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> GetAvailableForExamBySemesterIdAsync(Guid semesterId, CancellationToken ct = default);
 }
 
 public sealed class StoredFileDownload
