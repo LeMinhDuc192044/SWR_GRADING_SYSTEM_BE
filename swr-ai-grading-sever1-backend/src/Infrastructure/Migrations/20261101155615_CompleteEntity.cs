@@ -17,8 +17,7 @@ namespace Infrastructure.Migrations
                 {
                     diagram_id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    description = table.Column<string>(type: "text", nullable: true),
-                    file_template_url = table.Column<string>(type: "text", nullable: true)
+                    description = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {

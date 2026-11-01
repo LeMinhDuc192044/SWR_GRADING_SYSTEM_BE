@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261101144740_CompleteEntity")]
+    [Migration("20261101155615_CompleteEntity")]
     partial class CompleteEntity
     {
         /// <inheritdoc />
@@ -35,10 +35,6 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
-
-                    b.Property<string>("FileTemplateUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("file_template_url");
 
                     b.Property<string>("Name")
                         .IsRequired()

@@ -17,9 +17,6 @@ public class Diagram
     [Column("description")]
     public string? Description { get; set; }
 
-    [Column("file_template_url")]
-    public string? FileTemplateUrl { get; set; }
-
     public ICollection<DiagramElement> Elements { get; set; } = [];
     public ICollection<QuestionRubric> Rubrics { get; set; } = [];
 }

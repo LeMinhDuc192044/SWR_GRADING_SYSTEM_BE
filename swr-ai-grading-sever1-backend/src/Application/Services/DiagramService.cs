@@ -79,8 +79,7 @@ public class DiagramService : IDiagramService
         {
             DiagramId = Guid.NewGuid(),
             Name = trimmedName,
-            Description = request.Description?.Trim(),
-            FileTemplateUrl = request.FileTemplateUrl?.Trim()
+            Description = request.Description?.Trim()
         };
 
         if (request.Elements is { Count: > 0 })
@@ -139,9 +138,6 @@ public class DiagramService : IDiagramService
         if (request.Description is not null)
             diagram.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
 
-        if (request.FileTemplateUrl is not null)
-            diagram.FileTemplateUrl = string.IsNullOrWhiteSpace(request.FileTemplateUrl) ? null : request.FileTemplateUrl.Trim();
-
         _diagramRepository.Update(diagram);
         await _unitOfWork.SaveChangesAsync(ct);
 
@@ -169,7 +165,6 @@ public class DiagramService : IDiagramService
         DiagramId = d.DiagramId,
         Name = d.Name,
         Description = d.Description,
-        FileTemplateUrl = d.FileTemplateUrl,
         ElementCount = elementCount
     };
 
@@ -178,7 +173,6 @@ public class DiagramService : IDiagramService
         DiagramId = d.DiagramId,
         Name = d.Name,
         Description = d.Description,
-        FileTemplateUrl = d.FileTemplateUrl,
         ElementCount = d.Elements.Count,
         Elements = d.Elements.OrderBy(e => e.ElementCode).Select(ToElementDto).ToList()
     };

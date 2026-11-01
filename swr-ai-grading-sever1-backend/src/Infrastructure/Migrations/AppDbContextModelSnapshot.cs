@@ -33,10 +33,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
-                    b.Property<string>("FileTemplateUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("file_template_url");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
