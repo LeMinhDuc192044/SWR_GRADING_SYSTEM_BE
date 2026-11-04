@@ -43,4 +43,5 @@ public class User
     [Required]
     [Column("updated_day")]
     public DateTime UpdatedDay { get; set; }
+    
 }

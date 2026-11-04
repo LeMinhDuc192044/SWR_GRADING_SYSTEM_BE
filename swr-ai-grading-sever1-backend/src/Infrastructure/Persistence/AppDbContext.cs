@@ -22,7 +22,6 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<Question> Questions => Set<Question>();
-    public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionGradingHistory> SubmissionGradingHistories => Set<SubmissionGradingHistory>();

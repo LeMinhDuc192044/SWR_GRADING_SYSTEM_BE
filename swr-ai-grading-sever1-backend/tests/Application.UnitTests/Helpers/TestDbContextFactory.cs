@@ -10,18 +10,18 @@ public class TestDbContext : DbContext, IApplicationDbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Student> Students => Set<Student>();
-    public DbSet<Lecturer> Lecturers => Set<Lecturer>();
+    // public DbSet<Lecturer> Lecturers => Set<Lecturer>();
     public DbSet<PaperSet> PaperSets => Set<PaperSet>();
     public DbSet<Examination> Examinations => Set<Examination>();
     public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
     public DbSet<StudentSubmission> Submissions => StudentSubmissions;
     public DbSet<Semester> Semesters => Set<Semester>();
     public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
-    public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
-    public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
+    // public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
+    // public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<Question> Questions => Set<Question>();
-    public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
+    // public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionGradingHistory> SubmissionGradingHistories => Set<SubmissionGradingHistory>();

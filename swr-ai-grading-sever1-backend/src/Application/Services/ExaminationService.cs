@@ -31,7 +31,7 @@ public class ExaminationService : IExaminationService
         var examinations = await _repository.GetAllAsync(ct);
         var items = await Task.WhenAll(examinations
             .OrderByDescending(e => e.StartDate)
-            .ThenBy(e => e.StartTime)
+            // .ThenBy(e => e.StartTime)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(ToDtoAsync));
@@ -77,14 +77,14 @@ public class ExaminationService : IExaminationService
         var now = DateTime.UtcNow;
         var examination = new Examination
         {
-            ExaminationCode = code,
+            // ExaminationCode = code,
             Name = request.Name.Trim(),
             ExaminationType = request.ExaminationType,
             StartDate = request.StartDate,
-            StartTime = request.StartTime,
-            DurationMinutes = request.DurationMinutes,
-            BeforeTimeMinutes = request.BeforeTimeMinutes,
-            Note = request.Note?.Trim(),
+            // StartTime = request.StartTime,
+            // DurationMinutes = request.DurationMinutes,
+            // BeforeTimeMinutes = request.BeforeTimeMinutes,
+            // Note = request.Note?.Trim(),
             CreatedDay = now,
             UpdatedDay = now,
             Status = request.Status,
@@ -109,11 +109,11 @@ public class ExaminationService : IExaminationService
 
         var name = request.Name?.Trim() ?? examination.Name;
         var type = request.ExaminationType ?? examination.ExaminationType;
-        var duration = request.DurationMinutes ?? examination.DurationMinutes;
-        var beforeTime = request.BeforeTimeMinutes ?? examination.BeforeTimeMinutes;
-        var validation = Validate(name, type, duration, beforeTime);
-        if (validation is not null)
-            return Result<ExaminationDTO>.Failure(validation, "INVALID_EXAMINATION");
+        // var duration = request.DurationMinutes ?? examination.DurationMinutes;
+        // var beforeTime = request.BeforeTimeMinutes ?? examination.BeforeTimeMinutes;
+        // // var validation = Validate(name, type, duration, beforeTime);
+        // if (validation is not null)
+        //     return Result<ExaminationDTO>.Failure(validation, "INVALID_EXAMINATION");
 
         var semesterId = request.SemesterId ?? examination.SemesterId;
         var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
@@ -151,17 +151,17 @@ public class ExaminationService : IExaminationService
             _paperSetRepository.Update(material);
         }
 
-        if (semesterId != examination.SemesterId || type != examination.ExaminationType)
-            examination.ExaminationCode = await GenerateCodeAsync(semester.SemesterCode, type, ct);
+        // if (semesterId != examination.SemesterId || type != examination.ExaminationType)
+        //     examination.ExaminationCode = await GenerateCodeAsync(semester.SemesterCode, type, ct);
 
         examination.Name = name;
         examination.ExaminationType = type;
         examination.StartDate = startDate;
-        examination.StartTime = request.StartTime ?? examination.StartTime;
-        examination.DurationMinutes = duration;
-        examination.BeforeTimeMinutes = beforeTime;
-        if (request.Note is not null)
-            examination.Note = request.Note.Trim();
+        // examination.StartTime = request.StartTime ?? examination.StartTime;
+        // examination.DurationMinutes = duration;
+        // examination.BeforeTimeMinutes = beforeTime;
+        // if (request.Note is not null)
+        //     examination.Note = request.Note.Trim();
         examination.UpdatedDay = DateTime.UtcNow;
         if (request.Status.HasValue)
             examination.Status = request.Status.Value;
@@ -225,14 +225,14 @@ public class ExaminationService : IExaminationService
         return new ExaminationDTO
         {
             ExaminationId = examination.ExaminationId,
-            ExaminationCode = examination.ExaminationCode,
+            // ExaminationCode = examination.ExaminationCode,
             Name = examination.Name,
             ExaminationType = examination.ExaminationType,
             StartDate = examination.StartDate,
-            StartTime = examination.StartTime,
-            DurationMinutes = examination.DurationMinutes,
-            BeforeTimeMinutes = examination.BeforeTimeMinutes,
-            Note = examination.Note,
+            // StartTime = examination.StartTime,
+            // DurationMinutes = examination.DurationMinutes,
+            // BeforeTimeMinutes = examination.BeforeTimeMinutes,
+            // Note = examination.Note,
             CreatedDay = examination.CreatedDay,
             UpdatedDay = examination.UpdatedDay,
             Status = examination.Status,

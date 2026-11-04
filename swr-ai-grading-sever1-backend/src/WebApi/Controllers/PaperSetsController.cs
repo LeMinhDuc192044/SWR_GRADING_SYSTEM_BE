@@ -117,14 +117,14 @@ public sealed class PaperSetsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
-    [HttpGet("{id:guid}/rubrics")]
-    public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
-    {
-        var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
-        return result.IsSuccess
-            ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
-    }
+    // [HttpGet("{id:guid}/rubrics")]
+    // public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
+    // {
+    //     var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
+    //     return result.IsSuccess
+    //         ? Ok(ApiResponse.Success(result.Data))
+    //         : NotFound(ApiResponse.Failure(404, result.Error!));
+    // }
 
     [HttpGet("{id:guid}/content")]
     public async Task<IActionResult> GetContent(Guid id, CancellationToken ct)

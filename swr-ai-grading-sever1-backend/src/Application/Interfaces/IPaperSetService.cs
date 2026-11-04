@@ -33,8 +33,8 @@ public interface IPaperSetService
     Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<QuestionDTO>>> GetQuestionsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
     Task<Result<QuestionDTO>> GetQuestionByIdAsync(Guid questionId, CancellationToken ct = default);
-    Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
-    Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default);
+    // Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);
+    // Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default);
 }
 
 public sealed class StoredFileDownload

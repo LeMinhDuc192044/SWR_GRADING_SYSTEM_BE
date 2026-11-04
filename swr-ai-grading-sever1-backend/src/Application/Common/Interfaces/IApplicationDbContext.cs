@@ -14,7 +14,7 @@ public interface IApplicationDbContext
     DbSet<Semester> Semesters { get; }
     DbSet<Diagram> Diagrams { get; }
     DbSet<Question> Questions { get; }
-    DbSet<QuestionRubric> QuestionRubrics { get; }
+    // DbSet<QuestionRubric> QuestionRubrics { get; }
     DbSet<DiagramElement> DiagramElements { get; }
     DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers { get; }
     DbSet<SubmissionGradingHistory> SubmissionGradingHistories { get; }

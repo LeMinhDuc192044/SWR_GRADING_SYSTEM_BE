@@ -47,6 +47,6 @@ public class StudentSubmission
     public ExaminationSession ExaminationSession { get; set; } = null!;
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
-    public ICollection<SubmissionGradingHistory> Evaluations { get; set; } = [];
+    public ICollection<SubmissionGradingHistory> SubmissionGradingHistories { get; set; } = [];
     public ICollection<Assignment> Assignments { get; set; } = [];
 }

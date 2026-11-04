@@ -146,10 +146,10 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         if (!submissionResult.IsSuccess)
             return submissionResult;
 
-        var paperSetId = submissionResult.Data!.GradingDiary.PaperSetId;
-        if (!await _db.Questions.AnyAsync(question =>
-                question.QuestionId == request.QuestionId && question.PaperSetId == paperSetId, ct))
-            return Result<StudentSubmission>.Failure("Question does not belong to the paper set for this submission.", "QUESTION_NOT_IN_PAPER_SET");
+        // var paperSetId = submissionResult.Data!.GradingDiary.PaperSetId;
+        // if (!await _db.Questions.AnyAsync(question =>
+        //         question.QuestionId == request.QuestionId && question.PaperSetId == paperSetId, ct))
+        //     return Result<StudentSubmission>.Failure("Question does not belong to the paper set for this submission.", "QUESTION_NOT_IN_PAPER_SET");
 
         if (request.ElementId.HasValue &&
             !await _db.DiagramElements.AnyAsync(element => element.ElementId == request.ElementId.Value, ct))
@@ -162,12 +162,12 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct)
     {
         var submission = await _db.StudentSubmissions
-            .Include(item => item.GradingDiary)
+            // .Include(item => item.GradingDiary)
             .FirstOrDefaultAsync(item => item.SubmissionId == submissionId, ct);
         if (submission is null)
             return Result<StudentSubmission>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
-        if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
-            return Result<StudentSubmission>.Failure("You are not allowed to access this submission.", "FORBIDDEN");
+        // if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
+        //     return Result<StudentSubmission>.Failure("You are not allowed to access this submission.", "FORBIDDEN");
         return Result<StudentSubmission>.Success(submission);
     }
 

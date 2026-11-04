@@ -19,9 +19,9 @@ public class SubmissionItemDetail
 
     [Required]
     [Column("evaluation_id")]
-    [ForeignKey(nameof(Evaluation))]
+    [ForeignKey(nameof(SubmissionGradingHistory))]
     public Guid EvaluationId { get; set; }
-    public SubmissionGradingHistory Evaluation { get; set; } = null!;
+    public SubmissionGradingHistory SubmissionGradingHistory { get; set; } = null!;
 
     [Required]
     [Column("parsed_answer_id")]

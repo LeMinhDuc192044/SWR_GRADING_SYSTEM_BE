@@ -22,9 +22,10 @@ public class DiagramRepository : Repository<Diagram>, IDiagramRepository
             d.Name.ToLower() == normalized &&
             (!excludeId.HasValue || d.DiagramId != excludeId.Value), ct);
     }
-
-    public async Task<bool> HasRubricsAsync(Guid diagramId, CancellationToken ct = default)
-    {
-        return await _db.Set<QuestionRubric>().AnyAsync(r => r.DiagramId == diagramId, ct);
-    }
 }
+
+//     public async Task<bool> HasRubricsAsync(Guid diagramId, CancellationToken ct = default)
+//     {
+//         return await _db.Set<QuestionRubric>().AnyAsync(r => r.DiagramId == diagramId, ct);
+//     }
+// }

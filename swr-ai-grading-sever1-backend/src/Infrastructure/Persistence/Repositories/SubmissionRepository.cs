@@ -19,14 +19,14 @@ public sealed class SubmissionRepository : Repository<StudentSubmission>, ISubmi
              s.Status == SubmissionStatus.Final), ct);
     }
 
-    public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
-    {
-        return await _set
-            .Include(s => s.StudentExamination)
-                .ThenInclude(se => se.Student)
-            .Where(s => s.DiaryId == diaryId)
-            .OrderByDescending(s => s.CreatedDate)
-            .AsNoTracking()
-            .ToListAsync(ct);
-    }
+    // public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
+    // {
+    //     return await _set
+    //         .Include(s => s.StudentExamination)
+    //             .ThenInclude(se => se.Student)
+    //         .Where(s => s.DiaryId == diaryId)
+    //         .OrderByDescending(s => s.CreatedDate)
+    //         .AsNoTracking()
+    //         .ToListAsync(ct);
+    // }
 }
