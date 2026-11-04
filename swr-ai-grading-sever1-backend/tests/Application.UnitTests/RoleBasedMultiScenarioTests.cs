@@ -254,7 +254,7 @@ public class RoleBasedMultiScenarioTests
         var (lecturerId, _, _, submissionId) = await SetupCompleteHierarchyAsync();
 
         // Add AI Evaluation to submission
-        var aiEvaluation = new SubmissionEvaluation
+        var aiEvaluation = new SubmissionGradingHistory
         {
             EvaluationId = Guid.NewGuid(),
             SubmissionId = submissionId,
@@ -265,7 +265,7 @@ public class RoleBasedMultiScenarioTests
             IsFinalScore = false,
             CreatedAt = DateTime.UtcNow
         };
-        await _dbContext.SubmissionEvaluations.AddAsync(aiEvaluation);
+        await _dbContext.SubmissionGradingHistories.AddAsync(aiEvaluation);
         await _dbContext.SaveChangesAsync();
 
         var subService = new SubmissionService(
@@ -328,7 +328,7 @@ public class RoleBasedMultiScenarioTests
     {
         var (lecturerId, _, _, submissionId) = await SetupCompleteHierarchyAsync();
 
-        var aiEval = new SubmissionEvaluation
+        var aiEval = new SubmissionGradingHistory
         {
             EvaluationId = Guid.NewGuid(),
             SubmissionId = submissionId,
@@ -338,9 +338,9 @@ public class RoleBasedMultiScenarioTests
             GeneralFeedback = "AI: Khá",
             CreatedAt = DateTime.UtcNow.AddHours(-1)
         };
-        await _dbContext.SubmissionEvaluations.AddAsync(aiEval);
+        await _dbContext.SubmissionGradingHistories.AddAsync(aiEval);
 
-        var lecturerEval = new SubmissionEvaluation
+        var lecturerEval = new SubmissionGradingHistory
         {
             EvaluationId = Guid.NewGuid(),
             SubmissionId = submissionId,
@@ -351,7 +351,7 @@ public class RoleBasedMultiScenarioTests
             IsFinalScore = true,
             CreatedAt = DateTime.UtcNow
         };
-        await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval);
+        await _dbContext.SubmissionGradingHistories.AddAsync(lecturerEval);
 
         var sub = await _dbContext.StudentSubmissions.FindAsync(submissionId);
         sub!.Status = SubmissionStatus.Final;

@@ -15,10 +15,12 @@ public class Student : User
     [Obsolete("Use StudentCode instead")]
     public string StundentCode { get => StudentCode; set => StudentCode = value; }
 
+
     [Required]
     [MaxLength(100)]
     [Column("major")]
     public string Major { get; set; } = string.Empty;
-    public ICollection<StudentExamination> StudentExaminations { get; set; } = [];
     public ICollection<StudentSemester> StudentSemesters { get; set; } = [];
+    public ICollection<Application> Applications { get; set; } = [];
+    public ICollection<StudentExaminationSession> StudentExaminationSessions { get; set; } = [];
 }

@@ -107,7 +107,7 @@ namespace Infrastructure.Migrations
                     b.ToTable("diagram_elements");
                 });
 
-            modelBuilder.Entity("Domain.Entities.EvaluationItemDetail", b =>
+            modelBuilder.Entity("Domain.Entities.SubmissionItemDetail", b =>
                 {
                     b.Property<Guid>("DetailId")
                         .ValueGeneratedOnAdd()
@@ -758,7 +758,7 @@ namespace Infrastructure.Migrations
                     b.Navigation("ReferenceElement");
                 });
 
-            modelBuilder.Entity("Domain.Entities.EvaluationItemDetail", b =>
+            modelBuilder.Entity("Domain.Entities.SubmissionItemDetail", b =>
                 {
                     b.HasOne("Domain.Entities.SubmissionEvaluation", "Evaluation")
                         .WithMany("Details")

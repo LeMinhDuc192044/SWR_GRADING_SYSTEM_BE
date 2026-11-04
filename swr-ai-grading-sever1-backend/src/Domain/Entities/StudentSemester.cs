@@ -18,5 +18,17 @@ public class StudentSemester
     [ForeignKey(nameof(Semester))]
     public Guid SemesterId { get; set; }
 
+    [Required]
+    [Column("lecturer_name")]
+    public string LecturerName { get; set; } = string.Empty;
+
+    [Required]
+    [Column("lecturer_code")]
+    public string LecturerCode { get; set; } = string.Empty;
+
+    [Required]
+    [Column("class_code")]
+    public string ClassCode { get; set; } = string.Empty;
+
     public Semester Semester { get; set; } = null!;
 }

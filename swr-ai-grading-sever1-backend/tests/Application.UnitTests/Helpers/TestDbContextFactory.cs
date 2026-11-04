@@ -24,8 +24,8 @@ public class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
-    public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
-    public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
+    public DbSet<SubmissionGradingHistory> SubmissionGradingHistories => Set<SubmissionGradingHistory>();
+    public DbSet<SubmissionItemDetail> SubmissionItemDetails => Set<SubmissionItemDetail>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

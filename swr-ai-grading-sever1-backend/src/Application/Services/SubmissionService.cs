@@ -446,7 +446,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .DefaultIfEmpty(-1)
             .Max() + 1;
 
-        var aiEvaluation = new SubmissionEvaluation
+        var aiEvaluation = new SubmissionGradingHistory
         {
             EvaluationId = Guid.NewGuid(),
             SubmissionId = submission.SubmissionId,
@@ -458,8 +458,8 @@ public sealed partial class SubmissionService : ISubmissionService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Thêm Evaluation và EvaluationItemDetail trực tiếp vào DbContext
-        await _dbContext.SubmissionEvaluations.AddAsync(aiEvaluation, ct);
+        // Thêm Evaluation và SubmissionItemDetail trực tiếp vào DbContext
+        await _dbContext.SubmissionGradingHistories.AddAsync(aiEvaluation, ct);
 
         foreach (var qa in questionAnswers)
         {
@@ -467,7 +467,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 c.QuestionId == qa.Question.QuestionId ||
                 (!string.IsNullOrWhiteSpace(c.Criterion) && c.Criterion.Contains(qa.Question.Title, StringComparison.OrdinalIgnoreCase)));
 
-            var itemDetail = new EvaluationItemDetail
+            var itemDetail = new SubmissionItemDetail
             {
                 DetailId = Guid.NewGuid(),
                 EvaluationId = aiEvaluation.EvaluationId,
@@ -476,7 +476,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 Comment = matchedCrit?.Comment ?? "Chưa có nhận xét chi tiết từ AI."
             };
 
-            await _dbContext.EvaluationItemDetails.AddAsync(itemDetail, ct);
+            await _dbContext.SubmissionItemDetails.AddAsync(itemDetail, ct);
         }
 
         submission.Evaluations.Add(aiEvaluation);
@@ -555,7 +555,7 @@ public sealed partial class SubmissionService : ISubmissionService
 
             if (lecturerEval == null)
             {
-                lecturerEval = new SubmissionEvaluation
+                lecturerEval = new SubmissionGradingHistory
                 {
                     EvaluationId = Guid.NewGuid(),
                     SubmissionId = submission.SubmissionId,
@@ -567,7 +567,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     CreatedAt = DateTime.UtcNow
                 };
 
-                await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+                await _dbContext.SubmissionGradingHistories.AddAsync(lecturerEval, ct);
                 submission.Evaluations.Add(lecturerEval);
 
                 // Sao chép chi tiết từng câu từ AI sang Lecturer, ghi nhận thêm override nếu có
@@ -577,7 +577,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     var overrideItem = request.ItemDetails?.FirstOrDefault(i =>
                         (pa is not null && i.QuestionId == pa.QuestionId));
 
-                    var lecturerDetail = new EvaluationItemDetail
+                    var lecturerDetail = new SubmissionItemDetail
                     {
                         DetailId = Guid.NewGuid(),
                         EvaluationId = lecturerEval.EvaluationId,
@@ -587,7 +587,7 @@ public sealed partial class SubmissionService : ISubmissionService
                         AiExtractionId = aiDetail.DetailId
                     };
 
-                    await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
+                    await _dbContext.SubmissionItemDetails.AddAsync(lecturerDetail, ct);
                     lecturerEval.Details.Add(lecturerDetail);
                 }
             }
@@ -612,7 +612,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     }
                     else
                     {
-                        var newDetail = new EvaluationItemDetail
+                        var newDetail = new SubmissionItemDetail
                         {
                             DetailId = Guid.NewGuid(),
                             EvaluationId = lecturerEval.EvaluationId,
@@ -621,7 +621,7 @@ public sealed partial class SubmissionService : ISubmissionService
                             Comment = overrideItem is not null && !string.IsNullOrWhiteSpace(overrideItem.Comment) ? overrideItem.Comment : aiDetail.Comment,
                             AiExtractionId = aiDetail.DetailId
                         };
-                        await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
+                        await _dbContext.SubmissionItemDetails.AddAsync(newDetail, ct);
                         lecturerEval.Details.Add(newDetail);
                     }
                 }
@@ -651,7 +651,7 @@ public sealed partial class SubmissionService : ISubmissionService
 
             if (lecturerEval == null)
             {
-                lecturerEval = new SubmissionEvaluation
+                lecturerEval = new SubmissionGradingHistory
                 {
                     EvaluationId = Guid.NewGuid(),
                     SubmissionId = submission.SubmissionId,
@@ -663,7 +663,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     CreatedAt = DateTime.UtcNow
                 };
 
-                await _dbContext.SubmissionEvaluations.AddAsync(lecturerEval, ct);
+                await _dbContext.SubmissionGradingHistories.AddAsync(lecturerEval, ct);
                 submission.Evaluations.Add(lecturerEval);
 
                 // Chấm thủ công: tạo chi tiết cho từng câu hỏi dựa vào QuestionId
@@ -671,7 +671,7 @@ public sealed partial class SubmissionService : ISubmissionService
                 {
                     var reviewItem = request.ItemDetails?.FirstOrDefault(i => i.QuestionId == pa.QuestionId);
 
-                    var lecturerDetail = new EvaluationItemDetail
+                    var lecturerDetail = new SubmissionItemDetail
                     {
                         DetailId = Guid.NewGuid(),
                         EvaluationId = lecturerEval.EvaluationId,
@@ -680,7 +680,7 @@ public sealed partial class SubmissionService : ISubmissionService
                         Comment = reviewItem?.Comment
                     };
 
-                    await _dbContext.EvaluationItemDetails.AddAsync(lecturerDetail, ct);
+                    await _dbContext.SubmissionItemDetails.AddAsync(lecturerDetail, ct);
                     lecturerEval.Details.Add(lecturerDetail);
                 }
             }
@@ -706,7 +706,7 @@ public sealed partial class SubmissionService : ISubmissionService
                         }
                         else
                         {
-                            var newDetail = new EvaluationItemDetail
+                            var newDetail = new SubmissionItemDetail
                             {
                                 DetailId = Guid.NewGuid(),
                                 EvaluationId = lecturerEval.EvaluationId,
@@ -714,7 +714,7 @@ public sealed partial class SubmissionService : ISubmissionService
                                 Score = reviewItem.Score,
                                 Comment = reviewItem.Comment,
                             };
-                            await _dbContext.EvaluationItemDetails.AddAsync(newDetail, ct);
+                            await _dbContext.SubmissionItemDetails.AddAsync(newDetail, ct);
                             lecturerEval.Details.Add(newDetail);
                         }
                     }
@@ -777,12 +777,12 @@ public sealed partial class SubmissionService : ISubmissionService
 
     public async Task<Result<SubmissionDetailDTO>> UpdateItemDetailAsync(
         Guid detailId,
-        UpdateEvaluationItemDetailRequest request,
+        UpdateSubmissionItemDetailRequest request,
         Guid currentUserId,
         bool isElevatedRole,
         CancellationToken ct = default)
     {
-        var detail = await _dbContext.EvaluationItemDetails
+        var detail = await _dbContext.SubmissionItemDetails
             .Include(d => d.Evaluation)
             .FirstOrDefaultAsync(d => d.DetailId == detailId, ct);
 
@@ -1048,7 +1048,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .Select(d =>
             {
                 var pa = submission.ParsedAnswers.FirstOrDefault(p => p.ParsedAnswerId == d.ParsedAnswerId);
-                return new EvaluationItemDetailDto
+                return new SubmissionItemDetailDto
                 {
                     DetailId = d.DetailId,
                     EvaluationId = d.EvaluationId,
@@ -1060,7 +1060,7 @@ public sealed partial class SubmissionService : ISubmissionService
                     AiExtractionId = d.AiExtractionId
                 };
             })
-            .ToList() ?? new List<EvaluationItemDetailDto>();
+            .ToList() ?? new List<SubmissionItemDetailDto>();
 
         var studentAnswers = submission.ParsedAnswers
             .OrderBy(answer => answer.CreatedAt)
@@ -1121,7 +1121,7 @@ public sealed partial class SubmissionService : ISubmissionService
             : 0;
     }
 
-    private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
+    private static SubmissionGradingHistory? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
     {
         return submission.Evaluations
             .Where(evaluation => evaluation.EvaluationType == evaluationType)
@@ -1142,7 +1142,7 @@ public sealed partial class SubmissionService : ISubmissionService
             .DefaultIfEmpty(-1)
             .Max() + 1;
 
-        submission.Evaluations.Add(new SubmissionEvaluation
+        submission.Evaluations.Add(new SubmissionGradingHistory
         {
             EvaluationType = evaluationType,
             EvaluationRound = nextRound,

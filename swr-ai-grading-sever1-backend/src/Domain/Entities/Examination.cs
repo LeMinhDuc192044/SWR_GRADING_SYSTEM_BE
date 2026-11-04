@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Formats.Tar;
 using Domain.Enums;
 
 
@@ -11,11 +12,6 @@ public class Examination
     [Key]
     [Column("examination_id")]
     public Guid ExaminationId { get; set; } = Guid.NewGuid();
-
-    [Required]
-    [MaxLength(21)]
-    [Column("examination_code")]
-    public string ExaminationCode { get; set; } = string.Empty;
 
     [Required]
     [MaxLength(200)]
@@ -30,22 +26,10 @@ public class Examination
     [Column("start_date", TypeName = "date")]
     public DateOnly StartDate { get; set; }
 
-    [Required]
-    [Column("start_time")]
-    public TimeSpan StartTime { get; set; }
 
     [Required]
-    [Range(1, int.MaxValue, ErrorMessage = "Duration must be greater than 0.")]
-    [Column("duration_minutes")]
-    public int DurationMinutes { get; set; }
-
-    [Range(0, int.MaxValue, ErrorMessage = "Before-time minutes cannot be negative.")]
-    [Column("before_time_minutes")]
-    public int BeforeTimeMinutes { get; set; } = 0;
-
-    [MaxLength(1000)]
-    [Column("note")]
-    public string? Note { get; set; }
+    [Column("end_date", TypeName = "date")]
+    public DateOnly EndDate { get; set; }
 
     [Required]
     [Column("created_day")]
@@ -68,5 +52,6 @@ public class Examination
 
     public ICollection<PaperSet> PaperSets { get; set; } = [];
 
-    public ICollection<StudentExamination> StudentExaminations { get; set; } = [];
+    public ICollection<ExaminationSession> StudentExaminations { get; set; } = [];
+
 }

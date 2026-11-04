@@ -173,11 +173,9 @@ public sealed class StudentService : IStudentService
                 FullName = fullName,
                 Email = email,
                 Birthday = birthday,
-                Cccd = cccd,
                 StudentCode = studentCode,
                 Major = major,
                 PasswordHash = passwordHash,
-                Role = UserRole.Student,
                 IsActive = true,
                 IsDeleted = false
             };

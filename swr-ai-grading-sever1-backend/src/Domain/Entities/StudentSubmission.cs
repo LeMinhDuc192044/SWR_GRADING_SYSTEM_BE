@@ -34,17 +34,19 @@ public class StudentSubmission
     public DateTime UpdatedDate { get; set; }
 
     [Required]
-    [Column("diary_id")]
-    [ForeignKey(nameof(GradingDiary))]
-    public Guid DiaryId { get; set; }
-    public GradingDiary GradingDiary { get; set; } = null!;
+    [Column("uploaded_by_id")]
+    public Guid UploadedById { get; set; }
+
+    [ForeignKey(nameof(UploadedById))]
+    public Staff UploadedBy { get; set; } = null!;
 
     [Required]
-    [Column("student_examination_id")]
-    [ForeignKey(nameof(StudentExamination))]
-    public Guid StudentExaminationId { get; set; }
-    public StudentExamination StudentExamination { get; set; } = null!;
+    [Column("examination_session_id")]
+    [ForeignKey(nameof(ExaminationSession))]
+    public Guid ExaminationSessionId { get; set; }
+    public ExaminationSession ExaminationSession { get; set; } = null!;
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
-    public ICollection<SubmissionEvaluation> Evaluations { get; set; } = [];
+    public ICollection<SubmissionGradingHistory> Evaluations { get; set; } = [];
+    public ICollection<Assignment> Assignments { get; set; } = [];
 }

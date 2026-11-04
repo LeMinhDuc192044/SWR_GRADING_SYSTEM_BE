@@ -357,7 +357,7 @@ public sealed class GradingDiaryService : IGradingDiaryService
         return Result<IReadOnlyList<AiComparisonItemDto>>.Success(comparisonList);
     }
 
-    private static SubmissionEvaluation? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
+    private static SubmissionGradingHistory? GetLatestEvaluation(StudentSubmission submission, EvaluationType evaluationType)
     {
         return submission.Evaluations
             .Where(evaluation => evaluation.EvaluationType == evaluationType)
