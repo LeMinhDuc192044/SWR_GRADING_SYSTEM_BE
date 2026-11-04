@@ -34,8 +34,6 @@ public class Question
     public Guid? DiagramId { get; set; }
     public Diagram? Diagram { get; set; }
 
-
-
     [Required]
     [Column("created_day")]
     public DateTime CreatedDay { get; set; }

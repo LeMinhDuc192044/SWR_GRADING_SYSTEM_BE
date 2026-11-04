@@ -13,8 +13,8 @@ public sealed class SubmissionRepository : Repository<StudentSubmission>, ISubmi
     {
         return await _set.AsNoTracking().AnyAsync(s =>
             s.SubmissionId == submissionId &&
-            (s.Evaluations.Any(evaluation =>
-                 evaluation.EvaluationType == EvaluationType.Lecturer && evaluation.TotalScore.HasValue) ||
+            (s.SubmissionGradingHistories.Any(gradingHistory =>
+                 gradingHistory.EvaluationType == EvaluationType.Lecturer && gradingHistory.TotalScore.HasValue) ||
              s.Status == SubmissionStatus.Lecturer_Reviewed ||
              s.Status == SubmissionStatus.Final), ct);
     }

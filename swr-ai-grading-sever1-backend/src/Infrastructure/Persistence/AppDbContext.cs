@@ -13,21 +13,26 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Student> Students => Set<Student>();
+    public DbSet<Staff> Staff => Set<Staff>();
 
     public DbSet<PaperSet> PaperSets => Set<PaperSet>();
     public DbSet<Examination> Examinations => Set<Examination>();
     public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
     public DbSet<StudentSubmission> Submissions => StudentSubmissions;
+    public DbSet<StudentExaminationSession> StudentExaminationSessions => Set<StudentExaminationSession>();
+    public DbSet<ExaminationSession> ExaminationSessions => Set<ExaminationSession>();
     public DbSet<Semester> Semesters => Set<Semester>();
     public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<Question> Questions => Set<Question>();
+    public DbSet<QuestionCriteria> QuestionCriteria => Set<QuestionCriteria>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
     public DbSet<SubmissionGradingHistory> SubmissionGradingHistories => Set<SubmissionGradingHistory>();
     public DbSet<SubmissionItemDetail> SubmissionItemDetails => Set<SubmissionItemDetail>();
     public DbSet<GradingSession> GradingSessions => Set<GradingSession>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
+    public DbSet<Domain.Entities.Application> Applications => Set<Domain.Entities.Application>();
     public DbSet<AiModel> AiModels => Set<AiModel>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -49,6 +54,21 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(studentSemester => studentSemester.SemesterId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.Entity<StudentExaminationSession>()
+            .HasKey(join => new { join.StudentId, join.ExaminationSessionId });
+
+        builder.Entity<StudentExaminationSession>()
+            .HasOne(join => join.Student)
+            .WithMany()
+            .HasForeignKey(join => join.StudentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<StudentExaminationSession>()
+            .HasOne(join => join.ExaminationSession)
+            .WithMany(session => session.StudentExaminationSessions)
+            .HasForeignKey(join => join.ExaminationSessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.Entity<StudentSubmission>()
             .HasMany(submission => submission.ParsedAnswers)
             .WithOne(answer => answer.Submission)
@@ -62,7 +82,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
         builder.Entity<SubmissionGradingHistory>()
             .HasOne(e => e.Submission)
-            .WithMany(s => s.Evaluations)
+            .WithMany(s => s.SubmissionGradingHistories)
             .HasForeignKey(e => e.SubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
 
@@ -71,7 +91,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .IsUnique();
 
         builder.Entity<SubmissionItemDetail>()
-            .HasOne(d => d.Evaluation)
+            .HasOne(d => d.SubmissionGradingHistory)
             .WithMany(e => e.Details)
             .HasForeignKey(d => d.EvaluationId)
             .OnDelete(DeleteBehavior.Cascade);

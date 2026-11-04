@@ -11,11 +11,6 @@ public class Student : User
     [Column("student_code")]
     public string StudentCode { get; set; } = string.Empty;
 
-    [NotMapped]
-    [Obsolete("Use StudentCode instead")]
-    public string StundentCode { get => StudentCode; set => StudentCode = value; }
-
-
     [Required]
     [MaxLength(100)]
     [Column("major")]
