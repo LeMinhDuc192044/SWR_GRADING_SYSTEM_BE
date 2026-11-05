@@ -848,6 +848,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("role");
 
+                    b.Property<string>("StaffCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("staff_code");
+
+                    b.HasIndex("StaffCode")
+                        .IsUnique();
+
                     b.ToTable("staff");
                 });
 

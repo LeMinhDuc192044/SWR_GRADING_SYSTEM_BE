@@ -34,6 +34,9 @@ public sealed class UserRepository : Repository<User>, IUserRepository
     public Task<bool> IsStudentCodeExistsAsync(string studentCode, CancellationToken ct = default)
         => _db.Students.AnyAsync(student => student.StudentCode == studentCode, ct);
 
+    public Task<bool> IsStaffCodeExistsAsync(string staffCode, CancellationToken ct = default)
+        => _db.Staff.AnyAsync(staff => staff.StaffCode == staffCode, ct);
+
     // public Task<bool> IsLecturerCodeExistsAsync(string lecturerCode, CancellationToken ct = default)
     //     => _db.Lecturers.AnyAsync(lecturer => lecturer.LecturerCode == lecturerCode, ct);
 }

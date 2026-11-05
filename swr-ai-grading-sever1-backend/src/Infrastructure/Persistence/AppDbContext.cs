@@ -39,6 +39,10 @@ public class AppDbContext : DbContext, IApplicationDbContext
     {
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
+        builder.Entity<Staff>()
+            .HasIndex(staff => staff.StaffCode)
+            .IsUnique();
+
         builder.Entity<StudentSemester>()
             .HasKey(studentSemester => new { studentSemester.StudentId, studentSemester.SemesterId });
 

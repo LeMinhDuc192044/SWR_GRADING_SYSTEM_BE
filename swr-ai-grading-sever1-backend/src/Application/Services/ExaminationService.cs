@@ -73,18 +73,19 @@ public class ExaminationService : IExaminationService
         if (materialValidation is not null)
             return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
 
-        var code = await GenerateCodeAsync(semester.SemesterCode, request.ExaminationType, ct);
+        var endDate = request.EndDate == default ? request.StartDate : request.EndDate;
+        if (endDate < request.StartDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
+        if (endDate < semester.StartDate || endDate > semester.EndDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be within the semester dates.", "EXAMINATION_DATE_OUT_OF_SEMESTER");
+
         var now = DateTime.UtcNow;
         var examination = new Examination
         {
-            // ExaminationCode = code,
             Name = request.Name.Trim(),
             ExaminationType = request.ExaminationType,
             StartDate = request.StartDate,
-            // StartTime = request.StartTime,
-            // DurationMinutes = request.DurationMinutes,
-            // BeforeTimeMinutes = request.BeforeTimeMinutes,
-            // Note = request.Note?.Trim(),
+            EndDate = endDate,
             CreatedDay = now,
             UpdatedDay = now,
             Status = request.Status,
@@ -109,11 +110,7 @@ public class ExaminationService : IExaminationService
 
         var name = request.Name?.Trim() ?? examination.Name;
         var type = request.ExaminationType ?? examination.ExaminationType;
-        // var duration = request.DurationMinutes ?? examination.DurationMinutes;
-        // var beforeTime = request.BeforeTimeMinutes ?? examination.BeforeTimeMinutes;
-        // // var validation = Validate(name, type, duration, beforeTime);
-        // if (validation is not null)
-        //     return Result<ExaminationDTO>.Failure(validation, "INVALID_EXAMINATION");
+ 
 
         var semesterId = request.SemesterId ?? examination.SemesterId;
         var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
@@ -121,9 +118,13 @@ public class ExaminationService : IExaminationService
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
         var startDate = request.StartDate ?? examination.StartDate;
-        if (startDate < semester.StartDate || startDate > semester.EndDate)
+        var endDate = request.EndDate ?? (examination.EndDate == default ? startDate : examination.EndDate);
+        if (endDate < startDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
+        if (startDate < semester.StartDate || startDate > semester.EndDate ||
+            endDate < semester.StartDate || endDate > semester.EndDate)
             return Result<ExaminationDTO>.Failure(
-                "Examination start date must be within the semester dates.",
+                "Examination dates must be within the semester dates.",
                 "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
         var linkedMaterials = await _paperSetRepository.FindAsync(
@@ -145,23 +146,25 @@ public class ExaminationService : IExaminationService
             if (materialValidation is not null)
                 return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
 
+            foreach (var linkedMaterial in linkedMaterials.Where(linked => linked.PaperSetId != materialId.Value))
+            {
+                linkedMaterial.ExaminationId = null;
+                linkedMaterial.Status = PaperSetStatus.Ready;
+                linkedMaterial.UpdatedDate = DateTime.UtcNow;
+                _paperSetRepository.Update(linkedMaterial);
+            }
+
             material!.ExaminationId = examination.ExaminationId;
             material.Status = PaperSetStatus.Used;
             material.UpdatedDate = DateTime.UtcNow;
             _paperSetRepository.Update(material);
         }
 
-        // if (semesterId != examination.SemesterId || type != examination.ExaminationType)
-        //     examination.ExaminationCode = await GenerateCodeAsync(semester.SemesterCode, type, ct);
-
         examination.Name = name;
         examination.ExaminationType = type;
         examination.StartDate = startDate;
-        // examination.StartTime = request.StartTime ?? examination.StartTime;
-        // examination.DurationMinutes = duration;
-        // examination.BeforeTimeMinutes = beforeTime;
-        // if (request.Note is not null)
-        //     examination.Note = request.Note.Trim();
+        examination.EndDate = endDate;
+
         examination.UpdatedDay = DateTime.UtcNow;
         if (request.Status.HasValue)
             examination.Status = request.Status.Value;
@@ -229,10 +232,7 @@ public class ExaminationService : IExaminationService
             Name = examination.Name,
             ExaminationType = examination.ExaminationType,
             StartDate = examination.StartDate,
-            // StartTime = examination.StartTime,
-            // DurationMinutes = examination.DurationMinutes,
-            // BeforeTimeMinutes = examination.BeforeTimeMinutes,
-            // Note = examination.Note,
+            EndDate = examination.EndDate,
             CreatedDay = examination.CreatedDay,
             UpdatedDay = examination.UpdatedDay,
             Status = examination.Status,

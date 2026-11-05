@@ -57,3 +57,38 @@ public class UpdateSemesterStatusRequest
 {
     public SemesterStatus Status { get; set; }
 }
+
+public sealed class AddStudentToSemesterRequest
+{
+    public string StudentCode { get; set; } = string.Empty;
+    public string LecturerName { get; set; } = string.Empty;
+    public string LecturerCode { get; set; } = string.Empty;
+    public string ClassCode { get; set; } = string.Empty;
+}
+
+public sealed class StudentSemesterDTO
+{
+    public Guid StudentId { get; set; }
+    public Guid SemesterId { get; set; }
+    public string StudentCode { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string LecturerName { get; set; } = string.Empty;
+    public string LecturerCode { get; set; } = string.Empty;
+    public string ClassCode { get; set; } = string.Empty;
+}
+
+public sealed class StudentSemesterImportResultDto
+{
+    public int TotalRows { get; set; }
+    public int SuccessCount { get; set; }
+    public int FailureCount { get; set; }
+    public List<StudentSemesterImportErrorDto> Errors { get; set; } = [];
+    public List<StudentSemesterDTO> ImportedStudents { get; set; } = [];
+}
+
+public sealed class StudentSemesterImportErrorDto
+{
+    public int RowIndex { get; set; }
+    public string? StudentCode { get; set; }
+    public string Reason { get; set; } = string.Empty;
+}

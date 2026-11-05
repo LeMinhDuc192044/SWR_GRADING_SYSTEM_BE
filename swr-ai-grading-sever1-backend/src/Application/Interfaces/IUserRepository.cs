@@ -16,5 +16,6 @@ public interface IUserRepository : IRepository<User>
     // Task<User?> GetByLecturerCodeAsync(string lecturerCode, CancellationToken ct = default);
     Task<bool> IsEmailExistsAsync(string email, CancellationToken ct = default);
     Task<bool> IsStudentCodeExistsAsync(string studentCode, CancellationToken ct = default);
+    Task<bool> IsStaffCodeExistsAsync(string staffCode, CancellationToken ct = default);
     // Task<bool> IsLecturerCodeExistsAsync(string lecturerCode, CancellationToken ct = default);
 }

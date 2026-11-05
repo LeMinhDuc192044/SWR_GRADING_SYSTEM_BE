@@ -64,7 +64,7 @@
 //         // if (!paperSet.ExaminationId.HasValue || paperSet.ExaminationId.Value == Guid.Empty)
 //         //     return Result<UploadSubmissionsResultDTO>.Failure("PaperSet chưa liên kết với kỳ thi.", "PAPER_SET_NOT_LINKED_TO_EXAM");
 
-//         var examId = paperSet.ExaminationId.Value;
+//         var examId = pape.ExaminationId.Value;
 //         var paperQuestions = await _dbContext.Questions
 //             .AsNoTracking()
 //             .Where(question => question.PaperSetId == paperSet.PaperSetId)

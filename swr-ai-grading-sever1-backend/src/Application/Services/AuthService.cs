@@ -43,7 +43,7 @@ public sealed class AuthService : IAuthService
         }
 
         var role = student is not null ? UserRole.Student : staff!.Role;
-        return Result<AuthResponseDto>.Success(CreateResponse(user, role, student));
+        return Result<AuthResponseDto>.Success(CreateResponse(user, role, student, staff));
     }
 
     public async Task<Result<AuthResponseDto>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -52,6 +52,7 @@ public sealed class AuthService : IAuthService
         var email = request.Email?.Trim().ToLowerInvariant();
         var studentCode = request.StudentCode?.Trim();
         var major = request.Major?.Trim();
+        var staffCode = request.StaffCode?.Trim();
 
         if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email) ||
             string.IsNullOrWhiteSpace(request.Password) || request.Birthday == default)
@@ -73,6 +74,7 @@ public sealed class AuthService : IAuthService
         var role = (UserRole)request.Role;
         User user;
         Student? registeredStudent = null;
+        Staff? registeredStaff = null;
 
         if (role == UserRole.Student)
         {
@@ -100,7 +102,16 @@ public sealed class AuthService : IAuthService
         }
         else
         {
-            user = new Staff
+            if (string.IsNullOrWhiteSpace(staffCode))
+                return Result<AuthResponseDto>.Failure("StaffCode is required for staff registration.", "STAFF_CODE_REQUIRED");
+
+            if (staffCode.Length > 20)
+                return Result<AuthResponseDto>.Failure("StaffCode must not exceed 20 characters.", "STAFF_CODE_TOO_LONG");
+
+            if (await _users.IsStaffCodeExistsAsync(staffCode, ct))
+                return Result<AuthResponseDto>.Failure("StaffCode already exists.", "STAFF_CODE_ALREADY_EXISTS");
+
+            registeredStaff = new Staff
             {
                 Id = Guid.NewGuid(),
                 FullName = fullName,
@@ -108,11 +119,13 @@ public sealed class AuthService : IAuthService
                 Birthday = request.Birthday,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                 Role = role,
+                StaffCode = staffCode,
                 IsActive = true,
                 IsDeleted = false,
                 CreatedDay = DateTime.UtcNow,
                 UpdatedDay = DateTime.UtcNow
             };
+            user = registeredStaff;
         }
 
         try
@@ -127,10 +140,10 @@ public sealed class AuthService : IAuthService
                 "DATA_SAVE_FAILED");
         }
 
-        return Result<AuthResponseDto>.Success(CreateResponse(user, role, registeredStudent));
+        return Result<AuthResponseDto>.Success(CreateResponse(user, role, registeredStudent, registeredStaff));
     }
 
-    private AuthResponseDto CreateResponse(User user, UserRole role, Student? student)
+    private AuthResponseDto CreateResponse(User user, UserRole role, Student? student, Staff? staff)
     {
         var token = _tokens.GenerateToken(user.Id, user.FullName, (int)role, role.ToString());
         return new AuthResponseDto(
@@ -144,6 +157,7 @@ public sealed class AuthService : IAuthService
                 role.ToString(),
                 student is not null ? "Student" : "Staff",
                 student?.StudentCode,
-                student?.Major));
+                student?.Major,
+                staff?.StaffCode));
     }
 }

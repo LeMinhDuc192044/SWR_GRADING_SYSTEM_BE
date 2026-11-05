@@ -13,6 +13,7 @@ public record RegisterRequest(
     int Role,
     string? StudentCode = null,
     string? Major = null,
+    string? StaffCode = null,
     string? Subject = null);
 
 public sealed record AuthResponseDto(
@@ -28,4 +29,5 @@ public sealed record AuthUserDto(
     string Role,
     string Type,
     string? StudentCode = null,
-    string? Major = null);
+    string? Major = null,
+    string? StaffCode = null);
