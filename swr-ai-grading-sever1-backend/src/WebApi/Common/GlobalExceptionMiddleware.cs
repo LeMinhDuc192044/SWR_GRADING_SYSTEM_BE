@@ -86,7 +86,9 @@ public sealed class GlobalExceptionMiddleware
                         case "22001": // string data right truncation (value too long)
                             statusCode = StatusCodes.Status400BadRequest;
                             errorCode = "DATA_TOO_LONG";
-                            message = "Dữ liệu nhập vào vượt quá độ dài tối đa cho phép của cơ sở dữ liệu. Vui lòng kiểm tra lại độ dài các trường ký tự (ví dụ: mã kỳ thi, mã số, ghi chú).";
+                            message = string.IsNullOrWhiteSpace(pgEx.ColumnName)
+                                ? "Dữ liệu nhập vào vượt quá độ dài tối đa cho phép của cơ sở dữ liệu."
+                                : $"Trường '{pgEx.ColumnName}' vượt quá độ dài tối đa cho phép của cơ sở dữ liệu: {pgEx.MessageText}";
                             break;
 
                         case "23505": // unique_violation

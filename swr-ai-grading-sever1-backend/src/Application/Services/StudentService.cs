@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Application.Common;
+using Application.DTOs.AuthDTOs;
 using Application.DTOs.Students;
 using Application.Interfaces;
+using Domain.Enums;
 using ClosedXML.Excel;
 using Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -12,7 +14,7 @@ namespace Application.Services;
 public sealed class StudentService : IStudentService
 {
     private readonly IUserRepository _userRepository;
-    private readonly IUnitOfWork _uow;
+    private readonly IAuthService _authService;
     private readonly IEmailService _emailService;
     private readonly ILogger<StudentService> _logger;
 
@@ -22,12 +24,12 @@ public sealed class StudentService : IStudentService
 
     public StudentService(
         IUserRepository userRepository,
-        IUnitOfWork uow,
+        IAuthService authService,
         IEmailService emailService,
         ILogger<StudentService> logger)
     {
         _userRepository = userRepository;
-        _uow = uow;
+        _authService = authService;
         _emailService = emailService;
         _logger = logger;
     }
@@ -43,6 +45,26 @@ public sealed class StudentService : IStudentService
             return Result<StudentImportResultDto>.Failure("File Excel không có worksheet nào.", "EXCEL_EMPTY");
         }
 
+        var expectedHeaders = new[]
+        {
+            "Mã SV (*)",
+            "Họ và Tên (*)",
+            "Email (*)",
+            "Chuyên ngành (*)",
+            "Ngày sinh (yyyy-MM-dd) (*)"
+        };
+
+        for (var column = 1; column <= expectedHeaders.Length; column++)
+        {
+            var header = worksheet.Cell(1, column).GetString().Trim();
+            if (!string.Equals(header, expectedHeaders[column - 1], StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<StudentImportResultDto>.Failure(
+                    "File Excel không đúng định dạng mẫu. Hãy tải template và sử dụng đúng các tiêu đề dòng 1.",
+                    "INVALID_EXCEL_TEMPLATE");
+            }
+        }
+
         var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 0;
         if (lastRow < 2)
         {
@@ -52,7 +74,7 @@ public sealed class StudentService : IStudentService
         var seenStudentCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var studentsToInsert = new List<(Student student, string rawPassword, int rowIndex)>();
+        var accountsCreated = new List<(string fullName, string studentCode, string email, string major, string rawPassword, int rowIndex)>();
 
         for (int row = 2; row <= lastRow; row++)
         {
@@ -101,6 +123,34 @@ public sealed class StudentService : IStudentService
                 continue;
             }
 
+            if (studentCode.Length > 20)
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "Mã sinh viên không được vượt quá 20 ký tự." });
+                continue;
+            }
+
+            if (fullName.Length > 200)
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "Họ và tên không được vượt quá 200 ký tự." });
+                continue;
+            }
+
+            if (email.Length > 200)
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "Email không được vượt quá 200 ký tự." });
+                continue;
+            }
+
+            if (major.Length > 100)
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "Chuyên ngành không được vượt quá 100 ký tự." });
+                continue;
+            }
+
             // 2. Parse ngày sinh
             DateOnly birthday = default;
             var cell5 = worksheet.Cell(row, 5);
@@ -108,6 +158,10 @@ public sealed class StudentService : IStudentService
             {
                 var dt = cell5.GetDateTime();
                 birthday = DateOnly.FromDateTime(dt);
+            }
+            else if (cell5.DataType == XLDataType.Number && cell5.TryGetValue<double>(out var serialDate))
+            {
+                birthday = DateOnly.FromDateTime(DateTime.FromOADate(serialDate));
             }
             else
             {
@@ -160,49 +214,42 @@ public sealed class StudentService : IStudentService
                 continue;
             }
 
-            // 5. Sinh mật khẩu ngẫu nhiên
+            // 5. Tạo tài khoản thông qua AuthService; AuthService chịu trách nhiệm hash mật khẩu và entity Student.
             var rawPassword = GenerateSecurePassword(10);
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(rawPassword);
+            var registrationResult = await _authService.RegisterAsync(new RegisterRequest(
+                fullName,
+                email,
+                rawPassword,
+                birthday,
+                (int)UserRole.Student,
+                studentCode,
+                major), ct);
 
-            var now = DateTime.UtcNow;
-            var student = new Student
+            if (!registrationResult.IsSuccess)
             {
-                Id = Guid.NewGuid(),
-                FullName = fullName,
-                Email = email,
-                Birthday = birthday,
-                StudentCode = studentCode,
-                Major = major,
-                PasswordHash = passwordHash,
-                IsActive = true,
-                IsDeleted = false,
-                CreatedDay = now,
-                UpdatedDay = now
-            };
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto
+                {
+                    RowIndex = row,
+                    StudentCode = studentCode,
+                    Email = email,
+                    Reason = registrationResult.Error ?? "Không thể tạo tài khoản sinh viên."
+                });
+                continue;
+            }
 
-            studentsToInsert.Add((student, rawPassword, row));
+            accountsCreated.Add((fullName, studentCode, email, major, rawPassword, row));
         }
 
-        // Lưu vào DB
-        foreach (var item in studentsToInsert)
-        {
-            await _userRepository.AddAsync(item.student, ct);
-        }
-
-        if (studentsToInsert.Count > 0)
-        {
-            await _uow.SaveChangesAsync(ct);
-        }
-
-        // Gửi email cho từng học sinh
-        foreach (var item in studentsToInsert)
+        // Gửi email cho từng tài khoản đã được AuthService tạo thành công.
+        foreach (var item in accountsCreated)
         {
             bool emailSent = false;
             try
             {
-                var emailBody = BuildStudentAccountEmail(item.student.FullName, item.student.StudentCode, item.student.Email, item.rawPassword);
+                var emailBody = BuildStudentAccountEmail(item.fullName, item.studentCode, item.email, item.rawPassword);
                 await _emailService.SendEmailAsync(
-                    item.student.Email,
+                    item.email,
                     "[SWR Grading System] Thông tin tài khoản sinh viên",
                     emailBody,
                     ct);
@@ -210,17 +257,17 @@ public sealed class StudentService : IStudentService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi gửi email thông tin tài khoản cho sinh viên {Email}", item.student.Email);
+                _logger.LogError(ex, "Lỗi khi gửi email thông tin tài khoản cho sinh viên {Email}", item.email);
             }
 
             result.SuccessCount++;
             result.ImportedStudents.Add(new StudentImportSuccessDto
             {
                 RowIndex = item.rowIndex,
-                StudentCode = item.student.StudentCode,
-                FullName = item.student.FullName,
-                Email = item.student.Email,
-                Major = item.student.Major,
+                StudentCode = item.studentCode,
+                FullName = item.fullName,
+                Email = item.email,
+                Major = item.major,
                 EmailSent = emailSent
             });
         }

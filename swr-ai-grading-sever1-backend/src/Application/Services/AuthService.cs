@@ -115,8 +115,17 @@ public sealed class AuthService : IAuthService
             };
         }
 
-        await _users.AddAsync(user, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
+        try
+        {
+            await _users.AddAsync(user, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            return Result<AuthResponseDto>.Failure(
+                "Không thể lưu tài khoản vì dữ liệu vượt quá độ dài hoặc vi phạm ràng buộc cơ sở dữ liệu: " + ex.Message,
+                "DATA_SAVE_FAILED");
+        }
 
         return Result<AuthResponseDto>.Success(CreateResponse(user, role, registeredStudent));
     }

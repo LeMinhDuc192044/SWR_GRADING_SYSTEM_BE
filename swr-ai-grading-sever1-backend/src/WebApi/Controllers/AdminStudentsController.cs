@@ -45,7 +45,10 @@ public sealed class AdminStudentsController : ControllerBase
             return BadRequest(ApiResponse.Failure(400, "Dung lượng file không được vượt quá 10MB.", "FILE_TOO_LARGE"));
         }
 
-        using var stream = file.OpenReadStream();
+        using var stream = new MemoryStream();
+        await file.CopyToAsync(stream, ct);
+        stream.Position = 0;
+
         var result = await _studentService.ImportStudentsFromExcelAsync(stream, ct);
 
         if (!result.IsSuccess)
