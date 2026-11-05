@@ -13,8 +13,6 @@ public class ExaminationConfiguration : IEntityTypeConfiguration<Examination>
             .HasConversion(new ExaminationTypeConverter())
             .HasMaxLength(5);
 
-        builder.HasIndex(e => e.ExaminationCode).IsUnique();
-
         builder.Property(e => e.Status)
             .HasConversion<string>()
             .HasMaxLength(20);

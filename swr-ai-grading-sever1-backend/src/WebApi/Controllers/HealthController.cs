@@ -1,3 +1,4 @@
+using Application.Common;
 using Microsoft.AspNetCore.Mvc;
 using WebApi;
 
@@ -15,6 +16,6 @@ public class HealthController : ControllerBase
     {
         status = "healthy",
         server = "Backend.Server1",
-        time = DateTime.UtcNow
+        time = VietnamTime.Now
     }));
 }

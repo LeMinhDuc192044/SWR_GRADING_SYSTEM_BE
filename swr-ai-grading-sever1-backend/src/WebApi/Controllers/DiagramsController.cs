@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/diagrams")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public class DiagramsController : ControllerBase
 {
     private readonly IDiagramService _diagramService;

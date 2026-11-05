@@ -11,18 +11,6 @@ public class SubmissionParsedAnswer
     [Column("parsed_answer_id")]
     public Guid ParsedAnswerId { get; set; } = Guid.NewGuid();
 
-    [Required]
-    [Column("submission_id")]
-    [ForeignKey(nameof(Submission))]
-    public Guid SubmissionId { get; set; }
-    public StudentSubmission Submission { get; set; } = null!;
-
-    [Required]
-    [Column("question_id")]
-    [ForeignKey(nameof(Question))]
-    public Guid QuestionId { get; set; }
-    public Question Question { get; set; } = null!;
-
     [Column("element_id")]
     [ForeignKey(nameof(Element))]
     public Guid? ElementId { get; set; }
@@ -41,6 +29,19 @@ public class SubmissionParsedAnswer
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
-    public ICollection<EvaluationItemDetail> EvaluationDetails { get; set; } = [];
+    public ICollection<SubmissionItemDetail> EvaluationDetails { get; set; } = [];
+
+    [Required]
+    [Column("submission_id")]
+    [ForeignKey(nameof(Submission))]
+    public Guid SubmissionId { get; set; }
+    public StudentSubmission Submission { get; set; } = null!;
+
+    [Required]
+    [Column("question_id")]
+    [ForeignKey(nameof(Question))]
+    public Guid QuestionId { get; set; }
+    public Question Question { get; set; } = null!;
+
 
 }

@@ -5,26 +5,20 @@ using Domain.Enums;
 
 namespace Domain.Entities;
 
-[Table("submission_evaluations")]
-public class SubmissionEvaluation
+[Table("submission_grading_histories")]
+public class SubmissionGradingHistory
 {
     [Key]
-    [Column("evaluation_id")]
-    public Guid EvaluationId { get; set; } = Guid.NewGuid();
-
-    [Required]
-    [Column("submission_id")]
-    [ForeignKey(nameof(Submission))]
-    public Guid SubmissionId { get; set; }
-    public StudentSubmission Submission { get; set; } = null!;
+    [Column("history_id")]
+    public Guid HistoryId { get; set; } = Guid.NewGuid();
 
     [Required]
     [Column("evaluation_type")]
     public EvaluationType EvaluationType { get; set; }   // e.g. AI, Lecturer
 
     [Required]
-    [Column("evaluation_round")]
-    public int EvaluationRound { get; set; }
+    [Column("grading_round")]
+    public int GradingRound { get; set; }
 
     [Column("total_score", TypeName = "decimal(5,2)")]
     public decimal? TotalScore { get; set; }
@@ -32,12 +26,14 @@ public class SubmissionEvaluation
     [Column("general_feedback")]
     public string? GeneralFeedback { get; set; }
 
-    [Column("is_final_score")]
-    public bool IsFinalScore { get; set; }
-
     [Required]
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
-    public ICollection<EvaluationItemDetail> Details { get; set; } = [];
+    [Required]
+    [Column("submission_id")]
+    [ForeignKey(nameof(Submission))]
+    public Guid SubmissionId { get; set; }
+    public StudentSubmission Submission { get; set; } = null!;
+    public ICollection<SubmissionItemDetail> Details { get; set; } = [];
 }

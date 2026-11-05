@@ -10,22 +10,27 @@ public class TestDbContext : DbContext, IApplicationDbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Student> Students => Set<Student>();
-    public DbSet<Lecturer> Lecturers => Set<Lecturer>();
+    public DbSet<Staff> Staff => Set<Staff>();
     public DbSet<PaperSet> PaperSets => Set<PaperSet>();
     public DbSet<Examination> Examinations => Set<Examination>();
     public DbSet<StudentSubmission> StudentSubmissions => Set<StudentSubmission>();
     public DbSet<StudentSubmission> Submissions => StudentSubmissions;
+    public DbSet<StudentExaminationSession> StudentExaminationSessions => Set<StudentExaminationSession>();
+    public DbSet<ExaminationSession> ExaminationSessions => Set<ExaminationSession>();
     public DbSet<Semester> Semesters => Set<Semester>();
     public DbSet<StudentSemester> StudentSemesters => Set<StudentSemester>();
-    public DbSet<StudentExamination> StudentExaminations => Set<StudentExamination>();
-    public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
+    // public DbSet<GradingDiary> GradingDiaries => Set<GradingDiary>();
     public DbSet<Diagram> Diagrams => Set<Diagram>();
     public DbSet<Question> Questions => Set<Question>();
-    public DbSet<QuestionRubric> QuestionRubrics => Set<QuestionRubric>();
+    public DbSet<QuestionCriteria> QuestionCriteria => Set<QuestionCriteria>();
     public DbSet<DiagramElement> DiagramElements => Set<DiagramElement>();
     public DbSet<SubmissionParsedAnswer> SubmissionParsedAnswers => Set<SubmissionParsedAnswer>();
-    public DbSet<SubmissionEvaluation> SubmissionEvaluations => Set<SubmissionEvaluation>();
-    public DbSet<EvaluationItemDetail> EvaluationItemDetails => Set<EvaluationItemDetail>();
+    public DbSet<SubmissionGradingHistory> SubmissionGradingHistories => Set<SubmissionGradingHistory>();
+    public DbSet<SubmissionItemDetail> SubmissionItemDetails => Set<SubmissionItemDetail>();
+    public DbSet<GradingSession> GradingSessions => Set<GradingSession>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
+    public DbSet<Domain.Entities.Application> Applications => Set<Domain.Entities.Application>();
+    public DbSet<AiModel> AiModels => Set<AiModel>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

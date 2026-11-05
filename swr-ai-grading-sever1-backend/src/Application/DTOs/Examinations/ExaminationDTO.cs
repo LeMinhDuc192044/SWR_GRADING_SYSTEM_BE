@@ -9,6 +9,7 @@ public class ExaminationDTO
     public string Name { get; set; } = string.Empty;
     public ExaminationType ExaminationType { get; set; }
     public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
     public TimeSpan StartTime { get; set; }
     public int DurationMinutes { get; set; }
     public int BeforeTimeMinutes { get; set; }
@@ -18,6 +19,7 @@ public class ExaminationDTO
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
+    public IReadOnlyList<Guid> PaperSetIds { get; set; } = [];
 }
 
 public class CreateExaminationRequest
@@ -25,6 +27,7 @@ public class CreateExaminationRequest
     public string Name { get; set; } = string.Empty;
     public ExaminationType ExaminationType { get; set; }
     public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
     public TimeSpan StartTime { get; set; }
     public int DurationMinutes { get; set; }
     public int BeforeTimeMinutes { get; set; }
@@ -32,6 +35,7 @@ public class CreateExaminationRequest
     public ExaminationStatus Status { get; set; } = ExaminationStatus.Draft;
     public Guid SemesterId { get; set; }
     public Guid PaperSetId { get; set; }
+    public List<Guid> PaperSetIds { get; set; } = [];
 }
 
 public class UpdateExaminationRequest
@@ -39,6 +43,7 @@ public class UpdateExaminationRequest
     public string? Name { get; set; }
     public ExaminationType? ExaminationType { get; set; }
     public DateOnly? StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
     public TimeSpan? StartTime { get; set; }
     public int? DurationMinutes { get; set; }
     public int? BeforeTimeMinutes { get; set; }
@@ -46,4 +51,5 @@ public class UpdateExaminationRequest
     public ExaminationStatus? Status { get; set; }
     public Guid? SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
+    public List<Guid>? PaperSetIds { get; set; }
 }

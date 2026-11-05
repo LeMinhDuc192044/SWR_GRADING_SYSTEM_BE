@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Application.Common;
 using Application.DTOs.PaperSets;
 using Application.DTOs.Questions;
-using Application.DTOs.Rubrics;
 using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +11,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/paper-sets")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public sealed class PaperSetsController : ControllerBase
 {
     private readonly IPaperSetService _service;
@@ -101,12 +100,12 @@ public sealed class PaperSetsController : ControllerBase
             : BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
-    [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
-    {
-        var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
-    }
+    // [HttpGet("{id:guid}")]
+    // public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct)
+    // {
+    //     var result = await _service.GetByIdAsync(id, ct);
+    //     return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
+    // }
 
     [HttpGet("{id:guid}/questions")]
     public async Task<IActionResult> GetQuestions(Guid id, CancellationToken ct)
@@ -117,14 +116,14 @@ public sealed class PaperSetsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!));
     }
 
-    [HttpGet("{id:guid}/rubrics")]
-    public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
-    {
-        var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
-        return result.IsSuccess
-            ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
-    }
+    // [HttpGet("{id:guid}/rubrics")]
+    // public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
+    // {
+    //     var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
+    //     return result.IsSuccess
+    //         ? Ok(ApiResponse.Success(result.Data))
+    //         : NotFound(ApiResponse.Failure(404, result.Error!));
+    // }
 
     [HttpGet("{id:guid}/content")]
     public async Task<IActionResult> GetContent(Guid id, CancellationToken ct)
@@ -153,7 +152,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPost("batch")]
-    [Authorize(Roles = "Lecturer")]
+    [Authorize(Roles = "Examiner")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateMany(
@@ -183,34 +182,34 @@ public sealed class PaperSetsController : ControllerBase
 
     
 
-    [HttpPost("{id:guid}/files")]
-    [RequestSizeLimit(524_288_000)]
-    [Consumes("multipart/form-data")]
-    public async Task<IActionResult> AddFiles(
-        Guid id,
-        [FromForm] AddPaperSetFilesRequest request,
-        CancellationToken ct)
-    {
-        var result = await _service.AddFilesAsync(
-            id,
-            BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate),
-            ct);
+    // [HttpPost("{id:guid}/files")]
+    // [RequestSizeLimit(524_288_000)]
+    // [Consumes("multipart/form-data")]
+    // public async Task<IActionResult> AddFiles(
+    //     Guid id,
+    //     [FromForm] AddPaperSetFilesRequest request,
+    //     CancellationToken ct)
+    // {
+    //     var result = await _service.AddFilesAsync(
+    //         id,
+    //         BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate),
+    //         ct);
 
-        if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
-        return result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
+    //     if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
+    //     return result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+    // }
 
-    [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(
-        Guid id,
-        [FromBody] UpdatePaperSetRequest request,
-        CancellationToken ct)
-    {
-        var result = await _service.UpdateAsync(id, request, ct);
-        return result.IsSuccess
-            ? Ok(ApiResponse.Success(result.Data))
-            : result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
+    // [HttpPut("{id:guid}")]
+    // public async Task<IActionResult> Update(
+    //     Guid id,
+    //     [FromBody] UpdatePaperSetRequest request,
+    //     CancellationToken ct)
+    // {
+    //     var result = await _service.UpdateAsync(id, request, ct);
+    //     return result.IsSuccess
+    //         ? Ok(ApiResponse.Success(result.Data))
+    //         : result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+    // }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

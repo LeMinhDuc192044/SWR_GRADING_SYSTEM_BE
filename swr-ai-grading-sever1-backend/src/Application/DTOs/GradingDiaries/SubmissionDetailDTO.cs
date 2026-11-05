@@ -15,7 +15,7 @@ public sealed class EvaluationItemReviewDto
     public string? Comment { get; set; }
 }
 
-public sealed class UpdateEvaluationItemDetailRequest
+public sealed class UpdateSubmissionItemDetailRequest
 {
     public decimal Score { get; set; }
     public string? Comment { get; set; }
@@ -30,7 +30,7 @@ public sealed class ReviewSubmissionRequest
     public List<EvaluationItemReviewDto>? ItemDetails { get; set; }
 }
 
-public sealed class EvaluationItemDetailDto
+public sealed class SubmissionItemDetailDto
 {
     public Guid DetailId { get; set; }
     public Guid EvaluationId { get; set; }
@@ -70,7 +70,7 @@ public sealed class SubmissionDetailDTO
     public SubmissionStatus Status { get; set; }
     public string StatusName => Status.ToString();
     public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();
-    public IReadOnlyList<EvaluationItemDetailDto> ItemDetails { get; set; } = Array.Empty<EvaluationItemDetailDto>();
+    public IReadOnlyList<SubmissionItemDetailDto> ItemDetails { get; set; } = Array.Empty<SubmissionItemDetailDto>();
     public IReadOnlyList<StudentAnswerDto> StudentAnswers { get; set; } = Array.Empty<StudentAnswerDto>();
     public DateTime CreatedDate { get; set; }
     public DateTime UpdatedDate { get; set; }

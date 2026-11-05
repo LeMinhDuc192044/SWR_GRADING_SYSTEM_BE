@@ -3,7 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Application.Common;
 using Application.Interfaces;
-using AI_Assisted_SWR_Grading_System.Domain.Enums;
+using Domain.Enums;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 

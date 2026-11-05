@@ -13,20 +13,20 @@ public sealed class SubmissionRepository : Repository<StudentSubmission>, ISubmi
     {
         return await _set.AsNoTracking().AnyAsync(s =>
             s.SubmissionId == submissionId &&
-            (s.Evaluations.Any(evaluation =>
-                 evaluation.EvaluationType == EvaluationType.Lecturer && evaluation.TotalScore.HasValue) ||
+            (s.SubmissionGradingHistories.Any(gradingHistory =>
+                 gradingHistory.EvaluationType == EvaluationType.Lecturer && gradingHistory.TotalScore.HasValue) ||
              s.Status == SubmissionStatus.Lecturer_Reviewed ||
              s.Status == SubmissionStatus.Final), ct);
     }
 
-    public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
-    {
-        return await _set
-            .Include(s => s.StudentExamination)
-                .ThenInclude(se => se.Student)
-            .Where(s => s.DiaryId == diaryId)
-            .OrderByDescending(s => s.CreatedDate)
-            .AsNoTracking()
-            .ToListAsync(ct);
-    }
+    // public async Task<IReadOnlyList<StudentSubmission>> GetByDiaryIdAsync(Guid diaryId, CancellationToken ct = default)
+    // {
+    //     return await _set
+    //         .Include(s => s.StudentExamination)
+    //             .ThenInclude(se => se.Student)
+    //         .Where(s => s.DiaryId == diaryId)
+    //         .OrderByDescending(s => s.CreatedDate)
+    //         .AsNoTracking()
+    //         .ToListAsync(ct);
+    // }
 }

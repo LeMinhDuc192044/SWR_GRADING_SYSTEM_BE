@@ -33,6 +33,7 @@ builder.Services.AddDatabase();
 // Unit of Work + Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 var jwtSettings = new JwtSettings
 {
@@ -117,12 +118,9 @@ builder.Services.AddScoped<IExaminationService, ExaminationService>();
 builder.Services.AddScoped<IExaminationRepository, ExaminationRepository>();
 builder.Services.AddScoped<IPaperSetService, PaperSetService>();
 builder.Services.AddScoped<IPaperSetRepository, PaperSetRepository>();
-builder.Services.AddScoped<IGradingDiaryRepository, GradingDiaryRepository>();
-builder.Services.AddScoped<IGradingDiaryService, GradingDiaryService>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
-builder.Services.AddScoped<ISubmissionService, SubmissionService>();
+// builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ISubmissionParsedAnswerService, SubmissionParsedAnswerService>();
-builder.Services.AddScoped<ILecturerService, LecturerService>();
 // Smtp Settings
 builder.Services.Configure<SmtpSettings>(options =>
 {
@@ -250,7 +248,7 @@ app.MapGet("/health", () => Results.Ok(ApiResponse.Success(new
 {
     status = "healthy",
     server = "Backend.Server1",
-    time = DateTime.UtcNow
+    time = Application.Common.VietnamTime.Now
 })));
 
 app.Run();

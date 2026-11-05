@@ -13,10 +13,8 @@ public sealed class PaperSetRepository : Repository<PaperSet>, IPaperSetReposito
             .Include(material => material.Questions)
                 .ThenInclude(q => q.Diagram)
             .Include(material => material.Questions)
-                .ThenInclude(q => q.Rubric)
-            .Include(material => material.Rubrics)
+
                 .ThenInclude(r => r.Diagram)
-            .Include(material => material.CreateBy)
             .FirstOrDefaultAsync(material => material.PaperSetId == (Guid)id, ct);
 
     public override async Task<IReadOnlyList<PaperSet>> GetAllAsync(CancellationToken ct = default)
@@ -24,10 +22,7 @@ public sealed class PaperSetRepository : Repository<PaperSet>, IPaperSetReposito
             .Include(material => material.Questions)
                 .ThenInclude(q => q.Diagram)
             .Include(material => material.Questions)
-                .ThenInclude(q => q.Rubric)
-            .Include(material => material.Rubrics)
                 .ThenInclude(r => r.Diagram)
-            .Include(material => material.CreateBy)
             .AsNoTracking()
             .ToListAsync(ct);
 

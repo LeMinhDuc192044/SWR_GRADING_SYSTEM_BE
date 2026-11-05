@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using AI_Assisted_SWR_Grading_System.Domain.Enums;
 
 namespace Domain.Entities;
 
@@ -30,17 +29,17 @@ public class User
     [Column("password_hash")]
     public string PasswordHash { get; set; } = string.Empty;
 
-    [Required]
-    [Column("role")]
-    public UserRole Role { get; set; }
-
-    [MaxLength(20)]
-    [Column("cccd")]
-    public string Cccd { get; set; } = string.Empty;
-
     [Column("is_deleted")]
     public bool IsDeleted { get; set; }
 
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
+
+    [Required]
+    [Column("created_day")]
+    public DateTime CreatedDay { get; set; }
+
+    [Required]
+    [Column("updated_day")]
+    public DateTime UpdatedDay { get; set; }
 }

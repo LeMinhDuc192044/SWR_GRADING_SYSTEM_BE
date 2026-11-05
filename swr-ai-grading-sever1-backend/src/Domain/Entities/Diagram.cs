@@ -18,5 +18,4 @@ public class Diagram
     public string? Description { get; set; }
 
     public ICollection<DiagramElement> Elements { get; set; } = [];
-    public ICollection<QuestionRubric> Rubrics { get; set; } = [];
 }

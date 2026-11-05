@@ -1,5 +1,4 @@
 using Application.DTOs.Questions;
-using Application.DTOs.Rubrics;
 using Domain.Enums;
 using Microsoft.AspNetCore.Http;
 
@@ -59,11 +58,11 @@ public sealed class PaperSetExtractedContentsDTO
     public IReadOnlyList<PaperSetExtractedFileDTO> Files { get; set; } = [];
 }
 
-public sealed class PaperSetDetailDTO : PaperSetMetadataDTO
-{
-    public string StoragePath { get; set; } = string.Empty;
-    public IReadOnlyList<RubricDTO> Rubrics { get; set; } = [];
-}
+// public sealed class PaperSetDetailDTO : PaperSetMetadataDTO
+// {
+//     public string StoragePath { get; set; } = string.Empty;
+//     public IReadOnlyList<RubricDTO> Rubrics { get; set; } = [];
+// }
 
 public sealed class UpdatePaperSetRequest
 {

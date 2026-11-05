@@ -31,7 +31,7 @@ public class ExaminationService : IExaminationService
         var examinations = await _repository.GetAllAsync(ct);
         var items = await Task.WhenAll(examinations
             .OrderByDescending(e => e.StartDate)
-            .ThenBy(e => e.StartTime)
+            // .ThenBy(e => e.StartTime)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(ToDtoAsync));
@@ -68,33 +68,49 @@ public class ExaminationService : IExaminationService
                 "Examination start date must be within the semester dates.",
                 "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
-        var material = await _paperSetRepository.GetByIdAsync(request.PaperSetId, ct);
-        var materialValidation = ValidateMaterial(material, request.SemesterId);
-        if (materialValidation is not null)
-            return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
+        var requestedPaperSetIds = request.PaperSetIds.Count > 0
+            ? request.PaperSetIds.Distinct().ToList()
+            : request.PaperSetId == Guid.Empty ? [] : new List<Guid> { request.PaperSetId };
 
-        var code = await GenerateCodeAsync(semester.SemesterCode, request.ExaminationType, ct);
-        var now = DateTime.UtcNow;
+        if (requestedPaperSetIds.Count == 0)
+            return Result<ExaminationDTO>.Failure("At least one paper set is required.", "PAPER_SET_NOT_FOUND");
+
+        var materials = new List<PaperSet>();
+        foreach (var paperSetId in requestedPaperSetIds)
+        {
+            var material = await _paperSetRepository.GetByIdAsync(paperSetId, ct);
+            var materialValidation = ValidateMaterial(material, request.SemesterId);
+            if (materialValidation is not null)
+                return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
+            materials.Add(material!);
+        }
+
+        var endDate = request.EndDate == default ? request.StartDate : request.EndDate;
+        if (endDate < request.StartDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
+        if (endDate < semester.StartDate || endDate > semester.EndDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be within the semester dates.", "EXAMINATION_DATE_OUT_OF_SEMESTER");
+
+        var now = VietnamTime.Now;
         var examination = new Examination
         {
-            ExaminationCode = code,
             Name = request.Name.Trim(),
             ExaminationType = request.ExaminationType,
             StartDate = request.StartDate,
-            StartTime = request.StartTime,
-            DurationMinutes = request.DurationMinutes,
-            BeforeTimeMinutes = request.BeforeTimeMinutes,
-            Note = request.Note?.Trim(),
+            EndDate = endDate,
             CreatedDay = now,
             UpdatedDay = now,
             Status = request.Status,
             SemesterId = request.SemesterId
         };
 
-        material!.ExaminationId = examination.ExaminationId;
-        material.Status = PaperSetStatus.Used;
-        material.UpdatedDate = DateTime.UtcNow;
-        _paperSetRepository.Update(material);
+        foreach (var material in materials)
+        {
+            material.ExaminationId = examination.ExaminationId;
+            material.Status = PaperSetStatus.Used;
+            material.UpdatedDate = VietnamTime.Now;
+            _paperSetRepository.Update(material);
+        }
 
         await _repository.AddAsync(examination, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -109,11 +125,7 @@ public class ExaminationService : IExaminationService
 
         var name = request.Name?.Trim() ?? examination.Name;
         var type = request.ExaminationType ?? examination.ExaminationType;
-        var duration = request.DurationMinutes ?? examination.DurationMinutes;
-        var beforeTime = request.BeforeTimeMinutes ?? examination.BeforeTimeMinutes;
-        var validation = Validate(name, type, duration, beforeTime);
-        if (validation is not null)
-            return Result<ExaminationDTO>.Failure(validation, "INVALID_EXAMINATION");
+ 
 
         var semesterId = request.SemesterId ?? examination.SemesterId;
         var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
@@ -121,9 +133,13 @@ public class ExaminationService : IExaminationService
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
         var startDate = request.StartDate ?? examination.StartDate;
-        if (startDate < semester.StartDate || startDate > semester.EndDate)
+        var endDate = request.EndDate ?? (examination.EndDate == default ? startDate : examination.EndDate);
+        if (endDate < startDate)
+            return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
+        if (startDate < semester.StartDate || startDate > semester.EndDate ||
+            endDate < semester.StartDate || endDate > semester.EndDate)
             return Result<ExaminationDTO>.Failure(
-                "Examination start date must be within the semester dates.",
+                "Examination dates must be within the semester dates.",
                 "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
         var linkedMaterials = await _paperSetRepository.FindAsync(
@@ -137,32 +153,46 @@ public class ExaminationService : IExaminationService
         }
 
 
-        var materialId = request.PaperSetId;
-        if (materialId.HasValue)
+        var requestedPaperSetIds = request.PaperSetIds?.Distinct().ToList();
+        if (requestedPaperSetIds is null && request.PaperSetId.HasValue)
+            requestedPaperSetIds = new List<Guid> { request.PaperSetId.Value };
+
+        if (requestedPaperSetIds?.Count > 0)
         {
-            var material = await _paperSetRepository.GetByIdAsync(materialId.Value, ct);
-            var materialValidation = ValidateMaterial(material, semesterId);
-            if (materialValidation is not null)
-                return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
+            var selectedMaterials = new List<PaperSet>();
+            foreach (var paperSetId in requestedPaperSetIds)
+            {
+                var material = await _paperSetRepository.GetByIdAsync(paperSetId, ct);
+                var materialValidation = ValidateMaterial(material, semesterId);
+                if (materialValidation is not null)
+                    return Result<ExaminationDTO>.Failure(materialValidation.Value.Message, materialValidation.Value.Code);
+                selectedMaterials.Add(material!);
+            }
 
-            material!.ExaminationId = examination.ExaminationId;
-            material.Status = PaperSetStatus.Used;
-            material.UpdatedDate = DateTime.UtcNow;
-            _paperSetRepository.Update(material);
+            var selectedIds = selectedMaterials.Select(material => material.PaperSetId).ToHashSet();
+            foreach (var linkedMaterial in linkedMaterials.Where(linked => !selectedIds.Contains(linked.PaperSetId)))
+            {
+                linkedMaterial.ExaminationId = null;
+                linkedMaterial.Status = PaperSetStatus.Ready;
+                linkedMaterial.UpdatedDate = VietnamTime.Now;
+                _paperSetRepository.Update(linkedMaterial);
+            }
+
+            foreach (var material in selectedMaterials)
+            {
+                material.ExaminationId = examination.ExaminationId;
+                material.Status = PaperSetStatus.Used;
+                material.UpdatedDate = VietnamTime.Now;
+                _paperSetRepository.Update(material);
+            }
         }
-
-        if (semesterId != examination.SemesterId || type != examination.ExaminationType)
-            examination.ExaminationCode = await GenerateCodeAsync(semester.SemesterCode, type, ct);
 
         examination.Name = name;
         examination.ExaminationType = type;
         examination.StartDate = startDate;
-        examination.StartTime = request.StartTime ?? examination.StartTime;
-        examination.DurationMinutes = duration;
-        examination.BeforeTimeMinutes = beforeTime;
-        if (request.Note is not null)
-            examination.Note = request.Note.Trim();
-        examination.UpdatedDay = DateTime.UtcNow;
+        examination.EndDate = endDate;
+
+        examination.UpdatedDay = VietnamTime.Now;
         if (request.Status.HasValue)
             examination.Status = request.Status.Value;
         examination.SemesterId = semesterId;
@@ -221,23 +251,21 @@ public class ExaminationService : IExaminationService
 
     private async Task<ExaminationDTO> ToDtoAsync(Examination examination)
     {
-        var material = (await _paperSetRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted)).FirstOrDefault();
+        var materials = await _paperSetRepository.FindAsync(m => m.ExaminationId == examination.ExaminationId && !m.IsDeleted);
+        var paperSetIds = materials.Select(material => material.PaperSetId).ToList();
         return new ExaminationDTO
         {
             ExaminationId = examination.ExaminationId,
-            ExaminationCode = examination.ExaminationCode,
             Name = examination.Name,
             ExaminationType = examination.ExaminationType,
             StartDate = examination.StartDate,
-            StartTime = examination.StartTime,
-            DurationMinutes = examination.DurationMinutes,
-            BeforeTimeMinutes = examination.BeforeTimeMinutes,
-            Note = examination.Note,
+            EndDate = examination.EndDate,
             CreatedDay = examination.CreatedDay,
             UpdatedDay = examination.UpdatedDay,
             Status = examination.Status,
             SemesterId = examination.SemesterId,
-            PaperSetId = material?.PaperSetId
+            PaperSetId = paperSetIds.FirstOrDefault(),
+            PaperSetIds = paperSetIds
         };
     }
 

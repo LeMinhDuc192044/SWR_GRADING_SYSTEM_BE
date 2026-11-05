@@ -19,6 +19,10 @@ public sealed class CreateExaminationRequestValidator : AbstractValidator<Create
             .NotEmpty()
             .WithMessage("Examination start date is required.");
 
+        RuleFor(request => request.EndDate)
+            .Must((request, endDate) => endDate == default || endDate >= request.StartDate)
+            .WithMessage("Examination end date must be on or after start date.");
+
         RuleFor(request => request.DurationMinutes)
             .GreaterThan(0)
             .WithMessage("Duration must be greater than 0.");
@@ -35,8 +39,8 @@ public sealed class CreateExaminationRequestValidator : AbstractValidator<Create
             .NotEmpty()
             .WithMessage("Semester is required.");
 
-        RuleFor(request => request.PaperSetId)
-            .NotEmpty()
-            .WithMessage("Paper set is required.");
+        RuleFor(request => request)
+            .Must(request => request.PaperSetId != Guid.Empty || request.PaperSetIds.Count > 0)
+            .WithMessage("At least one paper set is required.");
     }
 }

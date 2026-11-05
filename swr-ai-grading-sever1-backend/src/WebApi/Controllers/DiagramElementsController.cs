@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/diagram-elements")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public class DiagramElementsController : ControllerBase
 {
     private readonly IDiagramElementService _service;

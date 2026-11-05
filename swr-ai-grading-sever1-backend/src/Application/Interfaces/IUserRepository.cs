@@ -9,10 +9,13 @@ namespace Application.Interfaces;
 public interface IUserRepository : IRepository<User>
 {
     Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
-    Task<Lecturer?> GetLecturerByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Student?> GetStudentByEmailAsync(string email, CancellationToken ct = default);
+    Task<Staff?> GetStaffByEmailAsync(string email, CancellationToken ct = default);
+    // Task<Lecturer?> GetLecturerByIdAsync(Guid id, CancellationToken ct = default);
     Task<User?> GetByStudentCodeAsync(string studentCode, CancellationToken ct = default);
-    Task<User?> GetByLecturerCodeAsync(string lecturerCode, CancellationToken ct = default);
+    // Task<User?> GetByLecturerCodeAsync(string lecturerCode, CancellationToken ct = default);
     Task<bool> IsEmailExistsAsync(string email, CancellationToken ct = default);
     Task<bool> IsStudentCodeExistsAsync(string studentCode, CancellationToken ct = default);
-    Task<bool> IsLecturerCodeExistsAsync(string lecturerCode, CancellationToken ct = default);
+    Task<bool> IsStaffCodeExistsAsync(string staffCode, CancellationToken ct = default);
+    // Task<bool> IsLecturerCodeExistsAsync(string lecturerCode, CancellationToken ct = default);
 }

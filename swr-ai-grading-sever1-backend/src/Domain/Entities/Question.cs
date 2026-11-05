@@ -34,12 +34,6 @@ public class Question
     public Guid? DiagramId { get; set; }
     public Diagram? Diagram { get; set; }
 
-    // The Rubric table isn't visible in your screenshots; add the FK + navigation once it exists
-    [Column("rubric_id")]
-    [ForeignKey(nameof(Rubric))]
-    public Guid? RubricId { get; set; }
-    public QuestionRubric? Rubric { get; set; }
-
     [Required]
     [Column("created_day")]
     public DateTime CreatedDay { get; set; }
@@ -49,4 +43,6 @@ public class Question
     public DateTime UpdatedDay { get; set; }
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
+    public ICollection<QuestionCriteria> Criteria { get; set; } = [];
+
 }

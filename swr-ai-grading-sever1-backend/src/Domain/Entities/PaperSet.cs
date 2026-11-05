@@ -51,12 +51,6 @@ public class PaperSet
     [Column("status")]
     public PaperSetStatus Status { get; set; }
 
-    [Column("examination_id")]
-    [ForeignKey(nameof(Examination))]
-    public Guid? ExaminationId { get; set; }
-
-    public Examination Examination { get; set; } = null!;
-
     [Required]
     [Column("semester_id")]
     [ForeignKey(nameof(Semester))]
@@ -65,14 +59,19 @@ public class PaperSet
     public Semester Semester { get; set; } = null!;
 
     [Required]
-    [Column("create_by_id")]
-    [ForeignKey(nameof(CreateBy))]
-    public Guid CreateById { get; set; }
+    [Column("uploaded_by_id")]
+    public Guid UploadedById { get; set; }
 
-    public Lecturer CreateBy { get; set; } = null!;
+    [Column("examination_id")]
+    [ForeignKey(nameof(Examination))]
+    public Guid? ExaminationId { get; set; }
+
+    public Examination Examination { get; set; } = null!;
+
+    [ForeignKey(nameof(UploadedById))]
+    public Staff UploadedBy { get; set; } = null!;
     public ICollection<Question> Questions { get; set; } = [];
 
-    public GradingDiary? GradingDiary { get; set; }
-    public ICollection<QuestionRubric> Rubrics { get; set; } = [];
-
+    public ICollection<ExaminationSession> ExaminationSessions { get; set; } = [];
+    public ICollection<GradingSession> GradingSessions { get; set; } = [];
 }
