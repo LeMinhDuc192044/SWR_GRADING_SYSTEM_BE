@@ -26,6 +26,8 @@ public class SubmissionGradingHistory
     [Column("general_feedback")]
     public string? GeneralFeedback { get; set; }
 
+    public SubmissionGradingHistoryStatus Status { get; set; } = SubmissionGradingHistoryStatus.DRAFT;
+
     [Required]
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }

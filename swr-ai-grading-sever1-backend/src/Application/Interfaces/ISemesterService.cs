@@ -11,7 +11,7 @@ public interface ISemesterService
     Task<Result<SemesterDTO>> UpdateAsync(Guid id, UpdateSemesterRequest request, CancellationToken ct = default);
     Task<Result<SemesterDTO>> UpdateStatusAsync(Guid id, UpdateSemesterStatusRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
-    Task<Result<StudentSemesterImportResultDto>> AddStudentsAsync(Guid semesterId, IReadOnlyList<AddStudentToSemesterRequest> requests, CancellationToken ct = default);
-    Task<Result<StudentSemesterImportResultDto>> ImportStudentsFromExcelAsync(Guid semesterId, Stream fileStream, CancellationToken ct = default);
+    // Task<Result<StudentSemesterImportResultDto>> AddStudentsAsync(Guid semesterId, IReadOnlyList<AddStudentToSemesterRequest> requests, CancellationToken ct = default);
+    // Task<Result<StudentSemesterImportResultDto>> ImportStudentsFromExcelAsync(Guid semesterId, Stream fileStream, CancellationToken ct = default);
     byte[] GenerateStudentImportTemplate();
 }

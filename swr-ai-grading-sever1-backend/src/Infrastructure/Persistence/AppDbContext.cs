@@ -131,6 +131,25 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .IsRequired()
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<StudentExaminationSession>(entity =>
+        {
+            entity.ToTable("student_examination_sessions");
+
+            entity.HasKey(x => new
+            {
+                x.StudentId,
+                x.ExaminationSessionId
+            });
+
+            entity.HasOne(x => x.Student)
+                .WithMany(x => x.StudentExaminationSessions)
+                .HasForeignKey(x => x.StudentId);
+
+            entity.HasOne(x => x.ExaminationSession)
+                .WithMany(x => x.StudentExaminationSessions)
+                .HasForeignKey(x => x.ExaminationSessionId);
+        });
+
         base.OnModelCreating(builder);
     }
 }

@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261104213646_IntialDatabase")]
-    partial class IntialDatabase
+    [Migration("20261105141732_FixSession")]
+    partial class FixSession
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -582,16 +582,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("examination_session_id");
 
-                    b.Property<Guid?>("StudentId1")
-                        .HasColumnType("uuid");
-
                     b.HasKey("StudentId", "ExaminationSessionId");
 
                     b.HasIndex("ExaminationSessionId");
 
-                    b.HasIndex("StudentId1");
-
-                    b.ToTable("student_examination_sessions");
+                    b.ToTable("student_examination_sessions", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
@@ -604,24 +599,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("semester_id");
 
-                    b.Property<string>("ClassCode")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("class_code");
-
-                    b.Property<string>("LecturerCode")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("lecturer_code");
-
-                    b.Property<string>("LecturerName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("lecturer_name");
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("staff_id");
 
                     b.HasKey("StudentId", "SemesterId");
 
                     b.HasIndex("SemesterId");
+
+                    b.HasIndex("StaffId");
 
                     b.ToTable("student_semester");
                 });
@@ -696,6 +682,9 @@ namespace Infrastructure.Migrations
                     b.Property<int>("GradingRound")
                         .HasColumnType("integer")
                         .HasColumnName("grading_round");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("SubmissionId")
                         .HasColumnType("uuid")
@@ -850,6 +839,15 @@ namespace Infrastructure.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer")
                         .HasColumnName("role");
+
+                    b.Property<string>("StaffCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("staff_code");
+
+                    b.HasIndex("StaffCode")
+                        .IsUnique();
 
                     b.ToTable("staff");
                 });
@@ -1031,14 +1029,10 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.Student", "Student")
-                        .WithMany()
+                        .WithMany("StudentExaminationSessions")
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("Domain.Entities.Student", null)
-                        .WithMany("StudentExaminationSessions")
-                        .HasForeignKey("StudentId1");
 
                     b.Navigation("ExaminationSession");
 
@@ -1053,6 +1047,12 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Domain.Entities.Student", "Student")
                         .WithMany("StudentSemesters")
                         .HasForeignKey("StudentId")
@@ -1060,6 +1060,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Semester");
+
+                    b.Navigation("Staff");
 
                     b.Navigation("Student");
                 });

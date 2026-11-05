@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class IntialDatabase : Migration
+    public partial class IntialStaffCode : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -139,7 +139,8 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    role = table.Column<int>(type: "integer", nullable: false)
+                    role = table.Column<int>(type: "integer", nullable: false),
+                    staff_code = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -187,9 +188,9 @@ namespace Infrastructure.Migrations
                     updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     is_deleted = table.Column<bool>(type: "boolean", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
-                    examination_id = table.Column<Guid>(type: "uuid", nullable: true),
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    examination_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -241,9 +242,7 @@ namespace Infrastructure.Migrations
                 {
                     student_id = table.Column<Guid>(type: "uuid", nullable: false),
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    lecturer_name = table.Column<string>(type: "text", nullable: false),
-                    lecturer_code = table.Column<string>(type: "text", nullable: false),
-                    class_code = table.Column<string>(type: "text", nullable: false)
+                    staff_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -253,6 +252,12 @@ namespace Infrastructure.Migrations
                         column: x => x.semester_id,
                         principalTable: "semesters",
                         principalColumn: "semester_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_student_semester_staff_staff_id",
+                        column: x => x.staff_id,
+                        principalTable: "staff",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_student_semester_students_student_id",
@@ -481,6 +486,7 @@ namespace Infrastructure.Migrations
                     grading_round = table.Column<int>(type: "integer", nullable: false),
                     total_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     general_feedback = table.Column<string>(type: "text", nullable: true),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     submission_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
@@ -649,6 +655,12 @@ namespace Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_staff_staff_code",
+                table: "staff",
+                column: "staff_code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_student_examination_sessions_examination_session_id",
                 table: "student_examination_sessions",
                 column: "examination_session_id");
@@ -662,6 +674,11 @@ namespace Infrastructure.Migrations
                 name: "IX_student_semester_semester_id",
                 table: "student_semester",
                 column: "semester_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_student_semester_staff_id",
+                table: "student_semester",
+                column: "staff_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_student_submission_examination_session_id",
