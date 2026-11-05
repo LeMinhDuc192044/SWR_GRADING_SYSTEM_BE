@@ -20,6 +20,10 @@ public sealed class UpdateExaminationRequestValidator : AbstractValidator<Update
             .Must(date => date is null || date.Value != default)
             .WithMessage("Examination start date is required.");
 
+        RuleFor(request => request.EndDate)
+            .Must((request, endDate) => endDate is null || endDate.Value != default)
+            .WithMessage("Examination end date is required.");
+
         RuleFor(request => request.DurationMinutes)
             .GreaterThan(0)
             .When(request => request.DurationMinutes.HasValue)

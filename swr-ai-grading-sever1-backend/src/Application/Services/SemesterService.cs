@@ -79,7 +79,7 @@ public class SemesterService : ISemesterService
         if (request.Status == SemesterStatus.Closed)
 			return Result<SemesterDTO>.Failure("Cannot create a semester with status 'Closed'.", "INVALID_SEMESTER_STATUS");
 
-            var now = DateTime.UtcNow;
+            var now = VietnamTime.Now;
 		var semester = new Semester
 		{
 			SemesterCode = code,
@@ -121,7 +121,7 @@ public class SemesterService : ISemesterService
 		semester.Name = name;
 		semester.StartDate = startDate;
 		semester.EndDate = endDate;
-		semester.UpdatedDay = DateTime.UtcNow;
+		semester.UpdatedDay = VietnamTime.Now;
 		if (request.Status.HasValue)
 			semester.Status = request.Status.Value;
 
@@ -140,7 +140,7 @@ public class SemesterService : ISemesterService
 			return Result<SemesterDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
 		semester.Status = request.Status;
-		semester.UpdatedDay = DateTime.UtcNow;
+		semester.UpdatedDay = VietnamTime.Now;
 		_repository.Update(semester);
 		await _unitOfWork.SaveChangesAsync(ct);
 		return Result<SemesterDTO>.Success(ToDto(semester));

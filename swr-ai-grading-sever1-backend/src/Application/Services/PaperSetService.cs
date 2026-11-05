@@ -265,14 +265,14 @@ public sealed class PaperSetService : IPaperSetService
             PaperSetCode = await GenerateCodeAsync(ct),
             Description = description.Trim(),
             TotalQuestions = questions.Count,
-            CreatedDate = DateTime.UtcNow,
-            UpdatedDate = DateTime.UtcNow,
+            CreatedDate = VietnamTime.Now,
+            UpdatedDate = VietnamTime.Now,
             Status = PaperSetStatus.Ready,
             SemesterId = semesterId,
             // CreateById = createdById
         };
 
-        var now = DateTime.UtcNow;
+        var now = VietnamTime.Now;
 
         // Parse Answer Rubric if present
         var rubricFile = files.FirstOrDefault(f => f.FileType == PaperSetFileType.AnswerRubric);
@@ -512,7 +512,7 @@ public sealed class PaperSetService : IPaperSetService
         var material = await FindAsync(id, ct);
         if (material is null) return Result.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
         foreach (var path in GetPaths(material).Values) await _storage.DeleteAsync(path, ct);
-        material.IsDeleted = true; material.Status = PaperSetStatus.Archived; material.UpdatedDate = DateTime.UtcNow;
+        material.IsDeleted = true; material.Status = PaperSetStatus.Archived; material.UpdatedDate = VietnamTime.Now;
         _repository.Update(material); await _unitOfWork.SaveChangesAsync(ct); return Result.Success();
     }
 

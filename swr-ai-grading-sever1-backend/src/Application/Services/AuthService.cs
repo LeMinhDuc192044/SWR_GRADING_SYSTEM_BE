@@ -95,8 +95,8 @@ public sealed class AuthService : IAuthService
                 Major = major,
                 IsActive = true,
                 IsDeleted = false,
-                CreatedDay = DateTime.UtcNow,
-                UpdatedDay = DateTime.UtcNow
+                CreatedDay = VietnamTime.Now,
+                UpdatedDay = VietnamTime.Now
             };
             user = registeredStudent;
         }
@@ -122,8 +122,8 @@ public sealed class AuthService : IAuthService
                 StaffCode = staffCode,
                 IsActive = true,
                 IsDeleted = false,
-                CreatedDay = DateTime.UtcNow,
-                UpdatedDay = DateTime.UtcNow
+                CreatedDay = VietnamTime.Now,
+                UpdatedDay = VietnamTime.Now
             };
             user = registeredStaff;
         }

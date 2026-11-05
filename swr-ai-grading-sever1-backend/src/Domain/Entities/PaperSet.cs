@@ -51,12 +51,6 @@ public class PaperSet
     [Column("status")]
     public PaperSetStatus Status { get; set; }
 
-    [Column("examination_id")]
-    [ForeignKey(nameof(Examination))]
-    public Guid? ExaminationId { get; set; }
-
-    public Examination Examination { get; set; } = null!;
-
     [Required]
     [Column("semester_id")]
     [ForeignKey(nameof(Semester))]
@@ -67,6 +61,12 @@ public class PaperSet
     [Required]
     [Column("uploaded_by_id")]
     public Guid UploadedById { get; set; }
+
+    [Column("examination_id")]
+    [ForeignKey(nameof(Examination))]
+    public Guid? ExaminationId { get; set; }
+
+    public Examination Examination { get; set; } = null!;
 
     [ForeignKey(nameof(UploadedById))]
     public Staff UploadedBy { get; set; } = null!;

@@ -248,7 +248,7 @@ app.MapGet("/health", () => Results.Ok(ApiResponse.Success(new
 {
     status = "healthy",
     server = "Backend.Server1",
-    time = DateTime.UtcNow
+    time = Application.Common.VietnamTime.Now
 })));
 
 app.Run();

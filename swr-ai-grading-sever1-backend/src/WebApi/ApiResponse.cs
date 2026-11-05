@@ -1,3 +1,5 @@
+using Application.Common;
+
 namespace WebApi;
 
 public sealed class ApiResponse<T>
@@ -9,7 +11,7 @@ public sealed class ApiResponse<T>
     public T? Data { get; init; }
     public object? Errors { get; init; }
     public string? TraceId { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; init; } = VietnamTime.Now;
 
     public static ApiResponse<T> Success(T? data, int code = 200, string message = "Thành công") => new()
     {

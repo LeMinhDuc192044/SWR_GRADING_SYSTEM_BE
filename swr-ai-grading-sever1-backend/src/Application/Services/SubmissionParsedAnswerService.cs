@@ -84,7 +84,7 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
             ElementId = request.ElementId,
             ExtractedText = request.ExtractedText,
             ExtractedImageUrl = request.ExtractedImageUrl,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = VietnamTime.Now
         };
         _db.SubmissionParsedAnswers.Add(answer);
         await _db.SaveChangesAsync(ct);
