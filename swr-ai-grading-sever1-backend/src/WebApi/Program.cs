@@ -33,6 +33,7 @@ builder.Services.AddDatabase();
 // Unit of Work + Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 var jwtSettings = new JwtSettings
 {

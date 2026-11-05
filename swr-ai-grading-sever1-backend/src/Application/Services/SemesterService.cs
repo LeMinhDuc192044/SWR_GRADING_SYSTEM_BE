@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Application.Common;
-using Application.DTOs.Examinations;
 using Application.DTOs.Semesters;
 using Application.Interfaces;
 using Domain.Entities;
@@ -190,21 +189,7 @@ public class SemesterService : ISemesterService
 			CreatedDay = semester.CreatedDay,
 			UpdatedDay = semester.UpdatedDay,
 			Status = semester.Status,
-			// Examinations = examinations.OrderBy(e => e.StartDate).ThenBy(e => e.StartTime).Select(e => new ExaminationDTO
-			// {
-			// 	ExaminationId = e.ExaminationId,
-			// 	ExaminationCode = e.ExaminationCode,
-			// 	Name = e.Name,
-			// 	ExaminationType = e.ExaminationType,
-			// 	StartDate = e.StartDate,
-			// 	StartTime = e.StartTime,
-			// 	DurationMinutes = e.DurationMinutes,
-			// 	BeforeTimeMinutes = e.BeforeTimeMinutes,
-			// 	Note = e.Note,
-			// 	Status = e.Status,
-			// 	SemesterId = e.SemesterId,
-			// 	PaperSetId = materials.FirstOrDefault(m => m.ExaminationId == e.ExaminationId)?.PaperSetId
-			// }).ToList(),
+
 			PaperSets = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterPaperSetDTO
 			{
 				PaperSetId = m.PaperSetId,

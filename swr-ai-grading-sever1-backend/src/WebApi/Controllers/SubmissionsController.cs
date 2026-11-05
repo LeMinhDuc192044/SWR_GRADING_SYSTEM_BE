@@ -1,6 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Application.Common;
+using Domain.Enums;
 using Application.Common.Interfaces;
 using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
@@ -12,7 +12,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/submissions")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
@@ -225,6 +225,6 @@ public sealed class SubmissionsController : ControllerBase
             return true;
 
         var roleStr = User.FindFirstValue(ClaimTypes.Role);
-        return roleStr == "2" || string.Equals(roleStr, "Admin", StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
+        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
     }
 }

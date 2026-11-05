@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using AI_Assisted_SWR_Grading_System.Domain.Enums;
+using Domain.Enums;
 
 namespace Domain.Entities;
 

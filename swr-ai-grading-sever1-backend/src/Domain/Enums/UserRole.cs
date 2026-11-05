@@ -1,4 +1,4 @@
-﻿namespace AI_Assisted_SWR_Grading_System.Domain.Enums;
+﻿namespace Domain.Enums;
 
 /// <summary>
 /// User role enumeration for role-based access control (RBAC)

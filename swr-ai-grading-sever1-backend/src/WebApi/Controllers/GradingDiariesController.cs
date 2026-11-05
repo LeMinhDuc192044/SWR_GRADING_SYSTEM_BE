@@ -6,12 +6,13 @@ using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Domain.Enums;
 
 namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/grading-diaries")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public sealed class GradingDiariesController : ControllerBase
 {
     private readonly IGradingDiaryService _service;
@@ -175,6 +176,6 @@ public sealed class GradingDiariesController : ControllerBase
             return true;
 
         var roleStr = User.FindFirstValue(ClaimTypes.Role);
-        return roleStr == "2" || string.Equals(roleStr, "Admin", StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
+        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
     }
 }

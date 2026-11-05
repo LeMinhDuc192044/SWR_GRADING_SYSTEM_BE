@@ -1,7 +1,5 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
-using AI_Assisted_SWR_Grading_System.Domain.Enums;
 using Application.Common;
 using Application.DTOs.Students;
 using Application.Interfaces;
@@ -63,7 +61,6 @@ public sealed class StudentService : IStudentService
             var email = worksheet.Cell(row, 3).GetString().Trim().ToLowerInvariant();
             var major = worksheet.Cell(row, 4).GetString().Trim();
             var birthdayRaw = worksheet.Cell(row, 5).GetString().Trim();
-            var cccd = worksheet.Cell(row, 6).GetString().Trim();
 
             // Nếu cả dòng đều trống thì bỏ qua
             if (string.IsNullOrWhiteSpace(studentCode) &&
@@ -104,13 +101,6 @@ public sealed class StudentService : IStudentService
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(cccd))
-            {
-                result.FailureCount++;
-                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "CCCD không được để trống." });
-                continue;
-            }
-
             // 2. Parse ngày sinh
             DateOnly birthday = default;
             var cell5 = worksheet.Cell(row, 5);
@@ -131,6 +121,13 @@ public sealed class StudentService : IStudentService
                         continue;
                     }
                 }
+            }
+
+            if (birthday == default)
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto { RowIndex = row, StudentCode = studentCode, Email = email, Reason = "Ngày sinh không được để trống." });
+                continue;
             }
 
             // 3. Check trùng lặp ngay trong file excel
@@ -167,6 +164,7 @@ public sealed class StudentService : IStudentService
             var rawPassword = GenerateSecurePassword(10);
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(rawPassword);
 
+            var now = DateTime.UtcNow;
             var student = new Student
             {
                 Id = Guid.NewGuid(),
@@ -177,7 +175,9 @@ public sealed class StudentService : IStudentService
                 Major = major,
                 PasswordHash = passwordHash,
                 IsActive = true,
-                IsDeleted = false
+                IsDeleted = false,
+                CreatedDay = now,
+                UpdatedDay = now
             };
 
             studentsToInsert.Add((student, rawPassword, row));
@@ -239,7 +239,6 @@ public sealed class StudentService : IStudentService
         worksheet.Cell(1, 3).Value = "Email (*)";
         worksheet.Cell(1, 4).Value = "Chuyên ngành (*)";
         worksheet.Cell(1, 5).Value = "Ngày sinh (yyyy-MM-dd) (*)";
-        worksheet.Cell(1, 6).Value = "CCCD (*)";
 
         // Style header
         var headerRange = worksheet.Range(1, 1, 1, 6);

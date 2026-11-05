@@ -10,7 +10,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/submission-parsed-answers")]
-[Authorize(Roles = "Lecturer,Admin")]
+[Authorize(Roles = "Examiner,Admin")]
 public sealed class SubmissionParsedAnswersController : ControllerBase
 {
     private readonly ISubmissionParsedAnswerService _service;

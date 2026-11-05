@@ -11,6 +11,12 @@ public sealed class UserRepository : Repository<User>, IUserRepository
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
         => _set.AsNoTracking().FirstOrDefaultAsync(user => user.Email == email, ct);
 
+    public Task<Student?> GetStudentByEmailAsync(string email, CancellationToken ct = default)
+        => _db.Students.AsNoTracking().FirstOrDefaultAsync(student => student.Email == email, ct);
+
+    public Task<Staff?> GetStaffByEmailAsync(string email, CancellationToken ct = default)
+        => _db.Staff.AsNoTracking().FirstOrDefaultAsync(staff => staff.Email == email, ct);
+
     // public Task<Lecturer?> GetLecturerByIdAsync(Guid id, CancellationToken ct = default)
     //     => _db.Lecturers.FirstOrDefaultAsync(lecturer => lecturer.Id == id, ct);
 

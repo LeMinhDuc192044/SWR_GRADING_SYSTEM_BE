@@ -11,7 +11,6 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/students")]
-[Authorize(Roles = "Admin")]
 public sealed class AdminStudentsController : ControllerBase
 {
     private readonly IStudentService _studentService;
