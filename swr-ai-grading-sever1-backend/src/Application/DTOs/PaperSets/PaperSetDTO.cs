@@ -15,7 +15,6 @@ public class PaperSetMetadataDTO
     public IReadOnlyList<PaperSetFileDTO> Files { get; set; } = [];
     public PaperSetStatus Status { get; set; }
     public Guid? ExaminationId { get; set; }
-    public Guid SemesterId { get; set; }
     public Guid CreateById { get; set; }
     public string LecturerName { get; set; } = string.Empty;
     public string LecturerCode { get; set; } = string.Empty;
@@ -68,7 +67,6 @@ public sealed class UpdatePaperSetRequest
 {
     public string? Description { get; set; }
     public int? TotalQuestions { get; set; }
-    public Guid? SemesterId { get; set; }
     public Guid? ExaminationId { get; set; }
     public PaperSetStatus? Status { get; set; }
 }
@@ -92,7 +90,6 @@ public class AddPaperSetFilesRequest
 public class CreatePaperSetRequest
 {
     public string Description { get; set; } = string.Empty;
-    public Guid SemesterId { get; set; }
     // public int TotalQuestions { get; set; }
     public List<CreateQuestionRequest> Questions { get; set; } = new();
     public IFormFile? Question { get; set; }
@@ -103,7 +100,6 @@ public class CreatePaperSetRequest
 public sealed class CreatePaperSetsRequest
 {
     public string Description { get; set; } = string.Empty;
-    public Guid SemesterId { get; set; }
     public List<CreatePaperSetItemRequest> Materials { get; set; } = new();
 }
 

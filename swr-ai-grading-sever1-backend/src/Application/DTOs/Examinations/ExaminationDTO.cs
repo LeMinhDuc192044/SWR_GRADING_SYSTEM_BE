@@ -18,7 +18,6 @@ public class ExaminationDTO
     public DateTime UpdatedDay { get; set; }
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
-    public Guid? PaperSetId { get; set; }
     public IReadOnlyList<Guid> PaperSetIds { get; set; } = [];
 }
 
@@ -34,7 +33,11 @@ public class CreateExaminationRequest
     public string? Note { get; set; }
     public ExaminationStatus Status { get; set; } = ExaminationStatus.Draft;
     public Guid SemesterId { get; set; }
-    public Guid PaperSetId { get; set; }
+    public List<Guid> PaperSetIds { get; set; } = [];
+}
+
+public sealed class AddPaperSetsToExaminationRequest
+{
     public List<Guid> PaperSetIds { get; set; } = [];
 }
 

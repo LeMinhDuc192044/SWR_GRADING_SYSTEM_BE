@@ -52,13 +52,6 @@ public class PaperSet
     public PaperSetStatus Status { get; set; }
 
     [Required]
-    [Column("semester_id")]
-    [ForeignKey(nameof(Semester))]
-    public Guid SemesterId { get; set; }
-
-    public Semester Semester { get; set; } = null!;
-
-    [Required]
     [Column("uploaded_by_id")]
     public Guid UploadedById { get; set; }
 

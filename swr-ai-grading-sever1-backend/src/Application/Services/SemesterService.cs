@@ -64,8 +64,7 @@ public class SemesterService : ISemesterService
 		var semester = await _repository.GetByIdAsync(id, ct);
 		return semester is null
 			? Result<SemesterDetailDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND")
-			: Result<SemesterDetailDTO>.Success(await ToDetailDtoAsync(semester, ct));
-	}
+				}
 
 	public async Task<Result<SemesterDTO>> CreateAsync(CreateSemesterRequest request, CancellationToken ct = default)
 	{
@@ -428,37 +427,4 @@ public class SemesterService : ISemesterService
 		UpdatedDay = semester.UpdatedDay,
 		Status = semester.Status
 	};
-
-	private async Task<SemesterDetailDTO> ToDetailDtoAsync(Semester semester, CancellationToken ct)
-	{
-		var examinations = await _examinationRepository.FindAsync(e => e.SemesterId == semester.SemesterId, ct);
-		var materials = await _paperSetRepository.FindAsync(m => m.SemesterId == semester.SemesterId && !m.IsDeleted, ct);
-
-		return new SemesterDetailDTO
-		{
-			SemesterId = semester.SemesterId,
-			SemesterCode = semester.SemesterCode,
-			Name = semester.Name,
-			StartDate = semester.StartDate,
-			EndDate = semester.EndDate,
-			CreatedDay = semester.CreatedDay,
-			UpdatedDay = semester.UpdatedDay,
-			Status = semester.Status,
-
-			PaperSets = materials.OrderByDescending(m => m.CreatedDate).Select(m => new SemesterPaperSetDTO
-			{
-				PaperSetId = m.PaperSetId,
-				PaperSetCode = m.PaperSetCode,
-				Description = m.Description,
-				TotalQuestions = m.TotalQuestions,
-				Status = m.Status,
-				ExaminationId = m.ExaminationId,
-				CreatedDate = m.CreatedDate,
-				UpdatedDate = m.UpdatedDate,
-				FileQuestionDocs = m.FileQuestionDocs,
-				FileAnswerRubric = m.FileAnswerRubric,
-				FileAnswerTemplate = m.FileAnswerTemplate
-			}).ToList()
-		};
-	}
 }

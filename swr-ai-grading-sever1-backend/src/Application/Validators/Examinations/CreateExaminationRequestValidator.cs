@@ -38,9 +38,5 @@ public sealed class CreateExaminationRequestValidator : AbstractValidator<Create
         RuleFor(request => request.SemesterId)
             .NotEmpty()
             .WithMessage("Semester is required.");
-
-        RuleFor(request => request)
-            .Must(request => request.PaperSetId != Guid.Empty || request.PaperSetIds.Count > 0)
-            .WithMessage("At least one paper set is required.");
     }
 }

@@ -32,7 +32,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    // [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create(
         [FromBody] CreateExaminationRequest request,
         CancellationToken ct)
@@ -58,6 +58,23 @@ public class ExaminationsController : ControllerBase
         if (result.ErrorCode is "EXAMINATION_NOT_FOUND" or "SEMESTER_NOT_FOUND" or "PAPER_SET_NOT_FOUND" or "PAPER_SET_SEMESTER_MISMATCH")
             return NotFound(ApiResponse.Failure(404, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));
+    }
+
+    [HttpPost("{id:guid}/paper-sets")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AddPaperSets(
+        Guid id,
+        [FromBody] AddPaperSetsToExaminationRequest request,
+        CancellationToken ct)
+    {
+        var result = await _service.AddPaperSetsAsync(id, request, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+        if (result.ErrorCode == "EXAMINATION_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+        if (result.ErrorCode is "PAPER_SET_NOT_FOUND" or "PAPER_SET_SEMESTER_MISMATCH")
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpDelete("{id:guid}")]
