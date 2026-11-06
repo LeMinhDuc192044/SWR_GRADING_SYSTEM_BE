@@ -26,6 +26,7 @@ public sealed class SubmissionsController : ControllerBase
     /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
     /// </summary>
     [HttpPost("upload")]
+    [Authorize(Roles = "Examiner")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(524_288_000)]
     public async Task<IActionResult> Upload(

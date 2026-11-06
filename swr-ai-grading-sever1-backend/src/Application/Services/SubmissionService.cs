@@ -45,10 +45,11 @@ public sealed class SubmissionService : ISubmissionService
             .ToListAsync(ct);
 
         var students = await _db.Students.AsNoTracking().Where(student => !student.IsDeleted).ToListAsync(ct);
-        var staff = await _db.Staff.AsNoTracking().FirstOrDefaultAsync(item => item.Id == currentUserId, ct)
-            ?? await _db.Staff.AsNoTracking().FirstOrDefaultAsync(ct);
+        var staff = await _db.Staff.AsNoTracking().FirstOrDefaultAsync(item => item.Id == currentUserId, ct);
         if (staff is null)
-            return Result<UploadSubmissionsResultDTO>.Failure("No staff user is available to upload submissions.", "STAFF_NOT_FOUND");
+            return Result<UploadSubmissionsResultDTO>.Failure("The current user is not a staff member.", "STAFF_NOT_FOUND");
+        if (staff.Role != UserRole.Examiner)
+            return Result<UploadSubmissionsResultDTO>.Failure("Only examiners can upload submissions.", "FORBIDDEN");
 
         foreach (var file in files)
         {
