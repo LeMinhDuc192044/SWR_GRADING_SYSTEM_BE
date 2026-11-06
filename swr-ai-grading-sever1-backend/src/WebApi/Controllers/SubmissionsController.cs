@@ -12,7 +12,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/submissions")]
-[Authorize(Roles = "Examiner,Admin")]
+// [Authorize(Roles = "Examiner,Admin")]
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
@@ -25,17 +25,15 @@ public sealed class SubmissionsController : ControllerBase
     /// <summary>
     /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
     /// </summary>
-    [HttpPost("~/api/grading-diaries/{diaryId:guid}/submissions/upload")]
+    [HttpPost("upload")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(524_288_000)]
     public async Task<IActionResult> Upload(
-        [FromRoute] Guid diaryId,
         [FromForm] List<IFormFile> files,
+        [FromQuery] Guid? examinationSessionId,
         CancellationToken ct)
     {
-        if (diaryId == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
-
+        
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
@@ -43,13 +41,10 @@ public sealed class SubmissionsController : ControllerBase
             return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx hoặc .rar bài làm của sinh viên."));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
-        var result = await _submissionService.UploadSubmissionsAsync(diaryId, docFiles, userId, ct);
+        var result = await _submissionService.UploadSubmissionsAsync(docFiles, userId, examinationSessionId, ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
 
         if (result.ErrorCode == "FORBIDDEN")
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
@@ -58,26 +53,18 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách toàn bộ bài nộp trong sổ chấm (Grading Diary).
+    /// Lấy danh sách toàn bộ bài nộp.
     /// </summary>
-    [HttpGet("~/api/grading-diaries/{diaryId:guid}/submissions")]
-    public async Task<IActionResult> GetList(
-        [FromRoute] Guid diaryId,
-        CancellationToken ct)
+    [HttpGet]
+    public async Task<IActionResult> GetList(CancellationToken ct)
     {
-        if (diaryId == Guid.Empty)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng cung cấp diaryId hợp lệ trên URL route."));
-
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
-        var result = await _submissionService.GetListByDiaryIdAsync(diaryId, userId, IsElevatedRole(), ct);
+        var result = await _submissionService.GetListAsync(userId, IsElevatedRole(), ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "DIARY_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
 
         if (result.ErrorCode == "FORBIDDEN")
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));

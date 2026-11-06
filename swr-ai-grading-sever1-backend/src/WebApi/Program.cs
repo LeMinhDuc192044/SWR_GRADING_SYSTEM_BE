@@ -120,7 +120,7 @@ builder.Services.AddScoped<IExaminationRepository, ExaminationRepository>();
 builder.Services.AddScoped<IPaperSetService, PaperSetService>();
 builder.Services.AddScoped<IPaperSetRepository, PaperSetRepository>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
-// builder.Services.AddScoped<ISubmissionService, SubmissionService>();
+builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ISubmissionParsedAnswerService, SubmissionParsedAnswerService>();
 // Smtp Settings
 builder.Services.Configure<SmtpSettings>(options =>

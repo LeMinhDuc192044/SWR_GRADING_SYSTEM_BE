@@ -10,12 +10,20 @@ internal static class SubmissionArchive
     public const long MaxArchiveBytes = 100 * 1024 * 1024;
     private const long MaxWordDocumentBytes = 50 * 1024 * 1024;
     private const long MaxDiagramBytes = 2 * 1024 * 1024;
+    private const long MaxImageBytes = 20 * 1024 * 1024;
     private static readonly HashSet<string> DiagramExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".drawio", ".io", ".xml", ".puml", ".plantuml"
+        ".drawio", ".dio", ".xml", ".puml", ".plantuml"
+    };
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"
     };
 
-    public sealed record Content(byte[] WordDocument, IReadOnlyDictionary<string, string> DiagramSources);
+    public sealed record Content(
+        byte[]? WordDocument,
+        IReadOnlyDictionary<string, string> DiagramSources,
+        IReadOnlyDictionary<string, byte[]> ImageSources);
 
     public static Content Read(Stream archiveStream)
     {
@@ -23,30 +31,53 @@ internal static class SubmissionArchive
         var entries = archive.Entries.Where(entry => !entry.IsDirectory).ToList();
         byte[]? wordDocument = null;
         var diagramSources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var imageSources = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entries)
         {
-            var extension = Path.GetExtension(entry.Key ?? string.Empty);
+            var fileName = Path.GetFileName(entry.Key ?? string.Empty);
+            var extension = Path.GetExtension(fileName);
+            var baseName = Path.GetFileNameWithoutExtension(fileName);
+
             if (string.Equals(extension, ".docx", StringComparison.OrdinalIgnoreCase) && wordDocument is null)
             {
                 wordDocument = ReadEntry(entry, MaxWordDocumentBytes);
             }
             else if (DiagramExtensions.Contains(extension))
             {
-                var diagramName = GetQuestionKey(Path.GetFileNameWithoutExtension(entry.Key ?? string.Empty));
-                if (!diagramSources.TryAdd(diagramName, Encoding.UTF8.GetString(ReadEntry(entry, MaxDiagramBytes))))
-                    throw new InvalidDataException($"Archive RAR chứa nhiều file sơ đồ có cùng tên '{diagramName}'.");
+                var diagramName = GetQuestionKey(baseName);
+                var source = Encoding.UTF8.GetString(ReadEntry(entry, MaxDiagramBytes));
+                if (string.Equals(extension, ".puml", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(extension, ".plantuml", StringComparison.OrdinalIgnoreCase))
+                    source = ConvertPlantUmlToXml(diagramName, source);
+
+                if (!diagramSources.TryAdd(diagramName, source))
+                    throw new InvalidDataException($"Archive chứa nhiều file sơ đồ có cùng tên câu hỏi '{diagramName}'.");
             }
-            else
+            else if (ImageExtensions.Contains(extension))
             {
-                throw new InvalidDataException("Archive RAR phải chứa đúng một file .docx và một file sơ đồ (.drawio, .xml, .puml hoặc .plantuml).");
+                var imageKey = GetQuestionKey(baseName);
+                if (!imageSources.TryAdd(imageKey, ReadEntry(entry, MaxImageBytes)))
+                    throw new InvalidDataException($"Archive chứa nhiều file hình ảnh có cùng tên câu hỏi '{imageKey}'.");
             }
         }
 
-        if (wordDocument is null)
-            throw new InvalidDataException("Archive RAR phải chứa một file .docx.");
+        if (wordDocument is null && diagramSources.Count == 0 && imageSources.Count == 0)
+            throw new InvalidDataException("Archive phải chứa ít nhất một file .docx, sơ đồ hoặc hình ảnh.");
 
-        return new Content(wordDocument, diagramSources);
+        return new Content(wordDocument, diagramSources, imageSources);
+    }
+
+    private static string ConvertPlantUmlToXml(string questionKey, string plantUml)
+    {
+        var escaped = SecurityElementEscape(plantUml);
+        return $"<plantuml question=\"{questionKey}\"><source>{escaped}</source></plantuml>";
+    }
+
+    private static string SecurityElementEscape(string text)
+    {
+        return text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
+            .Replace("\"", "&quot;").Replace("'", "&apos;");
     }
 
     internal static string GetQuestionKey(string name)

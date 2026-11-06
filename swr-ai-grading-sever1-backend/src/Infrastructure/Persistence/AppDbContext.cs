@@ -138,8 +138,14 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<ExaminationSession>()
-            .HasOne(session => session.PaperSet)
+            .HasOne(session => session.Semester)
             .WithMany()
+            .HasForeignKey(session => session.SemesterId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<ExaminationSession>()
+            .HasOne(session => session.PaperSet)
+            .WithMany(paperSet => paperSet.ExaminationSessions)
             .HasForeignKey(session => session.PaperSetId)
             .OnDelete(DeleteBehavior.SetNull);
 

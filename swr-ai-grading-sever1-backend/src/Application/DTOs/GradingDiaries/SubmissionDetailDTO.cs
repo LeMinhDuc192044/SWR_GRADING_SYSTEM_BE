@@ -57,16 +57,9 @@ public sealed class SubmissionDetailDTO
     public string SubmissionFile { get; set; } = string.Empty;
     public string? FilePath { get; set; }
     public Guid StudentId { get; set; }
-    public Guid DiaryId { get; set; }
     public Guid StudentExaminationId { get; set; }
-    public string DiaryName { get; set; } = string.Empty;
     public string StudentCode { get; set; } = string.Empty;
     public string StudentName { get; set; } = string.Empty;
-    public decimal? AiScore { get; set; }
-    public string? AiLogs { get; set; }
-    public decimal? LecturerScore { get; set; }
-    public string Comment { get; set; } = string.Empty;
-    public bool IsFinalScore { get; set; }
     public SubmissionStatus Status { get; set; }
     public string StatusName => Status.ToString();
     public IReadOnlyList<CriterionScoreDto> CriteriaScores { get; set; } = Array.Empty<CriterionScoreDto>();

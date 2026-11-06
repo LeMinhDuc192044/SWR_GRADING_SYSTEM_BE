@@ -8,24 +8,13 @@ public interface ISubmissionService
 {
     // FLOW 1: Upload Submission(s)
     Task<Result<UploadSubmissionsResultDTO>> UploadSubmissionsAsync(
-        Guid diaryId,
         IReadOnlyList<IDocumentFile> files,
         Guid currentUserId,
+        Guid? examinationSessionId = null,
         CancellationToken ct = default
     );
 
-    // List submissions under a diary
-    Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListByDiaryIdAsync(
-        Guid diaryId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
-    // Get submission detail under a diary
-    Task<Result<SubmissionDetailDTO>> GetDetailAsync(
-        Guid diaryId,
-        Guid submissionId,
+    Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListAsync(
         Guid currentUserId,
         bool isElevatedRole,
         CancellationToken ct = default
@@ -40,14 +29,6 @@ public interface ISubmissionService
 
     // FLOW 2: AI Grading
     Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
-        Guid diaryId,
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
-    Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(
         Guid submissionId,
         Guid currentUserId,
         bool isElevatedRole,
@@ -55,15 +36,6 @@ public interface ISubmissionService
     );
 
     // FLOW 3: Lecturer Review
-    Task<Result<SubmissionDetailDTO>> ReviewAsync(
-        Guid diaryId,
-        Guid submissionId,
-        ReviewSubmissionRequest request,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
     Task<Result<SubmissionDetailDTO>> ReviewAsync(
         Guid submissionId,
         ReviewSubmissionRequest request,
@@ -90,14 +62,6 @@ public interface ISubmissionService
     );
 
     // FLOW 3: Finalize
-    Task<Result<SubmissionDetailDTO>> FinalizeAsync(
-        Guid diaryId,
-        Guid submissionId,
-        Guid currentUserId,
-        bool isElevatedRole,
-        CancellationToken ct = default
-    );
-
     Task<Result<SubmissionDetailDTO>> FinalizeAsync(
         Guid submissionId,
         Guid currentUserId,
