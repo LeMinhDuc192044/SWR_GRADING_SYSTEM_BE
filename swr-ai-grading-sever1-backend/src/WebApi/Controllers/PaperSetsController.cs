@@ -147,7 +147,6 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.CreateAsync(request.Description, request.Questions.Select(ToQuestionInput).ToList(), uploads, userId, ct);
 
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode == "SEMESTER_NOT_FOUND") return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
@@ -173,8 +172,6 @@ public sealed class PaperSetsController : ControllerBase
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
         if (result.ErrorCode == "LECTURER_REQUIRED")
             return StatusCode(403, ApiResponse.Failure(403, result.Error!));
         return BadRequest(ApiResponse.Failure(400, result.Error!));

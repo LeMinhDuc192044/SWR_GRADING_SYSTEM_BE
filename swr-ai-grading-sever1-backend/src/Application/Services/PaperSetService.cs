@@ -21,7 +21,6 @@ public sealed class PaperSetService : IPaperSetService
     };
     private readonly IPaperSetRepository _repository;
     private readonly IExaminationRepository _examinationRepository;
-    private readonly ISemesterRepository _semesterRepository;
     private readonly ISupabaseStorage _storage;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUserRepository _userRepository;
@@ -30,7 +29,6 @@ public sealed class PaperSetService : IPaperSetService
     public PaperSetService(
         IPaperSetRepository repository,
         IExaminationRepository examinationRepository,
-        ISemesterRepository semesterRepository,
         ISupabaseStorage storage,
         IUnitOfWork unitOfWork,
         IUserRepository userRepository,
@@ -38,7 +36,6 @@ public sealed class PaperSetService : IPaperSetService
     {
         _repository = repository;
         _examinationRepository = examinationRepository;
-        _semesterRepository = semesterRepository;
         _storage = storage;
         _unitOfWork = unitOfWork;
         _userRepository = userRepository;
@@ -457,18 +454,6 @@ public sealed class PaperSetService : IPaperSetService
         return digits.Success ? digits.Value : raw.Trim();
     }
 
-    private async Task<Result> ValidateSemesterForUploadAsync(Guid semesterId, CancellationToken ct)
-    {
-        var semester = await _semesterRepository.GetByIdAsync(semesterId, ct);
-        if (semester is null)
-            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-
-        if (semester.Status == SemesterStatus.Closed)
-            return Result.Failure("Cannot upload paper sets to a closed semester.", "SEMESTER_CLOSED");
-
-        return Result.Success();
-    }
-
     public async Task<Result<PaperSetMetadataDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default)
     {
         var material = await FindAsync(id, ct);
@@ -489,12 +474,14 @@ public sealed class PaperSetService : IPaperSetService
         if (request.Status.HasValue && !Enum.IsDefined(request.Status.Value)) return Result<PaperSetMetadataDTO>.Failure("Invalid paper set status.", "INVALID_STATUS");
         if (request.TotalQuestions is < 0) return Result<PaperSetMetadataDTO>.Failure("Total questions cannot be negative.", "INVALID_TOTAL_QUESTIONS");
 
-        var semesterId = request.SemesterId ?? material.SemesterId;
         var examinationId = request.ExaminationId ?? material.ExaminationId;
-        var relationshipResult = await ValidateRelationshipAsync(semesterId, examinationId, ct);
-        if (!relationshipResult.IsSuccess) return Result<PaperSetMetadataDTO>.Failure(relationshipResult.Error!, relationshipResult.ErrorCode);
+        if (examinationId.HasValue)
+        {
+            var examination = await _examinationRepository.GetByIdAsync(examinationId.Value, ct);
+            if (examination is null)
+                return Result<PaperSetMetadataDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
+        }
 
-        material.SemesterId = semesterId;
         material.ExaminationId = examinationId;
         if (request.Description is not null) material.Description = request.Description.Trim();
         if (request.TotalQuestions.HasValue) material.TotalQuestions = request.TotalQuestions.Value;
@@ -568,18 +555,12 @@ public sealed class PaperSetService : IPaperSetService
             if (!validation.IsSuccess) return validation;
         }
 
-        var semester = await _semesterRepository.GetByIdAsync(material.SemesterId, ct);
-        if (semester is null)
-            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-
-        var semesterFolder = NormalizeStorageSegment(semester.Name);
-
         var uploaded = new List<string>();
         try
         {
             foreach (var file in files)
             {
-                var path = $"examinations/{semesterFolder}/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
+                var path = $"paper-sets/{material.PaperSetCode}/{GetTypeCode(file.FileType)}/{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
                 try
                 {
                     await _storage.UploadAsync(path, file.Content, file.ContentType, ct);
@@ -636,17 +617,6 @@ public sealed class PaperSetService : IPaperSetService
             : Result.Failure($"The {file.FileType} file must be a Word document or Excel spreadsheet with a valid extension.", "INVALID_FILE_TYPE");
     }
 
-    private async Task<Result> ValidateRelationshipAsync(Guid semesterId, Guid? examinationId, CancellationToken ct)
-    {
-        if (await _semesterRepository.GetByIdAsync(semesterId, ct) is null)
-            return Result.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-        if (examinationId is null) return Result.Success();
-        var examination = await _examinationRepository.GetByIdAsync(examinationId.Value, ct);
-        if (examination is null) return Result.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
-        return examination.SemesterId == semesterId
-            ? Result.Success()
-            : Result.Failure("Examination does not belong to the selected semester.", "EXAMINATION_SEMESTER_MISMATCH");
-    }
     private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"PS{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
     private static string NormalizeStorageSegment(string value) => value.Trim().Replace('/', '-').Replace('\\', '-');
 
@@ -791,7 +761,6 @@ public sealed class PaperSetService : IPaperSetService
             Files = files,
             Status = material.Status,
             ExaminationId = material.ExaminationId,
-            SemesterId = material.SemesterId,
             // CreateById = material.CreateById,
             // LecturerName = material.CreateBy?.FullName ?? string.Empty,
             // LecturerCode = material.CreateBy?.LecturerCode ?? string.Empty,

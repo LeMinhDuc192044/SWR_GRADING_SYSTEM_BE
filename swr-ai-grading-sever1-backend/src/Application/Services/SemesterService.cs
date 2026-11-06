@@ -64,7 +64,8 @@ public class SemesterService : ISemesterService
 		var semester = await _repository.GetByIdAsync(id, ct);
 		return semester is null
 			? Result<SemesterDetailDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND")
-				}
+			: Result<SemesterDetailDTO>.Success(await ToDetailDtoAsync(semester, ct));
+	}
 
 	public async Task<Result<SemesterDTO>> CreateAsync(CreateSemesterRequest request, CancellationToken ct = default)
 	{
@@ -400,6 +401,23 @@ public class SemesterService : ISemesterService
 		result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = row, StudentCode = studentCode, Reason = reason });
 	}
 
+
+	private Task<SemesterDetailDTO> ToDetailDtoAsync(Semester semester, CancellationToken ct)
+	{
+		return Task.FromResult(new SemesterDetailDTO
+		{
+			SemesterId = semester.SemesterId,
+			SemesterCode = semester.SemesterCode,
+			Name = semester.Name,
+			StartDate = semester.StartDate,
+			EndDate = semester.EndDate,
+			CreatedDay = semester.CreatedDay,
+			UpdatedDay = semester.UpdatedDay,
+			Status = semester.Status,
+			Examinations = [],
+			PaperSets = []
+		});
+	}
 
 	private static string? Validate(string code, string name, DateOnly startDate, DateOnly endDate)
 	{

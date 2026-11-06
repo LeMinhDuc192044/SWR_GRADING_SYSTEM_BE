@@ -415,10 +415,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("paper_set_code");
 
-                    b.Property<Guid>("SemesterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("semester_id");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -438,8 +434,6 @@ namespace Infrastructure.Migrations
                     b.HasKey("PaperSetId");
 
                     b.HasIndex("ExaminationId");
-
-                    b.HasIndex("SemesterId");
 
                     b.HasIndex("UploadedById");
 
@@ -970,12 +964,6 @@ namespace Infrastructure.Migrations
                         .WithMany("PaperSets")
                         .HasForeignKey("ExaminationId");
 
-                    b.HasOne("Domain.Entities.Semester", "Semester")
-                        .WithMany()
-                        .HasForeignKey("SemesterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Domain.Entities.Staff", "UploadedBy")
                         .WithMany("UploadedPaperSets")
                         .HasForeignKey("UploadedById")
@@ -983,8 +971,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Examination");
-
-                    b.Navigation("Semester");
 
                     b.Navigation("UploadedBy");
                 });

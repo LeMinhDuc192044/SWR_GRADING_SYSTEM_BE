@@ -140,13 +140,6 @@ public class ExaminationService : IExaminationService
         var linkedMaterials = await _paperSetRepository.FindAsync(
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
             ct);
-        if (linkedMaterials.Any(material => material.SemesterId != semesterId))
-        {
-            return Result<ExaminationDTO>.Failure(
-                "Examination semester must match the semester of its paper set.",
-                "PAPER_SET_SEMESTER_MISMATCH");
-        }
-
 
         var requestedPaperSetIds = request.PaperSetIds is not null || request.PaperSetId.HasValue
             ? GetRequestedPaperSetIds(request.PaperSetIds, request.PaperSetId)
@@ -301,8 +294,6 @@ public class ExaminationService : IExaminationService
     {
         if (material is null || material.IsDeleted)
             return ("Paper set not found.", "PAPER_SET_NOT_FOUND");
-        if (material.SemesterId != semesterId)
-            return ("Paper set does not belong to the selected semester.", "PAPER_SET_SEMESTER_MISMATCH");
         return null;
     }
 
