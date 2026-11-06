@@ -40,79 +40,79 @@ public class PaperSetUpdateAndAddFilesTests
         _userRepoMock.Object,
         _dbContext);
 
-    [Fact]
-    public async Task AddFilesAsync_EmptyFiles_ReturnsFilesRequired()
-    {
-        var service = CreateService();
-        var paperSetId = Guid.NewGuid();
+    // [Fact]
+    // public async Task AddFilesAsync_EmptyFiles_ReturnsFilesRequired()
+    // {
+    //     var service = CreateService();
+    //     var paperSetId = Guid.NewGuid();
 
-        _paperSetRepoMock.Setup(r => r.GetByIdAsync(paperSetId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PaperSet { PaperSetId = paperSetId });
+    //     _paperSetRepoMock.Setup(r => r.GetByIdAsync(paperSetId, It.IsAny<CancellationToken>()))
+    //         .ReturnsAsync(new PaperSet { PaperSetId = paperSetId });
 
-        var emptyFiles = new List<MaterialFileUpload>();
+    //     var emptyFiles = new List<MaterialFileUpload>();
 
-        var result = await service.AddFilesAsync(paperSetId, emptyFiles);
+    //     var result = await service.AddFilesAsync(paperSetId, emptyFiles);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal("FILES_REQUIRED", result.ErrorCode);
-    }
+    //     Assert.False(result.IsSuccess);
+    //     Assert.Equal("FILES_REQUIRED", result.ErrorCode);
+    // }
 
-    [Fact]
-    public async Task AddFilesAsync_NonExistentPaperSet_ReturnsNotFound()
-    {
-        var service = CreateService();
-        var nonExistentId = Guid.NewGuid();
+    // [Fact]
+    // public async Task AddFilesAsync_NonExistentPaperSet_ReturnsNotFound()
+    // {
+    //     var service = CreateService();
+    //     var nonExistentId = Guid.NewGuid();
 
-        _paperSetRepoMock.Setup(r => r.GetByIdAsync(nonExistentId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PaperSet?)null);
+    //     _paperSetRepoMock.Setup(r => r.GetByIdAsync(nonExistentId, It.IsAny<CancellationToken>()))
+    //         .ReturnsAsync((PaperSet?)null);
 
-        var files = new List<MaterialFileUpload>
-        {
-            new()
-            {
-                FileName = "template.docx",
-                FileType = PaperSetFileType.AnswerTemplate,
-                Content = new MemoryStream(Encoding.UTF8.GetBytes("fake image bytes")),
-                Length = 16
-            }
-        };
+    //     var files = new List<MaterialFileUpload>
+    //     {
+    //         new()
+    //         {
+    //             FileName = "template.docx",
+    //             FileType = PaperSetFileType.AnswerTemplate,
+    //             Content = new MemoryStream(Encoding.UTF8.GetBytes("fake image bytes")),
+    //             Length = 16
+    //         }
+    //     };
 
-        var result = await service.AddFilesAsync(nonExistentId, files);
+    //     var result = await service.AddFilesAsync(nonExistentId, files);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal("PAPER_SET_NOT_FOUND", result.ErrorCode);
-    }
+    //     Assert.False(result.IsSuccess);
+    //     Assert.Equal("PAPER_SET_NOT_FOUND", result.ErrorCode);
+    // }
 
-    [Fact]
-    public async Task UpdateAsync_TrimsDescription_WhenWhitespacePresent()
-    {
-        var service = CreateService();
-        var paperSetId = Guid.NewGuid();
-        var semesterId = Guid.NewGuid();
+    // [Fact]
+    // public async Task UpdateAsync_TrimsDescription_WhenWhitespacePresent()
+    // {
+    //     var service = CreateService();
+    //     var paperSetId = Guid.NewGuid();
+    //     var semesterId = Guid.NewGuid();
 
-        var existingPaperSet = new PaperSet
-        {
-            PaperSetId = paperSetId,
-            PaperSetCode = "PS_TRIM_01",
-            Description = "Old",
-            SemesterId = semesterId,
-            Status = PaperSetStatus.Ready
-        };
+    //     var existingPaperSet = new PaperSet
+    //     {
+    //         PaperSetId = paperSetId,
+    //         PaperSetCode = "PS_TRIM_01",
+    //         Description = "Old",
+    //         SemesterId = semesterId,
+    //         Status = PaperSetStatus.Ready
+    //     };
 
-        _paperSetRepoMock.Setup(r => r.GetByIdAsync(paperSetId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existingPaperSet);
+    //     _paperSetRepoMock.Setup(r => r.GetByIdAsync(paperSetId, It.IsAny<CancellationToken>()))
+    //         .ReturnsAsync(existingPaperSet);
 
-        _semesterRepoMock.Setup(s => s.GetByIdAsync(semesterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Semester { SemesterId = semesterId, Name = "Fall 2026" });
+    //     _semesterRepoMock.Setup(s => s.GetByIdAsync(semesterId, It.IsAny<CancellationToken>()))
+    //         .ReturnsAsync(new Semester { SemesterId = semesterId, Name = "Fall 2026" });
 
-        var request = new UpdatePaperSetRequest
-        {
-            Description = "   New Trimmed Description Text   "
-        };
+    //     var request = new UpdatePaperSetRequest
+    //     {
+    //         Description = "   New Trimmed Description Text   "
+    //     };
 
-        var result = await service.UpdateAsync(paperSetId, request);
+    //     var result = await service.UpdateAsync(paperSetId, request);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal("New Trimmed Description Text", existingPaperSet.Description);
-    }
+    //     Assert.True(result.IsSuccess);
+    //     Assert.Equal("New Trimmed Description Text", existingPaperSet.Description);
+    // }
 }

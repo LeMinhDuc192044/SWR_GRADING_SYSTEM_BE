@@ -6,6 +6,7 @@ using Application.Interfaces;
 using ClosedXML.Excel;
 using Domain.Entities;
 using Domain.Enums;
+using Application.DTOs.AuthDTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;
@@ -18,6 +19,7 @@ public class SemesterService : ISemesterService
 	private readonly IUserRepository _userRepository;
 	private readonly IApplicationDbContext _dbContext;
 	private readonly IUnitOfWork _unitOfWork;
+	private readonly IAuthService _authService;
 
 	public SemesterService(
 		ISemesterRepository repository,
@@ -25,7 +27,8 @@ public class SemesterService : ISemesterService
 		IPaperSetRepository paperSetRepository,
 		IUserRepository userRepository,
 		IApplicationDbContext dbContext,
-		IUnitOfWork unitOfWork)
+		IUnitOfWork unitOfWork,
+		IAuthService authService)
 	{
 		_repository = repository;
 		_examinationRepository = examinationRepository;
@@ -33,6 +36,7 @@ public class SemesterService : ISemesterService
 		_userRepository = userRepository;
 		_dbContext = dbContext;
 		_unitOfWork = unitOfWork;
+		_authService = authService;
 	}
 
 	public async Task<PagedResult<SemesterDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
@@ -160,204 +164,208 @@ public class SemesterService : ISemesterService
 		return Result.Success();
 	}
 
-	// public async Task<Result<StudentSemesterImportResultDto>> AddStudentsAsync(Guid semesterId, IReadOnlyList<AddStudentToSemesterRequest> requests, CancellationToken ct = default)
-	// {
-	// 	var semester = await _repository.GetByIdAsync(semesterId, ct);
-	// 	if (semester is null)
-	// 		return Result<StudentSemesterImportResultDto>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-	// 	if (requests is null || requests.Count == 0)
-	// 		return Result<StudentSemesterImportResultDto>.Failure("At least one student is required.", "INVALID_STUDENT_SEMESTER");
+	public async Task<Result<StudentSemesterImportResultDto>> AddStudentsAsync(Guid semesterId, IReadOnlyList<AddStudentToSemesterRequest> requests, CancellationToken ct = default)
+	{
+		if (await _repository.GetByIdAsync(semesterId, ct) is null)
+			return Result<StudentSemesterImportResultDto>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+		if (requests is null || requests.Count == 0)
+			return Result<StudentSemesterImportResultDto>.Failure("At least one student is required.", "INVALID_STUDENT_SEMESTER");
 
-	// 	var result = new StudentSemesterImportResultDto { TotalRows = requests.Count };
-	// 	var seenStudentCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var result = new StudentSemesterImportResultDto { TotalRows = requests.Count };
+		var seenStudentCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (var (request, index) in requests.Select((value, position) => (value, position)))
+		{
+			var row = index + 1;
+			var missing = new List<string>();
+			if (string.IsNullOrWhiteSpace(request.StudentCode)) missing.Add("Student code");
+			if (string.IsNullOrWhiteSpace(request.StudentName)) missing.Add("Student name");
+			if (string.IsNullOrWhiteSpace(request.StudentEmail)) missing.Add("Student email");
+			if (request.StudentBirthday == default) missing.Add("Student birthday");
+			if (string.IsNullOrWhiteSpace(request.Major)) missing.Add("Major");
+			if (string.IsNullOrWhiteSpace(request.MonitorCode)) missing.Add("Monitor code");
+			if (string.IsNullOrWhiteSpace(request.MonitorName)) missing.Add("Monitor name");
+			if (string.IsNullOrWhiteSpace(request.MonitorEmail)) missing.Add("Monitor email");
+			if (request.MonitorBirthday == default) missing.Add("Monitor birthday");
+			if (missing.Count > 0)
+			{
+				AddImportError(result, row, request.StudentCode?.Trim(), $"Missing required field(s): {string.Join(", ", missing)}.");
+				continue;
+			}
+			if (!seenStudentCodes.Add(request.StudentCode.Trim()))
+			{
+				AddImportError(result, row, request.StudentCode.Trim(), $"Student code '{request.StudentCode.Trim()}' is duplicated in the request.");
+				continue;
+			}
 
-	// 	for (var index = 0; index < requests.Count; index++)
-	// 	{
-	// 		var request = requests[index];
-	// 		var studentCode = request.StudentCode?.Trim() ?? string.Empty;
-	// 		var lecturerName = request.LecturerName?.Trim() ?? string.Empty;
-	// 		var lecturerCode = request.LecturerCode?.Trim() ?? string.Empty;
-	// 		var classCode = request.ClassCode?.Trim() ?? string.Empty;
-	// 		var itemNumber = index + 1;
+			var enrollResult = await ResolveAndEnrollAsync(semesterId, request, row, result, ct);
+			if (!enrollResult) continue;
+		}
+		await _unitOfWork.SaveChangesAsync(ct);
+		return Result<StudentSemesterImportResultDto>.Success(result);
+	}
 
-	// 		var missingFields = new List<string>();
-	// 		if (string.IsNullOrWhiteSpace(studentCode)) missingFields.Add("Student code");
-	// 		if (string.IsNullOrWhiteSpace(lecturerName)) missingFields.Add("Lecturer name");
-	// 		if (string.IsNullOrWhiteSpace(lecturerCode)) missingFields.Add("Lecturer code");
-	// 		if (string.IsNullOrWhiteSpace(classCode)) missingFields.Add("Class code");
+	public async Task<Result<StudentSemesterImportResultDto>> ImportStudentsFromExcelAsync(Guid semesterId, Stream fileStream, CancellationToken ct = default)
+	{
+		if (await _repository.GetByIdAsync(semesterId, ct) is null)
+			return Result<StudentSemesterImportResultDto>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
 
-	// 		if (missingFields.Count > 0)
-	// 		{
-	// 			result.FailureCount++;
-	// 			result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = itemNumber, StudentCode = studentCode, Reason = $"Missing required field(s): {string.Join(", ", missingFields)}." });
-	// 			continue;
-	// 		}
+		try
+		{
+			using var workbook = new XLWorkbook(fileStream);
+			var worksheet = workbook.Worksheets.FirstOrDefault();
+			if (worksheet is null)
+				return Result<StudentSemesterImportResultDto>.Failure("Excel file has no worksheet.", "EXCEL_EMPTY");
 
-	// 		if (!seenStudentCodes.Add(studentCode))
-	// 		{
-	// 			result.FailureCount++;
-	// 			result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = itemNumber, StudentCode = studentCode, Reason = $"Student code '{studentCode}' is duplicated in the request." });
-	// 			continue;
-	// 		}
+			var headers = GetHeaderMap(worksheet);
+			var required = new[] { "studentCode", "studentName", "studentEmail", "studentBirthday", "major", "monitorCode", "monitorName", "monitorEmail", "monitorBirthday" };
+			foreach (var key in required)
+				if (!headers.ContainsKey(key))
+					return Result<StudentSemesterImportResultDto>.Failure("Invalid Excel template. Download and use the semester student import template.", "INVALID_EXCEL_TEMPLATE");
 
-	// 		var student = await _userRepository.GetByStudentCodeAsync(studentCode, ct) as Student;
-	// 		if (student is null || student.IsDeleted)
-	// 		{
-	// 			result.FailureCount++;
-	// 			result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = itemNumber, StudentCode = studentCode, Reason = $"Student code '{studentCode}' was not found." });
-	// 			continue;
-	// 		}
+			var requests = new List<AddStudentToSemesterRequest>();
+			var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+			var result = new StudentSemesterImportResultDto { TotalRows = Math.Max(0, lastRow - 1) };
+			for (var row = 2; row <= lastRow; row++)
+			{
+				var studentCode = worksheet.Cell(row, headers["studentCode"]).GetString().Trim();
+				var studentName = worksheet.Cell(row, headers["studentName"]).GetString().Trim();
+				var studentEmail = worksheet.Cell(row, headers["studentEmail"]).GetString().Trim().ToLowerInvariant();
+				var monitorCode = worksheet.Cell(row, headers["monitorCode"]).GetString().Trim();
+				var monitorName = worksheet.Cell(row, headers["monitorName"]).GetString().Trim();
+				var monitorEmail = worksheet.Cell(row, headers["monitorEmail"]).GetString().Trim().ToLowerInvariant();
+				var major = worksheet.Cell(row, headers["major"]).GetString().Trim();
 
-	// 		var exists = await _dbContext.StudentSemesters.AnyAsync(
-	// 			x => x.StudentId == student.Id && x.SemesterId == semesterId, ct);
-	// 		if (exists)
-	// 		{
-	// 			result.FailureCount++;
-	// 			result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = itemNumber, StudentCode = studentCode, Reason = $"Student code '{studentCode}' is already assigned to this semester." });
-	// 			continue;
-	// 		}
+				if (string.IsNullOrWhiteSpace(studentCode) && string.IsNullOrWhiteSpace(studentName) && string.IsNullOrWhiteSpace(monitorCode)) continue;
 
-	// 		var enrollment = new StudentSemester
-	// 		{
-	// 			StudentId = student.Id,
-	// 			SemesterId = semesterId,
-	// 			LecturerName = lecturerName,
-	// 			LecturerCode = lecturerCode,
-	// 			ClassCode = classCode
-	// 		};
+				if (!TryReadDate(worksheet.Cell(row, headers["studentBirthday"]), out var studentBirthday) || !TryReadDate(worksheet.Cell(row, headers["monitorBirthday"]), out var monitorBirthday))
+				{
+					AddImportError(result, row, studentCode, "Birthday must use yyyy-MM-dd format.");
+					continue;
+				}
 
-	// 		_dbContext.StudentSemesters.Add(enrollment);
-	// 		result.SuccessCount++;
-	// 		result.ImportedStudents.Add(ToStudentSemesterDto(enrollment, student));
-	// 	}
+				requests.Add(new AddStudentToSemesterRequest
+				{
+					StudentCode = studentCode,
+					StudentName = studentName,
+					StudentEmail = studentEmail,
+					StudentBirthday = studentBirthday,
+					Major = major,
+					MonitorCode = monitorCode,
+					MonitorName = monitorName,
+					MonitorEmail = monitorEmail,
+					MonitorBirthday = monitorBirthday
+				});
+			}
 
-	// 	await _unitOfWork.SaveChangesAsync(ct);
-	// 	return Result<StudentSemesterImportResultDto>.Success(result);
-	// }
+			var importResult = await AddStudentsAsync(semesterId, requests, ct);
+			if (!importResult.IsSuccess) return importResult;
 
-	// public async Task<Result<StudentSemesterImportResultDto>> ImportStudentsFromExcelAsync(Guid semesterId, Stream fileStream, CancellationToken ct = default)
-	// {
-	// 	if (await _repository.GetByIdAsync(semesterId, ct) is null)
-	// 		return Result<StudentSemesterImportResultDto>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+			var enrollmentResult = importResult.Data!;
+			result.SuccessCount += enrollmentResult.SuccessCount;
+			result.FailureCount += enrollmentResult.FailureCount;
+			result.Errors.AddRange(enrollmentResult.Errors);
+			result.ImportedStudents.AddRange(enrollmentResult.ImportedStudents);
+			return Result<StudentSemesterImportResultDto>.Success(result);
+		}
+		catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+		{
+			return Result<StudentSemesterImportResultDto>.Failure("The uploaded file is not a valid Excel workbook.", "INVALID_EXCEL_FILE");
+		}
+	}
 
-	// 	var result = new StudentSemesterImportResultDto();
+	private async Task<bool> ResolveAndEnrollAsync(Guid semesterId, AddStudentToSemesterRequest request, int row, StudentSemesterImportResultDto result, CancellationToken ct)
+	{
+		var studentCode = request.StudentCode.Trim();
+		var monitorCode = request.MonitorCode.Trim();
+		var student = await _dbContext.Students.FirstOrDefaultAsync(s => s.StudentCode == studentCode && !s.IsDeleted, ct);
 
-	// 	try
-	// 	{
-	// 		using var workbook = new XLWorkbook(fileStream);
-	// 		var worksheet = workbook.Worksheets.FirstOrDefault();
-	// 		if (worksheet is null)
-	// 			return Result<StudentSemesterImportResultDto>.Failure("Excel file has no worksheet.", "EXCEL_EMPTY");
+		if (student is null)
+		{
+			var registration = await _authService.RegisterAsync(new RegisterRequest(
+				request.StudentName.Trim(), request.StudentEmail.Trim().ToLowerInvariant(), "Semester!2026", request.StudentBirthday,
+				(int)UserRole.Student, studentCode, request.Major.Trim()), ct);
+			if (!registration.IsSuccess)
+			{
+				AddImportError(result, row, studentCode, registration.Error ?? "Could not create the student account.");
+				return false;
+			}
+			student = await _dbContext.Students.FirstOrDefaultAsync(s => s.StudentCode == studentCode && !s.IsDeleted, ct);
+		}
+		if (student is null)
+		{
+			AddImportError(result, row, studentCode, "Student account was not found or could not be created.");
+			return false;
+		}
 
-	// 		var headers = GetHeaderMap(worksheet);
-	// 		foreach (var required in new[] { "studentCode", "lecturerName", "lecturerCode", "classCode" })
-	// 		{
-	// 			if (!headers.ContainsKey(required))
-	// 				return Result<StudentSemesterImportResultDto>.Failure(
-	// 					"Invalid Excel template. Required columns: student code, lecturer name, lecturer code, class code.",
-	// 					"INVALID_EXCEL_TEMPLATE");
-	// 		}
+		var monitor = await _dbContext.Staff.FirstOrDefaultAsync(s => s.StaffCode == monitorCode && s.Role == UserRole.Monitor && !s.IsDeleted, ct);
+		if (monitor is null)
+		{
+			var registration = await _authService.RegisterAsync(new RegisterRequest(
+				request.MonitorName.Trim(), request.MonitorEmail.Trim().ToLowerInvariant(), "Semester!2026", request.MonitorBirthday,
+				(int)UserRole.Monitor, null, null, monitorCode), ct);
+			if (!registration.IsSuccess)
+			{
+				AddImportError(result, row, studentCode, registration.Error ?? "Could not create the monitor account.");
+				return false;
+			}
+			monitor = await _dbContext.Staff.FirstOrDefaultAsync(s => s.StaffCode == monitorCode && s.Role == UserRole.Monitor && !s.IsDeleted, ct);
+		}
+		if (monitor is null)
+		{
+			AddImportError(result, row, studentCode, "Monitor account was not found or could not be created.");
+			return false;
+		}
 
-	// 		var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
-	// 		var seenStudentCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		if (await _dbContext.StudentSemesters.AnyAsync(x => x.StudentId == student.Id && x.SemesterId == semesterId, ct))
+		{
+			AddImportError(result, row, studentCode, $"Student code '{studentCode}' is already assigned to this semester.");
+			return false;
+		}
 
-	// 		for (var row = 2; row <= lastRow; row++)
-	// 		{
-	// 			var studentCode = worksheet.Cell(row, headers["studentCode"]).GetString().Trim();
-	// 			var lecturerName = worksheet.Cell(row, headers["lecturerName"]).GetString().Trim();
-	// 			var lecturerCode = worksheet.Cell(row, headers["lecturerCode"]).GetString().Trim();
-	// 			var classCode = worksheet.Cell(row, headers["classCode"]).GetString().Trim();
+		_dbContext.StudentSemesters.Add(new StudentSemester { StudentId = student.Id, SemesterId = semesterId, StaffId = monitor.Id });
+		result.SuccessCount++;
+		result.ImportedStudents.Add(new StudentSemesterDTO
+		{
+			StudentId = student.Id,
+			SemesterId = semesterId,
+			StudentCode = student.StudentCode,
+			FullName = student.FullName,
+			LecturerName = monitor.FullName,
+			LecturerCode = monitor.StaffCode
+		});
+		return true;
+	}
 
-	// 			if (string.IsNullOrWhiteSpace(studentCode) && string.IsNullOrWhiteSpace(lecturerName) &&
-	// 				string.IsNullOrWhiteSpace(lecturerCode) && string.IsNullOrWhiteSpace(classCode))
-	// 				continue;
-
-	// 			result.TotalRows++;
-
-	// 			var missingFields = new List<string>();
-	// 			if (string.IsNullOrWhiteSpace(studentCode)) missingFields.Add("Student code");
-	// 			if (string.IsNullOrWhiteSpace(lecturerName)) missingFields.Add("Lecturer name");
-	// 			if (string.IsNullOrWhiteSpace(lecturerCode)) missingFields.Add("Lecturer code");
-	// 			if (string.IsNullOrWhiteSpace(classCode)) missingFields.Add("Class code");
-
-	// 			if (missingFields.Count > 0)
-	// 			{
-	// 				AddImportError(
-	// 					result,
-	// 					row,
-	// 					studentCode,
-	// 					$"Missing required field(s): {string.Join(", ", missingFields)}.");
-	// 				continue;
-	// 			}
-
-	// 			if (!seenStudentCodes.Add(studentCode))
-	// 			{
-	// 				AddImportError(result, row, studentCode, $"Student code '{studentCode}' is duplicated in the file.");
-	// 				continue;
-	// 			}
-
-	// 			var student = await _userRepository.GetByStudentCodeAsync(studentCode, ct) as Student;
-	// 			if (student is null || student.IsDeleted)
-	// 			{
-	// 				AddImportError(result, row, studentCode, $"Student code '{studentCode}' was not found.");
-	// 				continue;
-	// 			}
-
-	// 			if (await _dbContext.StudentSemesters.AnyAsync(x => x.StudentId == student.Id && x.SemesterId == semesterId, ct))
-	// 			{
-	// 				AddImportError(result, row, studentCode, $"Student code '{studentCode}' is already assigned to this semester.");
-	// 				continue;
-	// 			}
-
-	// 			_dbContext.StudentSemesters.Add(new StudentSemester
-	// 			{
-	// 				StudentId = student.Id,
-	// 				SemesterId = semesterId,
-	// 				LecturerName = lecturerName,
-	// 				LecturerCode = lecturerCode,
-	// 				ClassCode = classCode
-	// 			});
-	// 			result.SuccessCount++;
-	// 			result.ImportedStudents.Add(new StudentSemesterDTO
-	// 			{
-	// 				StudentId = student.Id,
-	// 				SemesterId = semesterId,
-	// 				StudentCode = student.StudentCode,
-	// 				FullName = student.FullName,
-	// 				LecturerName = lecturerName,
-	// 				LecturerCode = lecturerCode,
-	// 				ClassCode = classCode
-	// 			});
-	// 		}
-
-	// 		await _unitOfWork.SaveChangesAsync(ct);
-	// 		return Result<StudentSemesterImportResultDto>.Success(result);
-	// 	}
-	// 	catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
-	// 	{
-	// 		return Result<StudentSemesterImportResultDto>.Failure("The uploaded file is not a valid Excel workbook.", "INVALID_EXCEL_FILE");
-	// 	}
-	// }
+	private static bool TryReadDate(IXLCell cell, out DateOnly date)
+	{
+		date = default;
+		if (cell.DataType == XLDataType.DateTime)
+		{
+			date = DateOnly.FromDateTime(cell.GetDateTime());
+			return true;
+		}
+		return DateOnly.TryParseExact(cell.GetString().Trim(), new[] { "yyyy-MM-dd", "dd/MM/yyyy" }, null, System.Globalization.DateTimeStyles.None, out date);
+	}
 
 	public byte[] GenerateStudentImportTemplate()
 	{
 		using var workbook = new XLWorkbook();
 		var worksheet = workbook.Worksheets.Add("Students");
 
-		worksheet.Cell(1, 1).Value = "Student Code (*)";
-		worksheet.Cell(1, 2).Value = "Lecturer Name (*)";
-		worksheet.Cell(1, 3).Value = "Lecturer Code (*)";
-		worksheet.Cell(1, 4).Value = "Class Code (*)";
+		var headers = new[]
+		{
+			"Student Code (*)", "Student Name (*)", "Student Email (*)", "Student Birthday (yyyy-MM-dd) (*)", "Major (*)",
+			"Monitor Code (*)", "Monitor Name (*)", "Monitor Email (*)", "Monitor Birthday (yyyy-MM-dd) (*)"
+		};
+		for (var column = 0; column < headers.Length; column++) worksheet.Cell(1, column + 1).Value = headers[column];
 
-		var headerRange = worksheet.Range(1, 1, 1, 4);
+		var headerRange = worksheet.Range(1, 1, 1, headers.Length);
 		headerRange.Style.Font.Bold = true;
 		headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(220, 230, 241);
 		headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-		worksheet.Cell(2, 1).Value = "SE160001";
-		worksheet.Cell(2, 2).Value = "Nguyen Van A";
-		worksheet.Cell(2, 3).Value = "GV001";
-		worksheet.Cell(2, 4).Value = "SE1601";
+		var sample = new object[] { "SE160001", "Nguyen Van A", "student@example.com", "2003-01-15", "Software Engineering", "MON001", "Nguyen Thi B", "monitor@example.com", "1995-06-20" };
+		for (var column = 0; column < sample.Length; column++) worksheet.Cell(2, column + 1).Value = sample[column]?.ToString() ?? string.Empty;
 
 		worksheet.Columns().AdjustToContents();
 
@@ -375,9 +383,14 @@ public class SemesterService : ISemesterService
 			var header = worksheet.Cell(1, column).GetString().Trim().ToLowerInvariant();
 			var normalized = header.Replace(" ", "_").Replace("(*)", "").Trim('_');
 			if (normalized.Contains("student_code") || normalized.Contains("studentcode") || normalized.Contains("ma_sv") || normalized.Contains("mã_sv") || normalized == "mã_sinh_viên") map.TryAdd("studentCode", column);
-			else if (normalized.Contains("lecturer_name") || normalized.Contains("lecturername") || normalized.Contains("giang_vien")) map.TryAdd("lecturerName", column);
-			else if (normalized.Contains("lecturer_code") || normalized.Contains("lecturercode") || normalized.Contains("ma_gv") || normalized.Contains("mã_gv")) map.TryAdd("lecturerCode", column);
-			else if (normalized.Contains("class_code") || normalized.Contains("classcode") || normalized.Contains("ma_lop") || normalized.Contains("mã_lớp")) map.TryAdd("classCode", column);
+			else if (normalized.Contains("student_name") || normalized.Contains("studentname") || normalized.Contains("ho_va_ten")) map.TryAdd("studentName", column);
+			else if (normalized.Contains("student_email") || normalized.Contains("studentemail")) map.TryAdd("studentEmail", column);
+			else if (normalized.Contains("student_birthday") || normalized.Contains("ngay_sinh_sinh_vien")) map.TryAdd("studentBirthday", column);
+			else if (normalized == "major" || normalized.Contains("chuyen_nganh")) map.TryAdd("major", column);
+			else if (normalized.Contains("monitor_code") || normalized.Contains("monitorcode") || normalized.Contains("ma_monitor")) map.TryAdd("monitorCode", column);
+			else if (normalized.Contains("monitor_name") || normalized.Contains("monitorname") || normalized.Contains("ten_monitor")) map.TryAdd("monitorName", column);
+			else if (normalized.Contains("monitor_email") || normalized.Contains("monitoremail") || normalized.Contains("email_monitor")) map.TryAdd("monitorEmail", column);
+			else if (normalized.Contains("monitor_birthday") || normalized.Contains("ngay_sinh_monitor")) map.TryAdd("monitorBirthday", column);
 		}
 		return map;
 	}
@@ -388,16 +401,6 @@ public class SemesterService : ISemesterService
 		result.Errors.Add(new StudentSemesterImportErrorDto { RowIndex = row, StudentCode = studentCode, Reason = reason });
 	}
 
-	// private static StudentSemesterDTO ToStudentSemesterDto(StudentSemester enrollment, Student student) => new()
-	// {
-	// 	StudentId = student.Id,
-	// 	SemesterId = enrollment.SemesterId,
-	// 	StudentCode = student.StudentCode,
-	// 	FullName = student.FullName,
-	// 	LecturerName = enrollment.LecturerName,
-	// 	LecturerCode = enrollment.LecturerCode,
-	// 	ClassCode = enrollment.ClassCode
-	// };
 
 	private static string? Validate(string code, string name, DateOnly startDate, DateOnly endDate)
 	{

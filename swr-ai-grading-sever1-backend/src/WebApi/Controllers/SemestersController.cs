@@ -92,19 +92,19 @@ public class SemestersController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
-    // [HttpPost("{id:guid}/students")]
-    // public async Task<IActionResult> AddStudents(
-    //     Guid id,
-    //     [FromBody] List<AddStudentToSemesterRequest> requests,
-    //     CancellationToken ct)
-    // {
-    //     var result = await _service.AddStudentsAsync(id, requests, ct);
-    //     if (result.IsSuccess)
-    //         return Ok(ApiResponse.Success(result.Data));
-    //     if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-    //         return NotFound(ApiResponse.Failure(404, result.Error!));
-    //     return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
-    // }
+    [HttpPost("{id:guid}/students")]
+    public async Task<IActionResult> AddStudents(
+        Guid id,
+        [FromBody] List<AddStudentToSemesterRequest> requests,
+        CancellationToken ct)
+    {
+        var result = await _service.AddStudentsAsync(id, requests, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+    }
 
     [HttpGet("students/import-template")]
     public IActionResult DownloadStudentImportTemplate()
@@ -113,33 +113,33 @@ public class SemestersController : ControllerBase
         return File(
             content,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            $"Semester_Student_Import_Template.xlsx");
+            "Semester_Student_Import_Template.xlsx");
     }
 
-    // [HttpPost("{id:guid}/students/import-excel")]
-    // [Consumes("multipart/form-data")]
-    // public async Task<IActionResult> ImportStudents(Guid id, IFormFile? file, CancellationToken ct)
-    // {
-    //     if (file is null || file.Length == 0)
-    //         return BadRequest(ApiResponse.Failure(400, "Please select an Excel file."));
+    [HttpPost("{id:guid}/students/import-excel")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportStudents(Guid id, IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(ApiResponse.Failure(400, "Please select an Excel file."));
 
-    //     var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-    //     if (extension != ".xlsx" && extension != ".xls")
-    //         return BadRequest(ApiResponse.Failure(400, "Only .xlsx or .xls files are supported."));
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension != ".xlsx" && extension != ".xls")
+            return BadRequest(ApiResponse.Failure(400, "Only .xlsx or .xls files are supported."));
 
-    //     if (file.Length > 10 * 1024 * 1024)
-    //         return BadRequest(ApiResponse.Failure(400, "The file size must not exceed 10 MB."));
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest(ApiResponse.Failure(400, "The file size must not exceed 10 MB."));
 
-    //     await using var stream = new MemoryStream();
-    //     await file.CopyToAsync(stream, ct);
-    //     stream.Position = 0;
+        await using var stream = new MemoryStream();
+        await file.CopyToAsync(stream, ct);
+        stream.Position = 0;
 
-    //     var result = await _service.ImportStudentsFromExcelAsync(id, stream, ct);
-    //     if (!result.IsSuccess)
-    //         return result.ErrorCode == "SEMESTER_NOT_FOUND"
-    //             ? NotFound(ApiResponse.Failure(404, result.Error!))
-    //             : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+        var result = await _service.ImportStudentsFromExcelAsync(id, stream, ct);
+        if (!result.IsSuccess)
+            return result.ErrorCode == "SEMESTER_NOT_FOUND"
+                ? NotFound(ApiResponse.Failure(404, result.Error!))
+                : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
 
-    //     return Ok(ApiResponse.Success(result.Data));
-    // }
+        return Ok(ApiResponse.Success(result.Data));
+    }
 }
