@@ -16,7 +16,6 @@ public sealed class UploadedSubmissionSummaryDTO
     public string FileSubmissions { get; set; } = string.Empty;
     public string SubmissionFile { get; set; } = string.Empty;
     public Guid StudentId { get; set; }
-    public Guid DiaryId { get; set; }
     public Guid StudentExaminationId { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool IsSuccess { get; set; }
@@ -25,7 +24,6 @@ public sealed class UploadedSubmissionSummaryDTO
 
 public sealed class UploadSubmissionsResultDTO
 {
-    public Guid GradingDiaryId { get; set; }
     public int TotalUploaded { get; set; }
     public int TotalSucceeded { get; set; }
     public IReadOnlyList<UploadedSubmissionSummaryDTO> Submissions { get; set; } = Array.Empty<UploadedSubmissionSummaryDTO>();

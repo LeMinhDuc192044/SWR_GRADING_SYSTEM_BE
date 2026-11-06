@@ -61,9 +61,14 @@ public class UpdateSemesterStatusRequest
 public sealed class AddStudentToSemesterRequest
 {
     public string StudentCode { get; set; } = string.Empty;
-    public string LecturerName { get; set; } = string.Empty;
-    public string LecturerCode { get; set; } = string.Empty;
-    public string ClassCode { get; set; } = string.Empty;
+    public string StudentName { get; set; } = string.Empty;
+    public string StudentEmail { get; set; } = string.Empty;
+    public DateOnly StudentBirthday { get; set; }
+    public string Major { get; set; } = string.Empty;
+    public string MonitorCode { get; set; } = string.Empty;
+    public string MonitorName { get; set; } = string.Empty;
+    public string MonitorEmail { get; set; } = string.Empty;
+    public DateOnly MonitorBirthday { get; set; }
 }
 
 public sealed class StudentSemesterDTO
@@ -74,7 +79,6 @@ public sealed class StudentSemesterDTO
     public string FullName { get; set; } = string.Empty;
     public string LecturerName { get; set; } = string.Empty;
     public string LecturerCode { get; set; } = string.Empty;
-    public string ClassCode { get; set; } = string.Empty;
 }
 
 public sealed class StudentSemesterImportResultDto

@@ -288,10 +288,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("examination_code");
 
-                    b.Property<Guid?>("ExaminationId")
-                        .HasColumnType("uuid");
+                    b.Property<Guid>("ExaminationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("examination_id");
 
-                    b.Property<Guid>("PaperSetId")
+                    b.Property<Guid?>("PaperSetId")
                         .HasColumnType("uuid")
                         .HasColumnName("paper_set_id");
 
@@ -321,6 +322,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PaperSetId");
 
+                    b.HasIndex("SemesterId");
+
                     b.ToTable("examination_sessions");
                 });
 
@@ -331,12 +334,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("grading_session_id");
 
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly>("CreatedDate")
+                        .HasColumnType("date")
                         .HasColumnName("created_date");
 
-                    b.Property<DateTime?>("Deadline")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly?>("Deadline")
+                        .HasColumnType("date")
                         .HasColumnName("deadline");
 
                     b.Property<Guid>("ExaminationSessionId")
@@ -356,8 +359,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("title");
 
-                    b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly>("UpdatedDate")
+                        .HasColumnType("date")
                         .HasColumnName("updated_date");
 
                     b.HasKey("GradingSessionId");
@@ -415,10 +418,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("paper_set_code");
 
-                    b.Property<Guid>("SemesterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("semester_id");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -438,8 +437,6 @@ namespace Infrastructure.Migrations
                     b.HasKey("PaperSetId");
 
                     b.HasIndex("ExaminationId");
-
-                    b.HasIndex("SemesterId");
 
                     b.HasIndex("UploadedById");
 
@@ -579,16 +576,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("examination_session_id");
 
-                    b.Property<Guid?>("StudentId1")
-                        .HasColumnType("uuid");
-
                     b.HasKey("StudentId", "ExaminationSessionId");
 
                     b.HasIndex("ExaminationSessionId");
 
-                    b.HasIndex("StudentId1");
-
-                    b.ToTable("student_examination_sessions");
+                    b.ToTable("student_examination_sessions", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.StudentSemester", b =>
@@ -601,24 +593,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("semester_id");
 
-                    b.Property<string>("ClassCode")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("class_code");
-
-                    b.Property<string>("LecturerCode")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("lecturer_code");
-
-                    b.Property<string>("LecturerName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("lecturer_name");
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("staff_id");
 
                     b.HasKey("StudentId", "SemesterId");
 
                     b.HasIndex("SemesterId");
+
+                    b.HasIndex("StaffId");
 
                     b.ToTable("student_semester");
                 });
@@ -634,7 +617,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_date");
 
-                    b.Property<Guid>("ExaminationSessionId")
+                    b.Property<Guid?>("ExaminationSessionId")
                         .HasColumnType("uuid")
                         .HasColumnName("examination_session_id");
 
@@ -693,6 +676,9 @@ namespace Infrastructure.Migrations
                     b.Property<int>("GradingRound")
                         .HasColumnType("integer")
                         .HasColumnName("grading_round");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("SubmissionId")
                         .HasColumnType("uuid")
@@ -947,17 +933,28 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.ExaminationSession", b =>
                 {
-                    b.HasOne("Domain.Entities.Examination", null)
+                    b.HasOne("Domain.Entities.Examination", "Examination")
                         .WithMany("StudentExaminations")
-                        .HasForeignKey("ExaminationId");
+                        .HasForeignKey("ExaminationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("Domain.Entities.PaperSet", "PaperSet")
                         .WithMany("ExaminationSessions")
                         .HasForeignKey("PaperSetId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.Semester", "Semester")
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Examination");
+
                     b.Navigation("PaperSet");
+
+                    b.Navigation("Semester");
                 });
 
             modelBuilder.Entity("Domain.Entities.GradingSession", b =>
@@ -981,12 +978,6 @@ namespace Infrastructure.Migrations
                         .WithMany("PaperSets")
                         .HasForeignKey("ExaminationId");
 
-                    b.HasOne("Domain.Entities.Semester", "Semester")
-                        .WithMany()
-                        .HasForeignKey("SemesterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Domain.Entities.Staff", "UploadedBy")
                         .WithMany("UploadedPaperSets")
                         .HasForeignKey("UploadedById")
@@ -994,8 +985,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Examination");
-
-                    b.Navigation("Semester");
 
                     b.Navigation("UploadedBy");
                 });
@@ -1037,14 +1026,10 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.Student", "Student")
-                        .WithMany()
+                        .WithMany("StudentExaminationSessions")
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("Domain.Entities.Student", null)
-                        .WithMany("StudentExaminationSessions")
-                        .HasForeignKey("StudentId1");
 
                     b.Navigation("ExaminationSession");
 
@@ -1059,6 +1044,12 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Domain.Entities.Student", "Student")
                         .WithMany("StudentSemesters")
                         .HasForeignKey("StudentId")
@@ -1067,6 +1058,8 @@ namespace Infrastructure.Migrations
 
                     b.Navigation("Semester");
 
+                    b.Navigation("Staff");
+
                     b.Navigation("Student");
                 });
 
@@ -1074,9 +1067,7 @@ namespace Infrastructure.Migrations
                 {
                     b.HasOne("Domain.Entities.ExaminationSession", "ExaminationSession")
                         .WithMany("StudentSubmissions")
-                        .HasForeignKey("ExaminationSessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ExaminationSessionId");
 
                     b.HasOne("Domain.Entities.Student", "Student")
                         .WithMany()

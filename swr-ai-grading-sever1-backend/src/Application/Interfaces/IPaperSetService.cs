@@ -8,25 +8,24 @@ public interface IPaperSetService
 {
     Task<PagedResult<PaperSetMetadataDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
     Task<PagedResult<PaperSetMetadataDTO>> GetLecturerByIdAsync(Guid lecturerId, PagedRequest request, CancellationToken ct = default);
-    // Task<Result<PaperSetDetailDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Result<PaperSetMetadataDTO>> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<CreateQuestionInput>>> PreviewQuestionsAsync(MaterialFileUpload file, CancellationToken ct = default);
     Task<Result<PaperSetPreviewResultDTO>> PreviewPaperSetAsync(MaterialFileUpload questionFile, MaterialFileUpload? rubricFile, CancellationToken ct = default);
     Task<Result<PaperSetExtractedFileDTO>> ReadDocumentAsync(MaterialFileUpload file, CancellationToken ct = default);
     Task<Result<PaperSetExtractedContentsDTO>> ReadFilesAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(
-        Guid semesterId,
         string description,
+        Guid? examinationId,
         IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
         CancellationToken ct = default);
     Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(
-        Guid semesterId,
         IReadOnlyList<CreatePaperSetInput> materials,
         Guid createdById,
         CancellationToken ct = default);
-    // Task<Result<PaperSetDetailDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);
-    // Task<Result<PaperSetDetailDTO>> UpdateAsync(Guid id, UpdatePaperSetRequest request, CancellationToken ct = default);
+    Task<Result<PaperSetMetadataDTO>> AddFilesAsync(Guid id, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct = default);
+    Task<Result<PaperSetMetadataDTO>> UpdateAsync(Guid id, UpdatePaperSetRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<Result<StoredFileDownload>> DownloadAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<QuestionDTO>>> GetQuestionsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default);

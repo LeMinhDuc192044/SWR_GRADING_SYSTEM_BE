@@ -40,11 +40,10 @@ public class StudentSubmission
     [ForeignKey(nameof(UploadedById))]
     public Staff UploadedBy { get; set; } = null!;
 
-    [Required]
     [Column("examination_session_id")]
     [ForeignKey(nameof(ExaminationSession))]
-    public Guid ExaminationSessionId { get; set; }
-    public ExaminationSession ExaminationSession { get; set; } = null!;
+    public Guid? ExaminationSessionId { get; set; }
+    public ExaminationSession? ExaminationSession { get; set; }
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
     public ICollection<SubmissionGradingHistory> SubmissionGradingHistories { get; set; } = [];

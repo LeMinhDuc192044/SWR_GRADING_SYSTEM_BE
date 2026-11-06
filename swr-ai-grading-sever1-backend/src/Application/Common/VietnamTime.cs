@@ -4,26 +4,34 @@ public static class VietnamTime
 {
     private static readonly TimeZoneInfo VietnamTimeZone = GetVietnamTimeZone();
 
-    public static DateTime Now
+    // Database timestamps are stored in PostgreSQL as timestamp with time zone.
+    // They must always be DateTime values with Kind=Utc.
+    public static DateTime Now => DateTime.UtcNow;
+
+    public static DateTime LocalNow
     {
         get
         {
-            var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
-            return DateTime.SpecifyKind(vietnamNow, DateTimeKind.Unspecified);
+            var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
+            return DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
         }
     }
 
-    public static DateOnly Today => DateOnly.FromDateTime(Now);
+    public static DateOnly Today => DateOnly.FromDateTime(LocalNow);
 
     public static DateTime Convert(DateTime value)
     {
-        var utcValue = value.Kind switch
+        return value.Kind switch
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
+    }
 
+    public static DateTime ToVietnamTime(DateTime value)
+    {
+        var utcValue = Convert(value);
         var vietnamTime = TimeZoneInfo.ConvertTimeFromUtc(utcValue, VietnamTimeZone);
         return DateTime.SpecifyKind(vietnamTime, DateTimeKind.Unspecified);
     }

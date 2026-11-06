@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class IntialDatabase : Migration
+    public partial class RemoveSemesterFromPaperSet : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -139,7 +139,8 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    role = table.Column<int>(type: "integer", nullable: false)
+                    role = table.Column<int>(type: "integer", nullable: false),
+                    staff_code = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -187,9 +188,8 @@ namespace Infrastructure.Migrations
                     updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     is_deleted = table.Column<bool>(type: "boolean", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
-                    examination_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    semester_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    examination_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -199,12 +199,6 @@ namespace Infrastructure.Migrations
                         column: x => x.examination_id,
                         principalTable: "examinations",
                         principalColumn: "examination_id");
-                    table.ForeignKey(
-                        name: "FK_paper_sets_semesters_semester_id",
-                        column: x => x.semester_id,
-                        principalTable: "semesters",
-                        principalColumn: "semester_id",
-                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_paper_sets_staff_uploaded_by_id",
                         column: x => x.uploaded_by_id,
@@ -241,9 +235,7 @@ namespace Infrastructure.Migrations
                 {
                     student_id = table.Column<Guid>(type: "uuid", nullable: false),
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    lecturer_name = table.Column<string>(type: "text", nullable: false),
-                    lecturer_code = table.Column<string>(type: "text", nullable: false),
-                    class_code = table.Column<string>(type: "text", nullable: false)
+                    staff_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -253,6 +245,12 @@ namespace Infrastructure.Migrations
                         column: x => x.semester_id,
                         principalTable: "semesters",
                         principalColumn: "semester_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_student_semester_staff_staff_id",
+                        column: x => x.staff_id,
+                        principalTable: "staff",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_student_semester_students_student_id",
@@ -274,23 +272,30 @@ namespace Infrastructure.Migrations
                     updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
                     semester_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    paper_set_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    ExaminationId = table.Column<Guid>(type: "uuid", nullable: true)
+                    examination_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    paper_set_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_examination_sessions", x => x.examination_sessions_id);
                     table.ForeignKey(
-                        name: "FK_examination_sessions_examinations_ExaminationId",
-                        column: x => x.ExaminationId,
+                        name: "FK_examination_sessions_examinations_examination_id",
+                        column: x => x.examination_id,
                         principalTable: "examinations",
-                        principalColumn: "examination_id");
+                        principalColumn: "examination_id",
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_examination_sessions_paper_sets_paper_set_id",
                         column: x => x.paper_set_id,
                         principalTable: "paper_sets",
                         principalColumn: "paper_set_id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_examination_sessions_semesters_semester_id",
+                        column: x => x.semester_id,
+                        principalTable: "semesters",
+                        principalColumn: "semester_id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -328,9 +333,9 @@ namespace Infrastructure.Migrations
                 {
                     grading_session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    created_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    deadline = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    created_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    updated_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    deadline = table.Column<DateOnly>(type: "date", nullable: true),
                     number_submissions = table.Column<int>(type: "integer", nullable: false),
                     examination_session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     PaperSetId = table.Column<Guid>(type: "uuid", nullable: true)
@@ -356,8 +361,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     student_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    StudentId1 = table.Column<Guid>(type: "uuid", nullable: true)
+                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -368,11 +372,6 @@ namespace Infrastructure.Migrations
                         principalTable: "examination_sessions",
                         principalColumn: "examination_sessions_id",
                         onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_student_examination_sessions_students_StudentId1",
-                        column: x => x.StudentId1,
-                        principalTable: "students",
-                        principalColumn: "id");
                     table.ForeignKey(
                         name: "FK_student_examination_sessions_students_student_id",
                         column: x => x.student_id,
@@ -392,7 +391,7 @@ namespace Infrastructure.Migrations
                     created_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -401,8 +400,7 @@ namespace Infrastructure.Migrations
                         name: "FK_student_submission_examination_sessions_examination_session~",
                         column: x => x.examination_session_id,
                         principalTable: "examination_sessions",
-                        principalColumn: "examination_sessions_id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "examination_sessions_id");
                     table.ForeignKey(
                         name: "FK_student_submission_staff_uploaded_by_id",
                         column: x => x.uploaded_by_id,
@@ -481,6 +479,7 @@ namespace Infrastructure.Migrations
                     grading_round = table.Column<int>(type: "integer", nullable: false),
                     total_score = table.Column<decimal>(type: "numeric(5,2)", nullable: true),
                     general_feedback = table.Column<string>(type: "text", nullable: true),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     submission_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
@@ -588,14 +587,19 @@ namespace Infrastructure.Migrations
                 column: "element_reference_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_examination_sessions_ExaminationId",
+                name: "IX_examination_sessions_examination_id",
                 table: "examination_sessions",
-                column: "ExaminationId");
+                column: "examination_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_examination_sessions_paper_set_id",
                 table: "examination_sessions",
                 column: "paper_set_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_examination_sessions_semester_id",
+                table: "examination_sessions",
+                column: "semester_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_examinations_semester_id",
@@ -616,11 +620,6 @@ namespace Infrastructure.Migrations
                 name: "IX_paper_sets_examination_id",
                 table: "paper_sets",
                 column: "examination_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_paper_sets_semester_id",
-                table: "paper_sets",
-                column: "semester_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_paper_sets_uploaded_by_id",
@@ -649,19 +648,25 @@ namespace Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_staff_staff_code",
+                table: "staff",
+                column: "staff_code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_student_examination_sessions_examination_session_id",
                 table: "student_examination_sessions",
                 column: "examination_session_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_student_examination_sessions_StudentId1",
-                table: "student_examination_sessions",
-                column: "StudentId1");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_student_semester_semester_id",
                 table: "student_semester",
                 column: "semester_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_student_semester_staff_id",
+                table: "student_semester",
+                column: "staff_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_student_submission_examination_session_id",

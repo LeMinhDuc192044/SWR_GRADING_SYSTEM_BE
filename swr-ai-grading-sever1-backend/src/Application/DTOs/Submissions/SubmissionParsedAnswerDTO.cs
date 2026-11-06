@@ -8,6 +8,7 @@ public sealed class SubmissionParsedAnswerDTO
     public Guid? ElementId { get; set; }
     public string? ExtractedText { get; set; }
     public string? ExtractedImageUrl { get; set; }
+    public string? ExtractedXml { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -18,4 +19,5 @@ public sealed class SaveSubmissionParsedAnswerRequest
     public Guid? ElementId { get; set; }
     public string? ExtractedText { get; set; }
     public string? ExtractedImageUrl { get; set; }
+    public string? ExtractedXml { get; set; }
 }

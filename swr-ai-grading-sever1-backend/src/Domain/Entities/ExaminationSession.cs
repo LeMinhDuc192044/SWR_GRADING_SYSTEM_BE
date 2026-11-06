@@ -41,13 +41,18 @@ public class ExaminationSession
     [Column("semester_id")]
     [ForeignKey(nameof(Semester))]
     public Guid SemesterId { get; set; }
+    public Semester Semester { get; set; } = null!;
 
     [Required]
-    [Column("paper_set_id")]
-    public Guid PaperSetId { get; set; }
+    [Column("examination_id")]
+    [ForeignKey(nameof(Examination))]
+    public Guid ExaminationId { get; set; }
+    public Examination Examination { get; set; } = null!;
 
-    [ForeignKey(nameof(PaperSetId))]
-    public PaperSet PaperSet { get; set; } = null!;
+    [Column("paper_set_id")]
+    public Guid? PaperSetId { get; set; }
+
+    public PaperSet? PaperSet { get; set; }
     public ICollection<GradingSession> GradingSessions { get; set; } = [];
     public ICollection<StudentSubmission> StudentSubmissions { get; set; } = [];
     public ICollection<StudentExaminationSession> StudentExaminationSessions { get; set; } = [];

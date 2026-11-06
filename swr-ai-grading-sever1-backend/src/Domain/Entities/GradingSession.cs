@@ -17,14 +17,14 @@ public class GradingSession
 
     [Required]
     [Column("created_date")]
-    public DateTime CreatedDate { get; set; }
+    public DateOnly CreatedDate { get; set; }
 
     [Required]
     [Column("updated_date")]
-    public DateTime UpdatedDate { get; set; }
+    public DateOnly UpdatedDate { get; set; }
 
     [Column("deadline")]
-    public DateTime? Deadline { get; set; }
+    public DateOnly? Deadline { get; set; }
 
     [Required]
     [Column("number_submissions")]

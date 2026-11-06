@@ -1,20 +1,20 @@
-using Application.Interfaces;
+using System.Text;
 using Application.Common;
+using Application.Interfaces;
 using Application.Services;
 using Application.Validators.PaperSets;
 using DotNetEnv;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Infrastructure.Configurations;
 using Infrastructure.Persistence.Repositories;
+using Infrastructure.Services;
 using Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Mvc;
-using Infrastructure.Configurations;
-using Infrastructure.Services;
 using WebApi;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -115,12 +115,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddScoped<ISemesterService, SemesterService>();
 builder.Services.AddScoped<ISemesterRepository, SemesterRepository>();
 builder.Services.AddScoped<IExaminationService, ExaminationService>();
+builder.Services.AddScoped<IExaminationSessionService, ExaminationSessionService>();
+builder.Services.AddScoped<IGradingSessionService, GradingSessionService>();
 builder.Services.AddScoped<IExaminationRepository, ExaminationRepository>();
 builder.Services.AddScoped<IPaperSetService, PaperSetService>();
 builder.Services.AddScoped<IPaperSetRepository, PaperSetRepository>();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
-// builder.Services.AddScoped<ISubmissionService, SubmissionService>();
+builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<ISubmissionParsedAnswerService, SubmissionParsedAnswerService>();
+builder.Services.AddScoped<ISubmissionGradingService, SubmissionGradingService>();
 // Smtp Settings
 builder.Services.Configure<SmtpSettings>(options =>
 {
@@ -135,6 +138,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IStudentService, StudentService>();
 builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
+builder.Services.AddScoped<IAssignmentService, AssignmentService>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
 builder.Services.AddScoped<IDiagramElementService, DiagramElementService>();
 builder.Services.AddHttpClient<SupabaseStorage>();

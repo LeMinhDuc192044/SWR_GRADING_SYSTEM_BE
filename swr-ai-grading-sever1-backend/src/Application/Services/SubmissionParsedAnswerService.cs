@@ -83,6 +83,7 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
             QuestionId = request.QuestionId,
             ElementId = request.ElementId,
             ExtractedText = request.ExtractedText,
+            Extracted_Xml = request.ExtractedXml,
             ExtractedImageUrl = request.ExtractedImageUrl,
             CreatedAt = VietnamTime.Now
         };
@@ -115,6 +116,7 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         answer.QuestionId = request.QuestionId;
         answer.ElementId = request.ElementId;
         answer.ExtractedText = request.ExtractedText;
+        answer.Extracted_Xml = request.ExtractedXml;
         answer.ExtractedImageUrl = request.ExtractedImageUrl;
         await _db.SaveChangesAsync(ct);
         return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer));
@@ -179,6 +181,7 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         ElementId = answer.ElementId,
         ExtractedText = answer.ExtractedText,
         ExtractedImageUrl = answer.ExtractedImageUrl,
+        ExtractedXml = answer.Extracted_Xml,
         CreatedAt = answer.CreatedAt
     };
 }

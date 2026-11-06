@@ -68,12 +68,7 @@ public class ExaminationService : IExaminationService
                 "Examination start date must be within the semester dates.",
                 "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
-        var requestedPaperSetIds = request.PaperSetIds.Count > 0
-            ? request.PaperSetIds.Distinct().ToList()
-            : request.PaperSetId == Guid.Empty ? [] : new List<Guid> { request.PaperSetId };
-
-        if (requestedPaperSetIds.Count == 0)
-            return Result<ExaminationDTO>.Failure("At least one paper set is required.", "PAPER_SET_NOT_FOUND");
+        var requestedPaperSetIds = GetRequestedPaperSetIds(request.PaperSetIds, null);
 
         var materials = new List<PaperSet>();
         foreach (var paperSetId in requestedPaperSetIds)
@@ -145,20 +140,15 @@ public class ExaminationService : IExaminationService
         var linkedMaterials = await _paperSetRepository.FindAsync(
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
             ct);
-        if (linkedMaterials.Any(material => material.SemesterId != semesterId))
+
+        var requestedPaperSetIds = request.PaperSetIds is not null || request.PaperSetId.HasValue
+            ? GetRequestedPaperSetIds(request.PaperSetIds, request.PaperSetId)
+            : null;
+
+        if (requestedPaperSetIds is not null)
         {
-            return Result<ExaminationDTO>.Failure(
-                "Examination semester must match the semester of its paper set.",
-                "PAPER_SET_SEMESTER_MISMATCH");
-        }
-
-
-        var requestedPaperSetIds = request.PaperSetIds?.Distinct().ToList();
-        if (requestedPaperSetIds is null && request.PaperSetId.HasValue)
-            requestedPaperSetIds = new List<Guid> { request.PaperSetId.Value };
-
-        if (requestedPaperSetIds?.Count > 0)
-        {
+            if (requestedPaperSetIds.Count == 0)
+                return Result<ExaminationDTO>.Failure("At least one paper set is required.", "PAPER_SET_NOT_FOUND");
             var selectedMaterials = new List<PaperSet>();
             foreach (var paperSetId in requestedPaperSetIds)
             {
@@ -197,6 +187,38 @@ public class ExaminationService : IExaminationService
             examination.Status = request.Status.Value;
         examination.SemesterId = semesterId;
 
+        _repository.Update(examination);
+        await _unitOfWork.SaveChangesAsync(ct);
+        return Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
+    }
+
+    public async Task<Result<ExaminationDTO>> AddPaperSetsAsync(Guid id, AddPaperSetsToExaminationRequest request, CancellationToken ct = default)
+    {
+        var examination = await _repository.GetByIdAsync(id, ct);
+        if (examination is null)
+            return Result<ExaminationDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
+
+        var requestedPaperSetIds = GetRequestedPaperSetIds(request.PaperSetIds, null);
+        if (requestedPaperSetIds.Count == 0)
+            return Result<ExaminationDTO>.Failure("At least one paper set is required.", "PAPER_SET_NOT_FOUND");
+
+        foreach (var paperSetId in requestedPaperSetIds)
+        {
+            var paperSet = await _paperSetRepository.GetByIdAsync(paperSetId, ct);
+            var validation = ValidateMaterial(paperSet, examination.SemesterId);
+            if (validation is not null)
+                return Result<ExaminationDTO>.Failure(validation.Value.Message, validation.Value.Code);
+
+            if (paperSet!.ExaminationId != examination.ExaminationId)
+            {
+                paperSet.ExaminationId = examination.ExaminationId;
+                paperSet.Status = PaperSetStatus.Used;
+                paperSet.UpdatedDate = VietnamTime.Now;
+                _paperSetRepository.Update(paperSet);
+            }
+        }
+
+        examination.UpdatedDay = VietnamTime.Now;
         _repository.Update(examination);
         await _unitOfWork.SaveChangesAsync(ct);
         return Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
@@ -264,7 +286,6 @@ public class ExaminationService : IExaminationService
             UpdatedDay = examination.UpdatedDay,
             Status = examination.Status,
             SemesterId = examination.SemesterId,
-            PaperSetId = paperSetIds.FirstOrDefault(),
             PaperSetIds = paperSetIds
         };
     }
@@ -273,8 +294,18 @@ public class ExaminationService : IExaminationService
     {
         if (material is null || material.IsDeleted)
             return ("Paper set not found.", "PAPER_SET_NOT_FOUND");
-        if (material.SemesterId != semesterId)
-            return ("Paper set does not belong to the selected semester.", "PAPER_SET_SEMESTER_MISMATCH");
         return null;
+    }
+
+    private static List<Guid> GetRequestedPaperSetIds(IEnumerable<Guid>? paperSetIds, Guid? legacyPaperSetId)
+    {
+        var ids = paperSetIds
+            ?.Where(id => id != Guid.Empty)
+            .ToList() ?? [];
+
+        if (legacyPaperSetId.HasValue && legacyPaperSetId.Value != Guid.Empty)
+            ids.Add(legacyPaperSetId.Value);
+
+        return ids.Distinct().ToList();
     }
 }

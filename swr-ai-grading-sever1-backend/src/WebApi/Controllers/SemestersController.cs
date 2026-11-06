@@ -113,7 +113,7 @@ public class SemestersController : ControllerBase
         return File(
             content,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            $"Semester_Student_Import_Template.xlsx");
+            "Semester_Student_Import_Template.xlsx");
     }
 
     [HttpPost("{id:guid}/students/import-excel")]

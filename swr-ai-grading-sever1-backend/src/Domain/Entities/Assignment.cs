@@ -19,7 +19,6 @@ public class Assignment
     [Column("updated_date")]
     public DateTime UpdatedDate { get; set; }
 
-    [Required]
     [Column("staff_id")]
     [ForeignKey(nameof(Staff))]
     public Guid StaffId { get; set; }

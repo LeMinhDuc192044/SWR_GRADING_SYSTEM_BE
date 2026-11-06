@@ -10,7 +10,6 @@ public class StudentExaminationSession
     [Column("student_id")]
     public Guid StudentId { get; set; }
 
-    [ForeignKey(nameof(StudentId))]
     public Student Student { get; set; } = null!;
 
     [Required]
