@@ -144,7 +144,7 @@ public sealed class PaperSetsController : ControllerBase
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.CreateAsync(request.Description, request.Questions.Select(ToQuestionInput).ToList(), uploads, userId, ct);
+        var result = await _service.CreateAsync(request.Description, request.ExaminationId, request.Questions.Select(ToQuestionInput).ToList(), uploads, userId, ct);
 
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!));
@@ -162,6 +162,7 @@ public sealed class PaperSetsController : ControllerBase
            .Select(item => new CreatePaperSetInput
            {
                Description = item.Description,
+               ExaminationId = item.ExaminationId,
                Questions = item.Questions.Select(ToQuestionInput).ToList(),
                Files = BuildUploads(item.Question, item.AnswerRubric, item.AnswerTemplate)
            })

@@ -15,6 +15,7 @@ public interface IPaperSetService
     Task<Result<PaperSetExtractedContentsDTO>> ReadFilesAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(
         string description,
+        Guid? examinationId,
         IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,

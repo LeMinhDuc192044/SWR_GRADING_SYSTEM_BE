@@ -161,7 +161,7 @@ public sealed class PaperSetService : IPaperSetService
         });
     }
 
-    public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(string description, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateAsync(string description, Guid? examinationId, IReadOnlyList<CreateQuestionInput> questions, IReadOnlyList<MaterialFileUpload> files, Guid createdById, CancellationToken ct = default)
     {
         if (files.Count == 0) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("At least one file is required.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(files);
@@ -170,7 +170,12 @@ public sealed class PaperSetService : IPaperSetService
         if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
         var questionValidation = ValidateQuestions(questionResult.Data!);
         if (!questionValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionValidation.Error!, questionValidation.ErrorCode);
-        var materialResult = await CreateMaterialAsync(description, questionResult.Data!, files, createdById, ct);
+        var normalizedExaminationId = NormalizeOptionalId(examinationId);
+        var examinationValidation = await ValidateExaminationAsync(normalizedExaminationId, ct);
+        if (!examinationValidation.IsSuccess)
+            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(examinationValidation.Error!, examinationValidation.ErrorCode);
+
+        var materialResult = await CreateMaterialAsync(description, normalizedExaminationId, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
         await _repository.AddAsync(materialResult.Data!, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -199,7 +204,12 @@ public sealed class PaperSetService : IPaperSetService
         {
             foreach (var parsedMaterial in parsedMaterials)
             {
-                var materialResult = await CreateMaterialAsync(parsedMaterial.Input.Description, parsedMaterial.Questions, parsedMaterial.Input.Files, createdById, ct);
+                var normalizedExaminationId = NormalizeOptionalId(parsedMaterial.Input.ExaminationId);
+                var examinationValidation = await ValidateExaminationAsync(normalizedExaminationId, ct);
+                if (!examinationValidation.IsSuccess)
+                    return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(examinationValidation.Error!, examinationValidation.ErrorCode);
+
+                var materialResult = await CreateMaterialAsync(parsedMaterial.Input.Description, normalizedExaminationId, parsedMaterial.Questions, parsedMaterial.Input.Files, createdById, ct);
                 if (!materialResult.IsSuccess)
                     return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
 
@@ -245,6 +255,7 @@ public sealed class PaperSetService : IPaperSetService
 
     private async Task<Result<PaperSet>> CreateMaterialAsync(
         string description,
+        Guid? examinationId,
         IReadOnlyList<CreateQuestionInput> questions,
         IReadOnlyList<MaterialFileUpload> files,
         Guid createdById,
@@ -258,6 +269,7 @@ public sealed class PaperSetService : IPaperSetService
             CreatedDate = VietnamTime.Now,
             UpdatedDate = VietnamTime.Now,
             Status = PaperSetStatus.Ready,
+            ExaminationId = examinationId,
             UploadedById = createdById
         };
 
@@ -318,11 +330,10 @@ public sealed class PaperSetService : IPaperSetService
             {
                 foreach (var subItem in matchedRubric.SubItems)
                 {
-                    var criteriaText = !string.IsNullOrWhiteSpace(subItem.Guideline)
-                        ? subItem.Guideline.Trim()
-                        : !string.IsNullOrWhiteSpace(subItem.SubId)
-                            ? subItem.SubId.Trim()
-                            : string.Empty;
+                    var criteriaParts = new[] { subItem.SubId?.Trim(), subItem.Guideline?.Trim() }
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase);
+                    var criteriaText = string.Join(" - ", criteriaParts);
 
                     if (string.IsNullOrWhiteSpace(criteriaText))
                         continue;
@@ -617,6 +628,19 @@ public sealed class PaperSetService : IPaperSetService
             : Result.Failure($"The {file.FileType} file must be a Word document or Excel spreadsheet with a valid extension.", "INVALID_FILE_TYPE");
     }
 
+    private async Task<Result> ValidateExaminationAsync(Guid? examinationId, CancellationToken ct)
+    {
+        if (!examinationId.HasValue)
+            return Result.Success();
+
+        var examination = await _examinationRepository.GetByIdAsync(examinationId.Value, ct);
+        return examination is null
+            ? Result.Failure("Examination not found.", "EXAMINATION_NOT_FOUND")
+            : Result.Success();
+    }
+
+    private static Guid? NormalizeOptionalId(Guid? id) => id.HasValue && id.Value != Guid.Empty ? id : null;
+
     private async Task<string> GenerateCodeAsync(CancellationToken ct) { do { var code = $"PS{Random.Shared.Next(0, 1_000_000):D6}"; if (!await _repository.IsCodeExistsAsync(code, ct)) return code; } while (true); }
     private static string NormalizeStorageSegment(string value) => value.Trim().Replace('/', '-').Replace('\\', '-');
 
@@ -644,7 +668,7 @@ public sealed class PaperSetService : IPaperSetService
             .AsNoTracking()
             .Where(q => q.PaperSetId == paperSetId)
             .Include(q => q.Diagram)
-            // .Include(q => q.Rubric)
+            .Include(q => q.Criteria)
             .OrderBy(q => q.CreatedDay)
             .ThenBy(q => q.Title)
             .ToListAsync(ct);
@@ -659,7 +683,7 @@ public sealed class PaperSetService : IPaperSetService
             .AsNoTracking()
             .Where(q => q.QuestionId == questionId)
             .Include(q => q.Diagram)
-            // .Include(q => q.Rubric)
+            .Include(q => q.Criteria)
             .FirstOrDefaultAsync(ct);
 
         if (question is null)
@@ -668,37 +692,6 @@ public sealed class PaperSetService : IPaperSetService
         return Result<QuestionDTO>.Success(MapToQuestionDTO(question));
     }
 
-    // public async Task<Result<IReadOnlyList<RubricDTO>>> GetRubricsByPaperSetIdAsync(Guid paperSetId, CancellationToken ct = default)
-    // {
-    //     var paperSet = await _repository.GetByIdAsync(paperSetId, ct);
-    //     if (paperSet is null || paperSet.IsDeleted)
-    //         return Result<IReadOnlyList<RubricDTO>>.Failure("Paper set not found.", "PAPER_SET_NOT_FOUND");
-
-    //     var rubrics = await _dbContext.QuestionRubrics
-    //         .AsNoTracking()
-    //         .Where(r => r.PaperSetId == paperSetId)
-    //         .Include(r => r.Diagram)
-    //         .Include(r => r.Questions)
-    //         .ToListAsync(ct);
-
-    //     var dtos = rubrics.Select(MapToRubricDTO).ToList();
-    //     return Result<IReadOnlyList<RubricDTO>>.Success(dtos);
-    // }
-
-    // public async Task<Result<RubricDTO>> GetRubricByIdAsync(Guid rubricId, CancellationToken ct = default)
-    // {
-    //     var rubric = await _dbContext.QuestionRubrics
-    //         .AsNoTracking()
-    //         .Where(r => r.RubricId == rubricId)
-    //         .Include(r => r.Diagram)
-    //         .Include(r => r.Questions)
-    //         .FirstOrDefaultAsync(ct);
-
-    //     if (rubric is null)
-    //         return Result<RubricDTO>.Failure("Rubric not found.", "RUBRIC_NOT_FOUND");
-
-    //     return Result<RubricDTO>.Success(MapToRubricDTO(rubric));
-    // }
 
     private static QuestionDTO MapToQuestionDTO(Question q) => new()
     {
@@ -709,6 +702,13 @@ public sealed class PaperSetService : IPaperSetService
         Point = q.Point,
         DiagramId = q.DiagramId,
         DiagramName = q.Diagram?.Name,
+        Criteria = q.Criteria
+            .Select(criteria => new QuestionCriteriaDTO
+            {
+                Criteria = criteria.Criteria,
+                Point = criteria.Point
+            })
+            .ToList(),
         // RubricId = q.RubricId,
         // Rubric = q.Rubric is null ? null : new QuestionRubricSummaryDTO
         // {

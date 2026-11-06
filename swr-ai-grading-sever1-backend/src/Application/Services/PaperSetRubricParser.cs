@@ -146,7 +146,9 @@ public static partial class PaperSetRubricParser
             {
                 SubId = subId,
                 Point = point,
-                Guideline = string.IsNullOrWhiteSpace(guideline) ? criteriaText.Trim() : guideline
+                Guideline = string.IsNullOrWhiteSpace(guideline)
+                    ? criteriaText.Trim()
+                    : $"{criteriaText.Trim()} - {guideline}"
             });
         }
 

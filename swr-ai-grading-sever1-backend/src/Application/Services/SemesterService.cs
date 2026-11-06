@@ -6,7 +6,7 @@ using Application.Interfaces;
 using ClosedXML.Excel;
 using Domain.Entities;
 using Domain.Enums;
-using Application.DTOs.AuthDTOs;
+using  Application.DTOs.AuthDTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;

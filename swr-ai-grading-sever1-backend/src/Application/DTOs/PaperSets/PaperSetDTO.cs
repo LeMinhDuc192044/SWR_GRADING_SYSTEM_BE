@@ -31,7 +31,6 @@ public sealed class PaperSetQuestionDTO
     public decimal Point { get; set; }
     public Guid? DiagramId { get; set; }
     public string? DiagramName { get; set; }
-    public Guid? RubricId { get; set; }
     public DateTime? CreatedDay { get; set; }
     public DateTime? UpdatedDay { get; set; }
 }
@@ -90,6 +89,7 @@ public class AddPaperSetFilesRequest
 public class CreatePaperSetRequest
 {
     public string Description { get; set; } = string.Empty;
+    public Guid? ExaminationId { get; set; }
     // public int TotalQuestions { get; set; }
     public List<CreateQuestionRequest> Questions { get; set; } = new();
     public IFormFile? Question { get; set; }
@@ -106,6 +106,7 @@ public sealed class CreatePaperSetsRequest
 public sealed class CreatePaperSetItemRequest
 {
     public string Description { get; set; } = string.Empty;
+    public Guid? ExaminationId { get; set; }
     public List<CreateQuestionRequest> Questions { get; set; } = new();
     public IFormFile? Question { get; set; }
     public IFormFile? AnswerRubric { get; set; }
@@ -115,6 +116,7 @@ public sealed class CreatePaperSetItemRequest
 public sealed class CreatePaperSetInput
 {
     public required string Description { get; init; }
+    public Guid? ExaminationId { get; init; }
     public required IReadOnlyList<CreateQuestionInput> Questions { get; init; }
     public required IReadOnlyList<MaterialFileUpload> Files { get; init; }
 }

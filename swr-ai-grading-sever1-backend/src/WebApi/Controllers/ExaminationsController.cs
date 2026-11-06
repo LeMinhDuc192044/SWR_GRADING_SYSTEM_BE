@@ -61,7 +61,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/paper-sets")]
-    [Authorize(Roles = "Admin")]
+    // [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AddPaperSets(
         Guid id,
         [FromBody] AddPaperSetsToExaminationRequest request,

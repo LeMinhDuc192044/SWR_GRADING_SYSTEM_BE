@@ -131,6 +131,18 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .IsRequired()
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<ExaminationSession>()
+            .HasOne(session => session.Examination)
+            .WithMany(examination => examination.StudentExaminations)
+            .HasForeignKey(session => session.ExaminationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<ExaminationSession>()
+            .HasOne(session => session.PaperSet)
+            .WithMany()
+            .HasForeignKey(session => session.PaperSetId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.Entity<StudentExaminationSession>(entity =>
         {
             entity.ToTable("student_examination_sessions");
