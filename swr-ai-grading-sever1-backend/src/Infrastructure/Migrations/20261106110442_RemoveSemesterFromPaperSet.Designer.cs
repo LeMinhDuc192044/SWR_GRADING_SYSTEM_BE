@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261106044532_RemoveSemesterFromPaperSet")]
+    [Migration("20261106110442_RemoveSemesterFromPaperSet")]
     partial class RemoveSemesterFromPaperSet
     {
         /// <inheritdoc />
@@ -337,12 +337,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("grading_session_id");
 
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly>("CreatedDate")
+                        .HasColumnType("date")
                         .HasColumnName("created_date");
 
-                    b.Property<DateTime?>("Deadline")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly?>("Deadline")
+                        .HasColumnType("date")
                         .HasColumnName("deadline");
 
                     b.Property<Guid>("ExaminationSessionId")
@@ -362,8 +362,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("title");
 
-                    b.Property<DateTime>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone")
+                    b.Property<DateOnly>("UpdatedDate")
+                        .HasColumnType("date")
                         .HasColumnName("updated_date");
 
                     b.HasKey("GradingSessionId");
@@ -620,7 +620,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_date");
 
-                    b.Property<Guid>("ExaminationSessionId")
+                    b.Property<Guid?>("ExaminationSessionId")
                         .HasColumnType("uuid")
                         .HasColumnName("examination_session_id");
 
@@ -1070,9 +1070,7 @@ namespace Infrastructure.Migrations
                 {
                     b.HasOne("Domain.Entities.ExaminationSession", "ExaminationSession")
                         .WithMany("StudentSubmissions")
-                        .HasForeignKey("ExaminationSessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ExaminationSessionId");
 
                     b.HasOne("Domain.Entities.Student", "Student")
                         .WithMany()

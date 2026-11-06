@@ -333,9 +333,9 @@ namespace Infrastructure.Migrations
                 {
                     grading_session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    created_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    deadline = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    created_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    updated_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    deadline = table.Column<DateOnly>(type: "date", nullable: true),
                     number_submissions = table.Column<int>(type: "integer", nullable: false),
                     examination_session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     PaperSetId = table.Column<Guid>(type: "uuid", nullable: true)
@@ -391,7 +391,7 @@ namespace Infrastructure.Migrations
                     created_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     updated_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     uploaded_by_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    examination_session_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -400,8 +400,7 @@ namespace Infrastructure.Migrations
                         name: "FK_student_submission_examination_sessions_examination_session~",
                         column: x => x.examination_session_id,
                         principalTable: "examination_sessions",
-                        principalColumn: "examination_sessions_id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "examination_sessions_id");
                     table.ForeignKey(
                         name: "FK_student_submission_staff_uploaded_by_id",
                         column: x => x.uploaded_by_id,

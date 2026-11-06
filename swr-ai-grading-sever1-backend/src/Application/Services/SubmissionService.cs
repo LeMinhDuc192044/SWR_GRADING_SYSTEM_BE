@@ -34,7 +34,7 @@ public sealed class SubmissionService : ISubmissionService
         var sessionId = session?.ExaminationSessionId;
         var paperSetId = session?.PaperSetId ?? (await _db.PaperSets.AsNoTracking().Where(p => p.PaperSetId != Guid.Empty).OrderByDescending(p => p.PaperSetId).FirstOrDefaultAsync(ct))?.PaperSetId;
 
-        if (examinationSessionId.HasValue && session is null)
+        if (session is null)
             return Result<UploadSubmissionsResultDTO>.Failure("Examination session not found.", "EXAMINATION_SESSION_NOT_FOUND");
         if (!paperSetId.HasValue)
             return Result<UploadSubmissionsResultDTO>.Failure("An examination session must be linked to a paper set.", "PAPER_SET_NOT_LINKED");
@@ -182,6 +182,9 @@ public sealed class SubmissionService : ISubmissionService
             summaries.Add(summary);
         }
 
+        if (sessionId.HasValue && summaries.Any(item => item.IsSuccess))
+            await SyncGradingSessionCountsAsync(sessionId.Value, ct);
+
         return Result<UploadSubmissionsResultDTO>.Success(new UploadSubmissionsResultDTO
         {
             TotalUploaded = files.Count,
@@ -302,4 +305,26 @@ public sealed class SubmissionService : ISubmissionService
         var normalized = Regex.Replace(value ?? string.Empty, @"[^A-Za-z0-9._-]", "_");
         return string.IsNullOrWhiteSpace(normalized) ? "file" : normalized.Trim('_');
     }
+
+    private async Task SyncGradingSessionCountsAsync(Guid examinationSessionId, CancellationToken ct)
+{
+    var count = await _db.StudentSubmissions
+        .CountAsync(s => s.ExaminationSessionId == examinationSessionId, ct);
+
+    var gradingSessions = await _db.GradingSessions
+        .Where(g => g.ExaminationSessionId == examinationSessionId)
+        .ToListAsync(ct);
+
+    if (gradingSessions.Count == 0) return;
+
+    var now = VietnamTime.Now;
+    var today = DateOnly.FromDateTime(now);
+
+    foreach (var gradingSession in gradingSessions)
+    {
+        gradingSession.NumberSubmissions = count;
+        gradingSession.UpdatedDate = today;
+    }
+    await _db.SaveChangesAsync(ct);
+}
 }
