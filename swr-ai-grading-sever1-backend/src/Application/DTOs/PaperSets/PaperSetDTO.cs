@@ -55,13 +55,6 @@ public sealed class PaperSetExtractedContentsDTO
     public Guid PaperSetId { get; set; }
     public IReadOnlyList<PaperSetExtractedFileDTO> Files { get; set; } = [];
 }
-
-// public sealed class PaperSetDetailDTO : PaperSetMetadataDTO
-// {
-//     public string StoragePath { get; set; } = string.Empty;
-//     public IReadOnlyList<RubricDTO> Rubrics { get; set; } = [];
-// }
-
 public sealed class UpdatePaperSetRequest
 {
     public string? Description { get; set; }

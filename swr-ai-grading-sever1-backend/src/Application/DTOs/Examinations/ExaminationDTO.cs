@@ -66,9 +66,14 @@ public class UpdateExaminationRequest
 public sealed class ExaminationPaperSetDTO
 {
     public Guid PaperSetId { get; set; }
-    public string PaperSetCode { get; set; } = string.Empty;     // ASSUMPTION: property names match your PaperSet entity
-    public string Description { get; set; } = string.Empty;      // ASSUMPTION
-    public int TotalQuestions { get; set; }                      // ASSUMPTION
+    public string PaperSetCode { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int TotalQuestions { get; set; }
     public PaperSetStatus Status { get; set; }
-    public IReadOnlyList<QuestionDTO> Questions { get; set; } = [];   // each question already carries its Criteria list
+    public Guid? ExaminationId { get; set; }
+    public Guid CreateById { get; set; }
+    public string LecturerName { get; set; } = string.Empty;
+    public string LecturerCode { get; set; } = string.Empty;
+    public DateTime CreatedDate { get; set; }
+    public DateTime UpdatedDate { get; set; }
 }

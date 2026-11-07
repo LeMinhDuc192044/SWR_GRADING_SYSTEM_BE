@@ -69,7 +69,7 @@ public class ExaminationService : IExaminationService
         if (examination is null)
             return Result<ExaminationDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
 
-        var dto = await ToDtoAsync(examination);
+        ExaminationDTO? dto = await ToDtoAsync(examination);
         dto.PaperSets = await LoadPaperSetsAsync(examination.ExaminationId, ct);
         return Result<ExaminationDTO>.Success(dto);
     }
@@ -337,39 +337,28 @@ public class ExaminationService : IExaminationService
             .ToListAsync(ct);
         if (paperSets.Count == 0) return [];
 
-        var paperSetIds = paperSets.Select(p => p.PaperSetId).ToList();
-        var questions = await _db.Questions.AsNoTracking()
-            .Include(q => q.Diagram)
-            .Include(q => q.Criteria)
-            .Where(q => paperSetIds.Contains(q.PaperSetId))
-            .OrderBy(q => q.Title)
-            .ToListAsync(ct);
-        var questionsByPaperSet = questions.ToLookup(q => q.PaperSetId);
+        var uploaderIds = paperSets.Select(p => p.UploadedById).Distinct().ToList();
+        var uploaders = await _db.Staff.AsNoTracking()
+            .Where(s => uploaderIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, ct);
 
-        return paperSets.Select(p => new ExaminationPaperSetDTO
+        return paperSets.Select(p =>
         {
-            PaperSetId = p.PaperSetId,
-            PaperSetCode = p.PaperSetCode,
-            Description = p.Description,
-            TotalQuestions = p.TotalQuestions,
-            Status = p.Status,
-            Questions = questionsByPaperSet[p.PaperSetId].Select(MapQuestion).ToList()
+            uploaders.TryGetValue(p.UploadedById, out var uploader);
+            return new ExaminationPaperSetDTO
+            {
+                PaperSetId = p.PaperSetId,
+                PaperSetCode = p.PaperSetCode,
+                Description = p.Description,
+                TotalQuestions = p.TotalQuestions,
+                Status = p.Status,
+                ExaminationId = p.ExaminationId,
+                CreateById = p.UploadedById,
+                LecturerName = uploader?.FullName ?? string.Empty,
+                LecturerCode = uploader?.StaffCode ?? string.Empty,
+                CreatedDate = p.CreatedDate,
+                UpdatedDate = p.UpdatedDate
+            };
         }).ToList();
     }
-
-    private static QuestionDTO MapQuestion(Question question) => new()
-    {
-        QuestionId = question.QuestionId,
-        PaperSetId = question.PaperSetId,
-        Title = question.Title,
-        Content = question.Content,
-        Point = question.Point,
-        DiagramId = question.DiagramId,
-        DiagramName = question.Diagram?.Name,
-        Criteria = question.Criteria
-            .Select(c => new QuestionCriteriaDTO { Criteria = c.Criteria, Point = c.Point })
-            .ToList(),
-        CreatedDay = question.CreatedDay,
-        UpdatedDay = question.UpdatedDay
-    };
 }
