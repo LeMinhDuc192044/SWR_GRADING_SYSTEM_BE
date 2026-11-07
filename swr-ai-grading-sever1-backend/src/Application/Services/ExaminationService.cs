@@ -1,5 +1,8 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Examinations;
+using Microsoft.EntityFrameworkCore;
+using Application.DTOs.Questions;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
@@ -13,28 +16,43 @@ public class ExaminationService : IExaminationService
     private readonly ISemesterRepository _semesterRepository;
     private readonly IPaperSetRepository _paperSetRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _db;
+
 
     public ExaminationService(
         IExaminationRepository repository,
         ISemesterRepository semesterRepository,
         IPaperSetRepository paperSetRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IApplicationDbContext db)
     {
         _repository = repository;
         _semesterRepository = semesterRepository;
         _paperSetRepository = paperSetRepository;
         _unitOfWork = unitOfWork;
+        _db = db;
     }
 
-    public async Task<PagedResult<ExaminationDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+    public async Task<PagedResult<ExaminationDTO>> GetPagedAsync(
+        PagedRequest request,
+        CancellationToken ct = default)
     {
         var examinations = await _repository.GetAllAsync(ct);
-        var items = await Task.WhenAll(examinations
+
+        var pagedExaminations = examinations
             .OrderByDescending(e => e.StartDate)
-            // .ThenBy(e => e.StartTime)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(ToDtoAsync));
+            .ToList();
+
+        var items = new List<ExaminationDTO>();
+
+        // Execute database operations sequentially.
+        foreach (var examination in pagedExaminations)
+        {
+            var dto = await ToDtoAsync(examination);
+            items.Add(dto);
+        }
 
         return new PagedResult<ExaminationDTO>
         {
@@ -48,9 +66,12 @@ public class ExaminationService : IExaminationService
     public async Task<Result<ExaminationDTO>> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var examination = await _repository.GetByIdAsync(id, ct);
-        return examination is null
-            ? Result<ExaminationDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND")
-            : Result<ExaminationDTO>.Success(await ToDtoAsync(examination));
+        if (examination is null)
+            return Result<ExaminationDTO>.Failure("Examination not found.", "EXAMINATION_NOT_FOUND");
+
+        var dto = await ToDtoAsync(examination);
+        dto.PaperSets = await LoadPaperSetsAsync(examination.ExaminationId, ct);
+        return Result<ExaminationDTO>.Success(dto);
     }
 
     public async Task<Result<ExaminationDTO>> CreateAsync(CreateExaminationRequest request, CancellationToken ct = default)
@@ -308,4 +329,47 @@ public class ExaminationService : IExaminationService
 
         return ids.Distinct().ToList();
     }
+    private async Task<IReadOnlyList<ExaminationPaperSetDTO>> LoadPaperSetsAsync(Guid examinationId, CancellationToken ct)
+    {
+        var paperSets = await _db.PaperSets.AsNoTracking()
+            .Where(p => p.ExaminationId == examinationId && !p.IsDeleted)
+            .OrderBy(p => p.PaperSetCode)
+            .ToListAsync(ct);
+        if (paperSets.Count == 0) return [];
+
+        var paperSetIds = paperSets.Select(p => p.PaperSetId).ToList();
+        var questions = await _db.Questions.AsNoTracking()
+            .Include(q => q.Diagram)
+            .Include(q => q.Criteria)
+            .Where(q => paperSetIds.Contains(q.PaperSetId))
+            .OrderBy(q => q.Title)
+            .ToListAsync(ct);
+        var questionsByPaperSet = questions.ToLookup(q => q.PaperSetId);
+
+        return paperSets.Select(p => new ExaminationPaperSetDTO
+        {
+            PaperSetId = p.PaperSetId,
+            PaperSetCode = p.PaperSetCode,
+            Description = p.Description,
+            TotalQuestions = p.TotalQuestions,
+            Status = p.Status,
+            Questions = questionsByPaperSet[p.PaperSetId].Select(MapQuestion).ToList()
+        }).ToList();
+    }
+
+    private static QuestionDTO MapQuestion(Question question) => new()
+    {
+        QuestionId = question.QuestionId,
+        PaperSetId = question.PaperSetId,
+        Title = question.Title,
+        Content = question.Content,
+        Point = question.Point,
+        DiagramId = question.DiagramId,
+        DiagramName = question.Diagram?.Name,
+        Criteria = question.Criteria
+            .Select(c => new QuestionCriteriaDTO { Criteria = c.Criteria, Point = c.Point })
+            .ToList(),
+        CreatedDay = question.CreatedDay,
+        UpdatedDay = question.UpdatedDay
+    };
 }

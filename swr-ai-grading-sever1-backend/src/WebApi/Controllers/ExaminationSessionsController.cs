@@ -8,7 +8,6 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/examinations/{examinationId:guid}/sessions")]
-[Authorize(Roles = "Admin,Monitor")]
 public sealed class ExaminationSessionsController : ControllerBase
 {
     private readonly IExaminationSessionService _service;
@@ -35,6 +34,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Create(Guid examinationId, [FromBody] CreateExaminationSessionRequest request, CancellationToken ct)
     {
         var result = await _service.CreateAsync(examinationId, request, ct);
@@ -42,6 +42,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpPut("{sessionId:guid}")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Update(Guid examinationId, Guid sessionId, [FromBody] UpdateExaminationSessionRequest request, CancellationToken ct)
     {
         var result = await _service.UpdateAsync(examinationId, sessionId, request, ct);
@@ -49,6 +50,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpDelete("{sessionId:guid}")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Delete(Guid examinationId, Guid sessionId, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(examinationId, sessionId, ct);

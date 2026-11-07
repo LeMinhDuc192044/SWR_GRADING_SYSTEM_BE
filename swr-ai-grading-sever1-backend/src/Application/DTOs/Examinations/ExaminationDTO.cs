@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using Application.DTOs.Questions;
 using Domain.Enums;
 
 namespace Application.DTOs.Examinations;
@@ -19,7 +21,11 @@ public class ExaminationDTO
     public ExaminationStatus Status { get; set; }
     public Guid SemesterId { get; set; }
     public IReadOnlyList<Guid> PaperSetIds { get; set; } = [];
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ExaminationPaperSetDTO>? PaperSets { get; set; }
 }
+
 
 public class CreateExaminationRequest
 {
@@ -55,4 +61,14 @@ public class UpdateExaminationRequest
     public Guid? SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
     public List<Guid>? PaperSetIds { get; set; }
+}
+
+public sealed class ExaminationPaperSetDTO
+{
+    public Guid PaperSetId { get; set; }
+    public string PaperSetCode { get; set; } = string.Empty;     // ASSUMPTION: property names match your PaperSet entity
+    public string Description { get; set; } = string.Empty;      // ASSUMPTION
+    public int TotalQuestions { get; set; }                      // ASSUMPTION
+    public PaperSetStatus Status { get; set; }
+    public IReadOnlyList<QuestionDTO> Questions { get; set; } = [];   // each question already carries its Criteria list
 }
