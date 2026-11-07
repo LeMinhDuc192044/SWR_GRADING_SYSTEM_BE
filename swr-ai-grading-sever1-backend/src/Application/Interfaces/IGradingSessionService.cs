@@ -1,5 +1,5 @@
 using Application.Common;
-using Application.DTOs.Examinations;
+using Application.DTOs.GradingSession;
 
 namespace Application.Interfaces;
 
@@ -19,5 +19,14 @@ public interface IGradingSessionService
     Task<Result<GradingSessionDTO>> UpdateAsync(
         Guid examinationSessionId,
         UpdateGradingSessionRequest request,
+        CancellationToken ct = default);
+
+    Task<PagedResult<GradingSessionDTO>> GetAllAsync(
+        PagedRequest request,
+        CancellationToken ct = default);
+
+    Task<PagedResult<MonitorGradingSessionDTO>> GetByMonitorAsync(
+        Guid monitorId,
+        PagedRequest request,
         CancellationToken ct = default);
 }

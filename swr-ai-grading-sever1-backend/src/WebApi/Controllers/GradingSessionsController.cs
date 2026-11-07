@@ -1,4 +1,5 @@
-using Application.DTOs.Examinations;
+using Application.Common;
+using Application.DTOs.GradingSession;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/sessions/{examinationSessionId:guid}/grading-sessions")]
-[Authorize(Roles = "Manager")]
+[Authorize(Roles = "Manager,Monitor")]
 public sealed class GradingSessionsController : ControllerBase
 {
     private readonly IGradingSessionService _service;
@@ -22,6 +23,29 @@ public sealed class GradingSessionsController : ControllerBase
     {
         var result = await _service.GetByExaminationSessionAsync(examinationSessionId, ct);
         return ResultResponse(result);
+    }
+
+    [HttpGet("~/api/grading-sessions")]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] PagedRequest request,
+        CancellationToken ct)
+    {
+        var result = await _service.GetAllAsync(request, ct);
+        return Ok(ApiResponse.Success(result));
+    }
+
+    [HttpGet("/api/monitors/{monitorId:guid}/grading-sessions")]
+    public async Task<IActionResult> GetByMonitor(
+        Guid monitorId,
+        [FromQuery] PagedRequest request,
+        CancellationToken ct)
+    {
+        var result = await _service.GetByMonitorAsync(
+            monitorId,
+            request,
+            ct);
+
+        return Ok(ApiResponse.Success(result));
     }
 
     [HttpGet("{gradingSessionId:guid}")]
