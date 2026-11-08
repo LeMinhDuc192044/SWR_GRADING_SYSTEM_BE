@@ -29,5 +29,15 @@ public sealed class AuthController : ControllerBase
         var result = await _authService.RegisterAsync(request, ct);
         return result.ToActionResult(this, StatusCodes.Status201Created, "Registration successful.");
     }
+
+    [HttpGet("monitors")]
+    public async Task<IActionResult> GetAll(CancellationToken ct)
+    {
+        var result = await _authService.GetAllAsync(ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data!))
+            : StatusCode(StatusCodes.Status400BadRequest,
+                ApiResponse.Failure(StatusCodes.Status400BadRequest, result.Error ?? "Request failed."));
+    }
 }
 
