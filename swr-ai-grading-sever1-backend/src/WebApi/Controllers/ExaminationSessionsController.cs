@@ -59,6 +59,31 @@ public sealed class ExaminationSessionsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
+    [HttpPost("import")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> CreateFromExcel(
+        Guid examinationId, [FromForm] CreateExaminationSessionFromExcelForm form, CancellationToken ct)
+    {
+        if (!Path.GetExtension(form.File.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse.Failure(400, "Only .xlsx files are supported."));
+        if (form.File.Length == 0 || form.File.Length > 5 * 1024 * 1024)
+            return BadRequest(ApiResponse.Failure(400, "The Excel file must be between 1 byte and 5 MB."));
+
+        var request = new CreateExaminationSessionRequest
+        {
+            ExaminationCode = form.ExaminationCode,
+            StartDate = form.StartDate,
+            StartTime = form.StartTime,
+            Status = form.Status,
+            PaperSetId = form.PaperSetId
+        };
+
+        using var buffer = new MemoryStream();
+        await form.File.CopyToAsync(buffer, ct);
+
+        return ResultResponse(await _service.CreateWithStudentExcelAsync(examinationId, request, buffer, ct));
+    }
+
     private IActionResult ResultResponse<T>(Application.Common.Result<T> result)
     {
         if (result.IsSuccess)

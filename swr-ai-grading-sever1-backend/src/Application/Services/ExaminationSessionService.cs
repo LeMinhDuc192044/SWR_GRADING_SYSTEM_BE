@@ -12,11 +12,13 @@ public sealed class ExaminationSessionService : IExaminationSessionService
 {
     private readonly IApplicationDbContext _db;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IStudentCodeExcelReader _excelReader;
 
-    public ExaminationSessionService(IApplicationDbContext db, IUnitOfWork unitOfWork)
+    public ExaminationSessionService(IApplicationDbContext db, IUnitOfWork unitOfWork, IStudentCodeExcelReader excelReader)
     {
         _db = db;
         _unitOfWork = unitOfWork;
+        _excelReader = excelReader;
     }
 
     public async Task<Result<IReadOnlyList<ExaminationSessionDTO>>> GetByExaminationAsync(Guid examinationId, CancellationToken ct = default)
@@ -63,6 +65,8 @@ public sealed class ExaminationSessionService : IExaminationSessionService
                 return Result<ExaminationSessionDTO>.Failure("Paper set does not belong to the examination.", "PAPER_SET_EXAMINATION_MISMATCH");
         }
 
+        
+
         var studentIds = request.StudentIds.Where(id => id != Guid.Empty).Distinct().ToList();
         foreach (var studentId in studentIds)
         {
@@ -96,6 +100,80 @@ public sealed class ExaminationSessionService : IExaminationSessionService
         _db.ExaminationSessions.Add(session);
         await _unitOfWork.SaveChangesAsync(ct);
         return Result<ExaminationSessionDTO>.Success(Map(session));
+    }
+
+    public async Task<Result<ExaminationSessionImportResultDTO>> CreateWithStudentExcelAsync(
+        Guid examinationId, CreateExaminationSessionRequest request, Stream excelStream, CancellationToken ct = default)
+    {
+        IReadOnlyList<StudentCodeRow> rows;
+        try
+        {
+            rows = _excelReader.Read(excelStream);
+        }
+        catch (InvalidDataException ex)
+        {
+            return Result<ExaminationSessionImportResultDTO>.Failure(ex.Message, "INVALID_EXCEL_FILE");
+        }
+
+        if (rows.Count == 0)
+            return Result<ExaminationSessionImportResultDTO>.Failure("The Excel file contains no student codes.", "EXCEL_EMPTY");
+
+        var errors = new List<StudentImportErrorDTO>();
+
+        // 1. Drop duplicates inside the file (keep the first one, report the rest).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var uniqueRows = new List<StudentCodeRow>();
+        foreach (var row in rows)
+        {
+            if (seen.Add(row.Code))
+                uniqueRows.Add(row);
+            else
+                errors.Add(new StudentImportErrorDTO
+                {
+                    Row = row.RowNumber,
+                    StudentCode = row.Code,
+                    Message = $"Duplicate student code '{row.Code}' in the file; ignored."
+                });
+        }
+
+        // 2. Look all codes up in one query (case-insensitive).
+        var codesUpper = uniqueRows.Select(r => r.Code.ToUpperInvariant()).ToList();
+        var found = await _db.Students.AsNoTracking()
+            .Where(s => !s.IsDeleted && codesUpper.Contains(s.StudentCode.ToUpper()))
+            .Select(s => new { s.Id, s.StudentCode })
+            .ToListAsync(ct);
+        var idByCode = found
+            .GroupBy(s => s.StudentCode.ToUpperInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
+        // 3. Keep the valid ones, record the rest, but never stop.
+        var studentIds = new List<Guid>();
+        foreach (var row in uniqueRows)
+        {
+            if (idByCode.TryGetValue(row.Code.ToUpperInvariant(), out var studentId))
+                studentIds.Add(studentId);
+            else
+                errors.Add(new StudentImportErrorDTO
+                {
+                    Row = row.RowNumber,
+                    StudentCode = row.Code,
+                    Message = $"Student code '{row.Code}' does not exist."
+                });
+        }
+
+        // 4. Create the session with the valid students (existing validation applies).
+        request.StudentIds = studentIds;
+        var created = await CreateAsync(examinationId, request, ct);
+        if (!created.IsSuccess)
+            return Result<ExaminationSessionImportResultDTO>.Failure(created.Error!, created.ErrorCode);
+
+        return Result<ExaminationSessionImportResultDTO>.Success(new ExaminationSessionImportResultDTO
+        {
+            Session = created.Data!,
+            TotalRows = rows.Count,
+            ImportedStudents = studentIds.Count,
+            Errors = errors.OrderBy(e => e.Row).ToList()
+        });
     }
 
     public async Task<Result<ExaminationSessionDTO>> UpdateAsync(Guid examinationId, Guid sessionId, UpdateExaminationSessionRequest request, CancellationToken ct = default)

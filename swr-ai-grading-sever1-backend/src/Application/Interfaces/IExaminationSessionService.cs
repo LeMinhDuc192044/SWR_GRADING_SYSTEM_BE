@@ -10,4 +10,6 @@ public interface IExaminationSessionService
     Task<Result<ExaminationSessionDTO>> CreateAsync(Guid examinationId, CreateExaminationSessionRequest request, CancellationToken ct = default);
     Task<Result<ExaminationSessionDTO>> UpdateAsync(Guid examinationId, Guid sessionId, UpdateExaminationSessionRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid examinationId, Guid sessionId, CancellationToken ct = default);
+    Task<Result<ExaminationSessionImportResultDTO>> CreateWithStudentExcelAsync(
+        Guid examinationId, CreateExaminationSessionRequest request, Stream excelStream, CancellationToken ct = default);
 }
