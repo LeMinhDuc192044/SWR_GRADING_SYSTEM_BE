@@ -5,7 +5,7 @@ namespace Application.Interfaces;
 
 public interface ISubmissionGradingService
 {
-    Task<Result<IReadOnlyList<GradingHistoryDTO>>> GetHistoriesAsync(
+    Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default);
 
     Task<Result<GradingHistoryDTO>> GradeWithAiAsync(

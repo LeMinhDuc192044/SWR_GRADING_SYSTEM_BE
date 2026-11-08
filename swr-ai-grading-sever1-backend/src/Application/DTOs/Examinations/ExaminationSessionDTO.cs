@@ -1,4 +1,5 @@
 using Domain.Enums;
+using System.Text.Json.Serialization;
 
 namespace Application.DTOs.Examinations;
 
@@ -12,7 +13,14 @@ public sealed class ExaminationSessionDTO
     public ExaminationSessionStatus Status { get; set; }
     public Guid SemesterId { get; set; }
     public Guid? PaperSetId { get; set; }
+    public DateTime CreatedDay { get; set; }
+    public DateTime UpdatedDay { get; set; }
     public IReadOnlyList<Guid> StudentIds { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExaminationSessionSemesterDTO? Semester { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExaminationSessionExaminationDTO? Examination { get; set; }
 }
 
 public sealed class CreateExaminationSessionRequest
@@ -33,4 +41,22 @@ public sealed class UpdateExaminationSessionRequest
     public ExaminationSessionStatus? Status { get; set; }
     public Guid? PaperSetId { get; set; }
     public List<Guid>? StudentIds { get; set; }
+}
+
+
+public sealed class ExaminationSessionSemesterDTO
+{
+    public Guid SemesterId { get; set; }
+    public string SemesterCode { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+}
+
+public sealed class ExaminationSessionExaminationDTO
+{
+    public Guid ExaminationId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
 }

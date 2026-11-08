@@ -41,6 +41,14 @@ public sealed class ExaminationSessionsController : ControllerBase
         return ResultResponse(result);
     }
 
+    [HttpGet("~/api/examination-sessions")]
+    [Authorize]
+    public async Task<IActionResult> GetAllSessions([FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var result = await _service.GetPagedAsync(request, ct);
+        return Ok(ApiResponse.Success(result));
+    }
+
     [HttpPut("{sessionId:guid}")]
     [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Update(Guid examinationId, Guid sessionId, [FromBody] UpdateExaminationSessionRequest request, CancellationToken ct)
