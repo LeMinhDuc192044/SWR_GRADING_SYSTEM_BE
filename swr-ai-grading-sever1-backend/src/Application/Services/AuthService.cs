@@ -4,6 +4,9 @@ using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.Extensions.Options;
+using Application.Common.Interfaces;
+using Microsoft.EntityFrameworkCore;
+
 
 namespace Application.Services;
 
@@ -13,17 +16,20 @@ public sealed class AuthService : IAuthService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IJwtTokenService _tokens;
     private readonly JwtSettings _settings;
+    private readonly IApplicationDbContext _db;
 
     public AuthService(
         IUserRepository users,
         IUnitOfWork unitOfWork,
         IJwtTokenService tokens,
-        IOptions<JwtSettings> options)
+        IOptions<JwtSettings> options,
+        IApplicationDbContext db)
     {
         _users = users;
         _unitOfWork = unitOfWork;
         _tokens = tokens;
         _settings = options.Value;
+        _db = db;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginRequest request, CancellationToken ct = default)
@@ -44,6 +50,26 @@ public sealed class AuthService : IAuthService
 
         var role = student is not null ? UserRole.Student : staff!.Role;
         return Result<AuthResponseDto>.Success(CreateResponse(user, role, student, staff));
+    }
+
+    public async Task<Result<IReadOnlyList<MonitorDTO>>> GetAllAsync(CancellationToken ct = default)
+    {
+        var monitors = await _db.Staff.AsNoTracking()
+            .Where(s => s.Role == UserRole.Monitor && !s.IsDeleted && s.IsActive)
+            .OrderBy(s => s.FullName)
+            .ThenBy(s => s.StaffCode)
+            .Select(s => new MonitorDTO
+            {
+                Id = s.Id,
+                StaffCode = s.StaffCode,
+                FullName = s.FullName,
+                Email = s.Email,
+                Birthday = s.Birthday,
+                IsActive = s.IsActive
+            })
+            .ToListAsync(ct);
+
+        return Result<IReadOnlyList<MonitorDTO>>.Success(monitors);
     }
 
     public async Task<Result<AuthResponseDto>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
