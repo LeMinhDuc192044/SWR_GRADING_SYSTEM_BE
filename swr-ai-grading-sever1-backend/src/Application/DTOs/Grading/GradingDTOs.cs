@@ -35,6 +35,33 @@ public sealed class ReviewGradingRequest
     public List<ReviewItemRequest> Items { get; set; } = [];
 }
 
+public sealed class SubmissionGradingOverviewDTO
+{
+    public Guid SubmissionId { get; set; }
+    public IReadOnlyList<ParsedAnswerDTO> ParsedAnswers { get; set; } = [];
+    public IReadOnlyList<GradingHistoryDTO> Histories { get; set; } = [];
+}
+
+public sealed class ParsedAnswerDTO
+{
+    public Guid ParsedAnswerId { get; set; }
+    public Guid QuestionId { get; set; }
+    public string QuestionTitle { get; set; } = string.Empty;
+    public decimal MaxScore { get; set; }
+    public IReadOnlyList<ParsedAnswerCriteriaDTO> Criteria { get; set; } = [];
+    public Guid? ElementId { get; set; }
+    public string? ExtractedText { get; set; }
+    public string? ExtractedXml { get; set; }
+    public string? ExtractedImageUrl { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class ParsedAnswerCriteriaDTO
+{
+    public string Criteria { get; set; } = string.Empty;
+    public decimal Point { get; set; }
+}
+
 public sealed class ReviewItemRequest
 {
     public Guid ParsedAnswerId { get; set; }

@@ -29,19 +29,55 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     }
 
     // ---------------------------------------------------------------- list
-    public async Task<Result<IReadOnlyList<GradingHistoryDTO>>> GetHistoriesAsync(
+    public async Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default)
     {
         var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
         if (!access.IsSuccess)
-            return Result<IReadOnlyList<GradingHistoryDTO>>.Failure(access.Error!, access.ErrorCode);
+            return Result<SubmissionGradingOverviewDTO>.Failure(access.Error!, access.ErrorCode);
 
         var histories = await HistoriesWithDetails().AsNoTracking()
             .Where(h => h.SubmissionId == submissionId)
             .OrderBy(h => h.GradingRound)
             .ToListAsync(ct);
 
-        return Result<IReadOnlyList<GradingHistoryDTO>>.Success(histories.Select(Map).ToList());
+        var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .Include(p => p.Question)
+            .Where(p => p.SubmissionId == submissionId)
+            .OrderBy(p => p.Question.Title)
+            .ThenBy(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+        var questionIds = parsedAnswers.Select(p => p.QuestionId).Distinct().ToList();
+        var criteria = await _db.QuestionCriteria.AsNoTracking()
+            .Where(c => questionIds.Contains(c.QuestionId))
+            .ToListAsync(ct);
+        var criteriaByQuestion = criteria
+            .GroupBy(c => c.QuestionId)
+            .ToDictionary(g => g.Key, g => g.Select(c => new ParsedAnswerCriteriaDTO
+            {
+                Criteria = c.Criteria,
+                Point = c.Point
+            }).ToList());
+
+        return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
+        {
+            SubmissionId = submissionId,
+            Histories = histories.Select(Map).ToList(),
+            ParsedAnswers = parsedAnswers.Select(p => new ParsedAnswerDTO
+            {
+                ParsedAnswerId = p.ParsedAnswerId,
+                QuestionId = p.QuestionId,
+                QuestionTitle = p.Question.Title,
+                MaxScore = p.Question.Point,
+                Criteria = criteriaByQuestion.TryGetValue(p.QuestionId, out var list) ? list : [],
+                ElementId = p.ElementId,
+                ExtractedText = p.ExtractedText,
+                ExtractedXml = p.Extracted_Xml,
+                ExtractedImageUrl = p.ExtractedImageUrl,
+                CreatedAt = p.CreatedAt
+            }).ToList()
+        });
     }
 
     // ---------------------------------------------------------------- AI grading
