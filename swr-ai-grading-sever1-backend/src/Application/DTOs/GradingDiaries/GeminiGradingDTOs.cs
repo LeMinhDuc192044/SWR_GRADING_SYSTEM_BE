@@ -22,6 +22,8 @@ public sealed class CriterionScoreDto
 
     [JsonPropertyName("not_recognized")]
     public string? NotRecognized { get; set; }
+    [JsonPropertyName("criteria_results")]
+    public IReadOnlyList<CriterionResultDto> CriteriaResults { get; set; } = [];
 }
 
 public sealed class GradingResultDto
@@ -46,6 +48,7 @@ public sealed class DocxImageDto
 {
     public string MimeType { get; set; } = "image/png";
     public string Base64Data { get; set; } = string.Empty;
+    public string? Label { get; set; }   // tells the AI which question this image belongs to
 }
 
 public sealed class DocxExtractedContentDto
@@ -70,4 +73,13 @@ public sealed class ExtractedQuestionAnswersDto
 {
     [JsonPropertyName("answers")]
     public List<ExtractedQuestionAnswerDto> Answers { get; set; } = [];
+}
+
+public sealed class CriterionResultDto
+{
+    [JsonPropertyName("criterion_no")]   public int CriterionNo { get; set; }
+    [JsonPropertyName("matched_items")]  public List<string> MatchedItems { get; set; } = [];
+    [JsonPropertyName("rejected_items")] public List<string> RejectedItems { get; set; } = [];
+    [JsonPropertyName("awarded_score")]  public decimal AwardedScore { get; set; }
+    [JsonPropertyName("comment")]        public string Comment { get; set; } = string.Empty;
 }

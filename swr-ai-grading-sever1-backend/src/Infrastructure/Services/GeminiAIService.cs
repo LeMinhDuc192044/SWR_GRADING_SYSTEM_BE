@@ -2,11 +2,13 @@ using System.Text;
 using System.Text.Json;
 using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
-using Domain.Entities;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Domain.Entities;
 using IronOcr;
 using Microsoft.Extensions.Configuration;
+using System.Xml.Linq;
+using System.Text.RegularExpressions;
 
 namespace Infrastructure.Services;
 
@@ -274,7 +276,7 @@ public sealed class GeminiAIService : IGeminiAIService
             {{studentSubmissionText}}
             """;
 
-        var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct);
+        var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct, temperature: 0);
         try
         {
             var result = JsonSerializer.Deserialize<ExtractedQuestionAnswersDto>(cleanJson, new JsonSerializerOptions
@@ -296,62 +298,82 @@ public sealed class GeminiAIService : IGeminiAIService
         CancellationToken ct = default)
     {
         if (questionAnswers.Count == 0)
-        {
             return new GradingResultDto();
-        }
 
-        var studentAnswersData = questionAnswers.Select(qa => new
-        {
-            question_id = qa.Question.QuestionId,
-            question_title = qa.Question.Title,
-            question_content = qa.Question.Content,
-            max_point = qa.Question.Point,
-            student_answer = string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedText) 
-                ? "[Không có nội dung văn bản]" 
-                : qa.ParsedAnswer.ExtractedText,
-            diagram_element_attached = qa.ParsedAnswer.ElementId.HasValue,
-            image_attached = !string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl)
-        });
+        // One entry per question; each entry holds all of that question's answers (text + XML + image flag).
+        var studentAnswersData = questionAnswers
+            .GroupBy(qa => qa.Question.QuestionId)
+            .Select(g => new
+            {
+                question_id = g.Key,
+                question_title = g.First().Question.Title,
+                question_content = g.First().Question.Content,
+                max_point = g.First().Question.Point,
+                answers = g.Select(qa => new
+                {
+                    student_answer_text = string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedText)
+                        ? "[Không có nội dung văn bản]" : qa.ParsedAnswer.ExtractedText,
+                    diagram_xml_summary = string.IsNullOrWhiteSpace(qa.ParsedAnswer.Extracted_Xml)
+                        ? "[Không có XML]" : SummarizeDiagramXml(qa.ParsedAnswer.Extracted_Xml),
+                    image_attached = !string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl)
+                }).ToList()
+            }).ToList();
 
         var prompt = $$$"""
-            Bạn là giảng viên chấm thi đại học chuyên nghiệp, công tâm và vô cùng cẩn thận.
-            Nhiệm vụ của bạn là xem xét toàn bộ câu trả lời của sinh viên cho từng câu hỏi (bao gồm cả VĂN BẢN TRẢ LỜI CỦA TỪNG CÂU và CÁC HÌNH ÁNH / SƠ ĐỒ ĐÍNH KÈM) và chấm điểm chi tiết từng câu dựa trên Rubric đáp án được cung cấp.
+            Bạn là máy chấm thi. Chỉ đối chiếu bài làm với tiêu chí chấm. KHÔNG khen, KHÔNG động viên, KHÔNG nhận xét cảm tính.
 
-            [RUBRIC ĐÁP ÁN & THANG ĐIỂM CHI TIẾT]
+            [RUBRIC: MỖI CÂU GỒM CÁC TIÊU CHÍ ĐÁNH SỐ criterion_no]
             {{{rubricContent}}}
 
-            [BÀI LÀM ĐÃ ĐƯỢC PHÂN TÁCH THEO TỪNG CÂU HỎI CỦA SINH VIÊN]
-            {{{JsonSerializer.Serialize(studentAnswersData)}}}
+            [BÀI LÀM CỦA SINH VIÊN THEO TỪNG CÂU]
+            {{{JsonSerializer.Serialize(studentAnswersData, PromptJsonOptions)}}}
 
-            [QUY TẮC CHẤM ĐIỂM HÌNH ÁNH / SƠ ĐỒ & BÀI LÀM - BẮT BUỘC THỰC HIỆN]
-            1. Các hình ảnh/sơ đồ được đính kèm theo thứ tự trong bài làm tương ứng với các câu hỏi.
-            2. Bạn PHẢI quan sát kỹ hình ảnh/sơ đồ nếu câu hỏi yêu cầu vẽ biểu đồ/sơ đồ.
-            3. RẤT QUAN TRỌNG: Nếu một câu hỏi có sơ đồ hoặc hình ảnh làm bài hoặc có văn bản trả lời, bạn PHẢI quan sát để chấm điểm. TUYỆT ĐỐI KHÔNG ĐƯỢC kết luận là sinh viên bỏ trống khi có câu trả lời hoặc sơ đồ.
-            4. Điểm actual_score của từng câu không được vượt quá max_score của câu đó.
-            5. Tổng điểm total_score bằng tổng điểm actual_score của tất cả các câu hỏi.
+            Mỗi câu có tối đa 3 nguồn bằng chứng:
+            - student_answer_text: văn bản sinh viên viết.
+            - diagram_xml_summary: XML draw.io đã rút gọn (danh sách đối tượng, nhãn, các kết nối, kiểu mũi tên).
+            - Hình ảnh đính kèm sau prompt; mỗi ảnh có một dòng nhãn ghi rõ thuộc câu hỏi nào.
 
-            [YÊU CẦU ĐẦU RA JSON CHUẨN]
-            Bạn PHẢI trả về JSON đúng định dạng theo cấu trúc sau (bắt buộc có question_id cho từng tiêu chí):
+            [CÁCH CHẤM - BẮT BUỘC]
+            1. Với từng câu, xét lần lượt từng tiêu chí (criterion_no). Với mỗi tiêu chí, đối chiếu CẢ BA nguồn (văn bản, XML, hình ảnh) với yêu cầu của tiêu chí. Một ý được tính nếu xuất hiện ở BẤT KỲ nguồn nào; cùng một ý xuất hiện ở nhiều nguồn chỉ tính MỘT lần. Khi các nguồn mâu thuẫn: XML đúng hơn cho tên/nhãn/quan hệ, hình ảnh dùng để kiểm tra ký hiệu và bố cục.
+            2. Tiêu chí dạng "Award X point for each ...": liệt kê trong matched_items MỖI ý đúng (một chuỗi ngắn, ghi nguồn trong ngoặc, ví dụ "Book an appointment (xml)"). Ý trùng lặp, ý sai, ý không phù hợp với kịch bản trong question_content, hoặc ý không đúng loại mà tiêu chí yêu cầu (ví dụ không phải yêu cầu chức năng) KHÔNG được tính: đưa vào rejected_items kèm lý do ngắn. awarded_score = số ý đúng x X, không vượt max_point của tiêu chí.
+            3. Tiêu chí dạng khác: awarded_score theo đúng mô tả tiêu chí, không vượt max_point; matched_items là các ý đã thỏa. Không có bằng chứng thì không cho điểm.
+            4. Chỉ tính những gì NHÌN THẤY trong bài. Không suy đoán, không cho điểm thiện chí. Phần nào không đọc được thì ghi vào not_recognized và không cho điểm phần đó. KHÔNG kết luận sinh viên bỏ trống khi có văn bản, XML hoặc hình ảnh: phải xem đủ cả ba.
+            5. actual_score của câu = tổng awarded_score các tiêu chí và không vượt max_score của câu.
+            6. Mỗi question_id chỉ trả về MỘT mục trong criteria_scores (gộp mọi câu trả lời của câu đó).
+
+            [QUY TẮC VIẾT NHẬN XÉT]
+            - CẤM mọi lời khen, động viên, đánh giá cảm tính (ví dụ: "tốt", "xuất sắc", "rất đầy đủ", "ấn tượng", "good", "great", "well done").
+            - comment của từng tiêu chí: tối đa 2 câu, chỉ nêu sự việc: đếm được bao nhiêu ý đúng, ý nào bị loại và vì sao, ý nào còn thiếu so với rubric.
+            - comment của câu và overall_comment: tối đa 2 câu, chỉ nêu lỗi hoặc thiếu sót chính. Không có lỗi thì để chuỗi rỗng.
+            - Viết nhận xét bằng cùng ngôn ngữ với rubric.
+
+            [ĐỊNH DẠNG JSON ĐẦU RA]
             {
-              "total_score": 8.0,
-              "criteria_scores": [
+            "criteria_scores": [
                 {
-                  "question_id": "GUID của câu hỏi tương ứng trong danh sách trên",
-                  "criterion": "Tiêu đề câu hỏi / Tiêu chí",
-                  "max_score": 3.0,
-                  "actual_score": 2.5,
-                  "comment": "Nhận xét chi tiết đạt được gì, thiếu sót gì dựa trên bài làm và rubric của câu hỏi này",
-                  "not_recognized": "Ghi chú những phần AI không nhận diện được rõ (chữ mờ, sơ đồ không đọc được chi tiết, công thức mờ, v.v.), hoặc để trống/null nếu nhận diện tốt"
+                "question_id": "GUID của câu hỏi",
+                "criterion": "Tiêu đề câu hỏi",
+                "max_score": 3.0,
+                "actual_score": 1.5,
+                "criteria_results": [
+                    {
+                    "criterion_no": 1,
+                    "matched_items": ["Book an appointment (xml)"],
+                    "rejected_items": ["Login: không có trong kịch bản"],
+                    "awarded_score": 0.25,
+                    "comment": "1 ý đúng. Login bị loại vì không thuộc kịch bản."
+                    }
+                ],
+                "comment": "Điểm bị trừ của câu (không khen)",
+                "not_recognized": null
                 }
-              ],
-              "missing_items": [
-                "Nội dung hoặc sơ đồ còn thiếu"
-              ],
-              "overall_comment": "Nhận xét tổng quan toàn bộ bài làm của sinh viên"
+            ],
+            "missing_items": [],
+            "overall_comment": ""
             }
             """;
 
-        var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct);
+        var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct, temperature: 0);
 
         try
         {
@@ -360,10 +382,7 @@ public sealed class GeminiAIService : IGeminiAIService
                 PropertyNameCaseInsensitive = true,
                 NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
             };
-
-            var gradingResult = JsonSerializer.Deserialize<GradingResultDto>(cleanJson, options)
-                ?? new GradingResultDto();
-
+            var gradingResult = JsonSerializer.Deserialize<GradingResultDto>(cleanJson, options) ?? new GradingResultDto();
             gradingResult.RawAiLogJson = cleanJson;
             return gradingResult;
         }
@@ -373,7 +392,7 @@ public sealed class GeminiAIService : IGeminiAIService
         }
     }
 
-    private async Task<string> GenerateJsonResponseAsync(string prompt, List<DocxImageDto>? images, CancellationToken ct)
+    private async Task<string> GenerateJsonResponseAsync(string prompt, List<DocxImageDto>? images, CancellationToken ct, float temperature)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
             throw new InvalidOperationException("GEMINI_API_KEY chưa được cấu hình trong biến môi trường hoặc .env.");
@@ -381,18 +400,26 @@ public sealed class GeminiAIService : IGeminiAIService
         var partsList = new List<object> { new { text = prompt } };
         if (images is not null)
         {
-            partsList.AddRange(images
-                .Where(image => !string.IsNullOrWhiteSpace(image.Base64Data))
-                .Select(image => (object)new
-                {
-                    inline_data = new { mime_type = image.MimeType, data = image.Base64Data }
-                }));
+            foreach (var image in images.Where(i => !string.IsNullOrWhiteSpace(i.Base64Data)))
+            {
+                if (!string.IsNullOrWhiteSpace(image.Label))
+                    partsList.Add(new { text = image.Label });          // label comes right before its image
+                partsList.Add(new { inline_data = new { mime_type = image.MimeType, data = image.Base64Data } });
+            }
         }
 
         var requestJson = JsonSerializer.Serialize(new
         {
-            contents = new[] { new { parts = partsList.ToArray() } },
-            generationConfig = new { temperature = 0.2, maxOutputTokens = 16384, responseMimeType = "application/json" }
+            contents = new[]
+            {
+                new { parts = partsList.ToArray() }
+            },
+            generationConfig = new
+            {
+                temperature,
+                maxOutputTokens = 16384,
+                responseMimeType = "application/json"
+            }
         });
 
         HttpResponseMessage response = null!;
@@ -499,5 +526,100 @@ public sealed class GeminiAIService : IGeminiAIService
         }
 
         return trimmed.Trim();
+    }
+    
+    private static readonly JsonSerializerOptions PromptJsonOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private sealed record DiagramNode(string Id, string Label, string Style, string? Parent,
+        string? Source, string? Target, bool IsVertex, bool IsEdge);
+
+    private static string SummarizeDiagramXml(string xml)
+    {
+        const int maxChars = 30000;
+        try
+        {
+            var doc = XDocument.Parse(xml);
+            var nodes = doc.Descendants().Select(ToDiagramNode).Where(n => n is not null).Select(n => n!).ToList();
+            if (nodes.Count == 0)
+                return "[XML không đọc được cấu trúc, xem hình ảnh]";
+
+            var vertices = nodes.Where(n => n.IsVertex).GroupBy(n => n.Id).ToDictionary(g => g.Key, g => g.First());
+            var edges = nodes.Where(n => n.IsEdge).ToList();
+            var edgeIds = edges.Select(e => e.Id).ToHashSet();
+            // text boxes attached to an edge (multiplicity labels such as "1", "0..*")
+            var edgeLabels = vertices.Values
+                .Where(v => v.Parent is not null && edgeIds.Contains(v.Parent) && v.Label.Length > 0)
+                .ToLookup(v => v.Parent!, v => OneLine(v.Label));
+
+            var sb = new StringBuilder();
+            sb.AppendLine("OBJECTS:");
+            foreach (var v in vertices.Values.Where(v => v.Parent is null || !edgeIds.Contains(v.Parent)))
+                sb.AppendLine($"- [{v.Id}] {OneLine(v.Label)} | {StyleHints(v.Style)}");
+
+            sb.AppendLine("CONNECTIONS:");
+            foreach (var e in edges)
+            {
+                var src = e.Source is not null && vertices.TryGetValue(e.Source, out var s) ? FirstLine(s.Label) : "(unattached)";
+                var dst = e.Target is not null && vertices.TryGetValue(e.Target, out var t) ? FirstLine(t.Label) : "(unattached)";
+                var labels = new List<string>();
+                if (e.Label.Length > 0) labels.Add(OneLine(e.Label));
+                labels.AddRange(edgeLabels[e.Id]);
+                sb.AppendLine($"- {src} -> {dst} | labels: [{string.Join(", ", labels)}] | {StyleHints(e.Style)}");
+            }
+
+            var text = sb.ToString();
+            return text.Length > maxChars ? text[..maxChars] + "\n...[đã cắt bớt]" : text;
+        }
+        catch (System.Xml.XmlException)
+        {
+            // truncated or malformed XML: give the model the raw text instead
+            return "[XML không phân tích được, đưa nguyên bản]\n" + (xml.Length > 20000 ? xml[..20000] + "...[cắt]" : xml);
+        }
+    }
+
+    private static DiagramNode? ToDiagramNode(XElement e)
+    {
+        var name = e.Name.LocalName;
+        XElement? cell;
+        string? label;
+        if (name is "object" or "UserObject") { cell = e.Element("mxCell"); label = (string?)e.Attribute("label"); }
+        else if (name == "mxCell")
+        {
+            if (e.Parent?.Name.LocalName is "object" or "UserObject") return null;
+            cell = e; label = (string?)e.Attribute("value");
+        }
+        else return null;
+
+        var id = (string?)e.Attribute("id");
+        if (cell is null || id is null) return null;
+
+        return new DiagramNode(id, HtmlToText(label), (string?)cell.Attribute("style") ?? string.Empty,
+            (string?)cell.Attribute("parent"), (string?)cell.Attribute("source"), (string?)cell.Attribute("target"),
+            (string?)cell.Attribute("vertex") == "1", (string?)cell.Attribute("edge") == "1");
+    }
+
+    private static string HtmlToText(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
+        var text = Regex.Replace(html, @"<hr[^>]*>", "\n---\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<br\s*/?>|</p>|</div>|</li>|</tr>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+        text = System.Net.WebUtility.HtmlDecode(text).Replace('\u00A0', ' ');
+        text = Regex.Replace(text, @"[ \t]+", " ");
+        text = Regex.Replace(text, @"\s*\n\s*", "\n");
+        return text.Trim();
+    }
+
+    private static string OneLine(string s) => s.Replace("\n", " / ");
+    private static string FirstLine(string s) => s.Split('\n')[0];
+
+    private static string StyleHints(string style)
+    {
+        var keep = new HashSet<string> { "shape", "endArrow", "startArrow", "endFill", "startFill", "dashed" };
+        return string.Join(";", style.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(p => !p.Contains('=') || keep.Contains(p[..p.IndexOf('=')])));
     }
 }

@@ -1,13 +1,6 @@
 namespace Domain.Enums;
 
-/// <summary>
-/// Trạng thái của một bài nộp.
-/// Mapping: student_submission.status (integer) trên Supabase.
-/// 0 = Submitted (Mới upload, chưa chấm)
-/// 1 = AI_Graded (AI đã chấm xong)
-/// 2 = Lecturer_Reviewed (GV đã review)
-/// 3 = Final (Đã chốt điểm)
-/// </summary>
+
 public enum SubmissionStatus
 {
     /// <summary>Mới upload, chưa chấm.</summary>
