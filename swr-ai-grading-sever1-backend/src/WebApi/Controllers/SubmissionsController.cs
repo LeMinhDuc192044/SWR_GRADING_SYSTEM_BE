@@ -23,7 +23,7 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// FLOW 1: Upload bài làm Word (.docx) hoặc archive RAR chứa Word và sơ đồ.
+    /// FLOW 1: Upload bài làm Word (.docx), RAR (.rar) hoặc ZIP (.zip) đơn lẻ hay gói cả phòng thi.
     /// </summary>
     [HttpPost("upload")]
     [Authorize(Roles = "Examiner")]
@@ -39,7 +39,7 @@ public sealed class SubmissionsController : ControllerBase
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
         if (files is null || files.Count == 0)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx hoặc .rar bài làm của sinh viên."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx, .rar hoặc .zip bài làm của sinh viên."));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
         var result = await _submissionService.UploadSubmissionsAsync(docFiles, userId, examinationSessionId, ct);
