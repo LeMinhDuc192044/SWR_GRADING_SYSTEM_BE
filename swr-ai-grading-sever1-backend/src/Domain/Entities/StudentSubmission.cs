@@ -44,6 +44,7 @@ public class StudentSubmission
     [ForeignKey(nameof(ExaminationSession))]
     public Guid? ExaminationSessionId { get; set; }
     public ExaminationSession? ExaminationSession { get; set; }
+    public Application? Application { get; set; }
 
     public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
     public ICollection<SubmissionGradingHistory> SubmissionGradingHistories { get; set; } = [];

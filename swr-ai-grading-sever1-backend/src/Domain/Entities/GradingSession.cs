@@ -1,3 +1,4 @@
+using Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -14,6 +15,9 @@ public class GradingSession
     [MaxLength(200)]
     [Column("title")]
     public string Title { get; set; } = string.Empty;
+
+    [Required]
+    public GradingSessionType Type { get; set; }
 
     [Required]
     [Column("created_date")]

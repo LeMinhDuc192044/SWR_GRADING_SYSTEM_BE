@@ -11,6 +11,7 @@ public sealed class AssignmentDTO
     public AssignmentStatus Status { get; set; }
     public DateTime AssignedDate { get; set; }
     public DateTime UpdatedDate { get; set; }
+    public bool IsReassigned { get; set; }
 }
 
 public sealed class CreateAssignmentRequest
