@@ -56,7 +56,13 @@ public sealed class AssignmentService : IAssignmentService
         if (gradingSession is null)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure("Grading session not found.", "GRADING_SESSION_NOT_FOUND");
 
-        if (request.NumberSubmissions <= 0)
+        var requestedIds = request.SubmissionIds?
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+        var hasExplicitSelection = requestedIds is { Count: > 0 };
+
+        if (!hasExplicitSelection && request.NumberSubmissions <= 0)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure("Number of submissions must be greater than zero.", "INVALID_NUMBER_SUBMISSIONS");
 
         var staffCheck = await ValidateMonitorAsync(request.StaffId, ct);
@@ -173,6 +179,15 @@ public sealed class AssignmentService : IAssignmentService
                 return Result<AssignmentDTO>.Failure(
                     "This monitor is linked to the student and cannot grade this submission.", "MONITOR_LINKED_TO_STUDENT");
 
+            var wasPreviouslyAssigned = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+                a.SubmissionId == assignment.SubmissionId
+                && a.GradingSessionId != gradingSessionId
+                && a.StaffId == request.StaffId.Value, ct);
+            if (wasPreviouslyAssigned)
+                return Result<AssignmentDTO>.Failure(
+                    "This monitor was already assigned to this submission in another grading session.",
+                    "MONITOR_DUPLICATE_SUBMISSION");
+
             assignment.StaffId = request.StaffId.Value;
         }
 
@@ -207,6 +222,45 @@ public sealed class AssignmentService : IAssignmentService
             .Include(a => a.Submission)
             .Include(a => a.GradingSession).ThenInclude(g => g.ExaminationSession)
             .FirstOrDefaultAsync(a => a.AssignmentId == assignmentId && a.GradingSessionId == gradingSessionId, ct);
+
+    private async Task<Result> ValidateExplicitSelectionAsync(
+        IReadOnlyList<Guid> submissionIds,
+        Guid examinationSessionId,
+        Guid gradingSessionId,
+        Guid semesterId,
+        Guid staffId,
+        CancellationToken ct)
+    {
+        var submissions = await _db.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => submissionIds.Contains(s.SubmissionId))
+            .Select(s => new { s.SubmissionId, s.StudentId, s.ExaminationSessionId })
+            .ToListAsync(ct);
+
+        if (submissions.Count != submissionIds.Count)
+            return Result.Failure("One or more requested submissions were not found.", "SUBMISSION_NOT_FOUND");
+
+        if (submissions.Any(s => s.ExaminationSessionId != examinationSessionId))
+            return Result.Failure("One or more submissions do not belong to this examination session.", "SUBMISSION_SESSION_MISMATCH");
+
+        var duplicateInSession = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+            a.GradingSessionId == gradingSessionId && submissionIds.Contains(a.SubmissionId), ct);
+        if (duplicateInSession)
+            return Result.Failure("One or more submissions are already assigned in this grading session.", "SUBMISSION_ALREADY_ASSIGNED");
+
+        var studentIds = submissions.Select(s => s.StudentId).Distinct().ToList();
+        var hasOwnStudent = await _db.StudentSemesters.AsNoTracking().AnyAsync(ss =>
+            ss.SemesterId == semesterId && ss.StaffId == staffId && studentIds.Contains(ss.StudentId), ct);
+        if (hasOwnStudent)
+            return Result.Failure("This monitor is linked to one or more students and cannot grade their submissions.", "MONITOR_LINKED_TO_STUDENT");
+
+        var gradedInOtherSession = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+            a.StaffId == staffId && a.GradingSessionId != gradingSessionId && submissionIds.Contains(a.SubmissionId), ct);
+        if (gradedInOtherSession)
+            return Result.Failure("This monitor was already assigned to one or more of these submissions in another grading session.", "MONITOR_DUPLICATE_SUBMISSION");
+
+        return Result.Success();
+    }
 
     private async Task<Result> ValidateMonitorAsync(Guid staffId, CancellationToken ct)
     {

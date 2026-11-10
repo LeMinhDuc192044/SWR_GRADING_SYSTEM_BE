@@ -44,7 +44,21 @@ public sealed class SubmissionService : ISubmissionService
             .OrderBy(question => question.Title)
             .ToListAsync(ct);
 
-        var students = await _db.Students.AsNoTracking().Where(student => !student.IsDeleted).ToListAsync(ct);
+        var roomStudentIds = sessionId.HasValue
+            ? await _db.StudentExaminationSessions.AsNoTracking()
+                .Where(ses => ses.ExaminationSessionId == sessionId.Value)
+                .Select(ses => ses.StudentId)
+                .ToListAsync(ct)
+            : [];
+
+        var students = roomStudentIds.Count > 0
+            ? await _db.Students.AsNoTracking()
+                .Where(student => !student.IsDeleted && roomStudentIds.Contains(student.Id))
+                .ToListAsync(ct)
+            : await _db.Students.AsNoTracking()
+                .Where(student => !student.IsDeleted)
+                .ToListAsync(ct);
+
         var staff = await _db.Staff.AsNoTracking().FirstOrDefaultAsync(item => item.Id == currentUserId, ct);
         if (staff is null)
             return Result<UploadSubmissionsResultDTO>.Failure("The current user is not a staff member.", "STAFF_NOT_FOUND");
@@ -53,8 +67,7 @@ public sealed class SubmissionService : ISubmissionService
 
         foreach (var file in files)
         {
-            var summary = new UploadedSubmissionSummaryDTO { SubmissionFile = file.FileName };
-            try
+            foreach (var package in await ExtractPackagesFromFileAsync(file, ct))
             {
                 var extension = Path.GetExtension(file.FileName);
                 if (file.Length > SubmissionArchive.MaxArchiveBytes)
@@ -106,57 +119,58 @@ public sealed class SubmissionService : ISubmissionService
                     extractedImages = wordContent.Images;
                 }
 
-                for (var index = 0; index < extractedImages.Count; index++)
-                {
-                    var image = extractedImages[index];
-                    if (string.IsNullOrWhiteSpace(image.Base64Data)) continue;
-                    var mime = image.MimeType ?? "image/png";
-                    var ext = mime.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? ".jpg"
-                        : mime.Contains("gif", StringComparison.OrdinalIgnoreCase) ? ".gif"
-                        : mime.Contains("webp", StringComparison.OrdinalIgnoreCase) ? ".webp" : ".png";
-                    var path = $"submissions/{submissionId}/images/image-{index + 1}{ext}";
-                    await _storage.UploadAsync(path, new MemoryStream(Convert.FromBase64String(image.Base64Data)), mime, ct);
-                    imagePaths[index + 1] = path;
-                }
+        if (sessionId.HasValue && summaries.Any(item => item.IsSuccess))
+            await SyncGradingSessionCountsAsync(sessionId.Value, ct);
 
-                var answers = questions.ToDictionary(
-                    question => question.QuestionId,
-                    _ => (Text: string.Empty, Xml: (string?)null, ImageUrl: (string?)null));
+        return Result<UploadSubmissionsResultDTO>.Success(new UploadSubmissionsResultDTO
+        {
+            TotalUploaded = summaries.Count,
+            TotalSucceeded = summaries.Count(item => item.IsSuccess),
+            Submissions = summaries
+        });
+    }
 
-                if (!string.IsNullOrWhiteSpace(extractedText))
-                {
-                    var extractedAnswers = await _gemini.ExtractAnswersForQuestionsAsync(extractedText, questions, extractedImages, ct);
-                    foreach (var answer in extractedAnswers.Where(answer => answers.ContainsKey(answer.QuestionId)))
-                    {
-                        var imageUrl = answer.ImageIndexes.FirstOrDefault(imagePaths.ContainsKey) is var imageIndex && imageIndex > 0
-                            ? imagePaths[imageIndex] : null;
-                        answers[answer.QuestionId] = (answer.ExtractedText ?? string.Empty, null, imageUrl);
-                    }
-                }
+    private static async Task<IReadOnlyList<SubmissionArchive.ExtractedPackage>> ExtractPackagesFromFileAsync(
+        IDocumentFile file,
+        CancellationToken ct)
+    {
+        try
+        {
+            var extension = Path.GetExtension(file.FileName);
+            if (file.Length > SubmissionArchive.MaxArchiveBytes)
+                throw new InvalidDataException("Submission file exceeds the 500 MB limit.");
 
-                foreach (var diagram in content.DiagramSources)
-                {
-                    var question = questions.FirstOrDefault(item => SubmissionArchive.GetQuestionKey(item.Title) == diagram.Key);
-                    if (question is null) continue;
-                    var current = answers[question.QuestionId];
-                    answers[question.QuestionId] = (current.Text, diagram.Value, current.ImageUrl);
-                }
+            using var uploadStream = new MemoryStream();
+            await file.CopyToAsync(uploadStream, ct);
+            uploadStream.Position = 0;
 
-                foreach (var image in content.ImageSources)
-                {
-                    var question = questions.FirstOrDefault(item => SubmissionArchive.GetQuestionKey(item.Title) == image.Key);
-                    if (question is null) continue;
-                    var imageExtension = Path.GetExtension(image.Key + ".png").Equals(".png", StringComparison.OrdinalIgnoreCase) ? ".png" : ".png";
-                    var externalPath = $"submissions/{submissionId}/images/{Normalize(image.Key)}{imageExtension}";
-                    await _storage.UploadAsync(externalPath, new MemoryStream(image.Value), "image/png", ct);
-                    var current = answers[question.QuestionId];
-                    answers[question.QuestionId] = (current.Text, current.Xml, externalPath);
-                }
+            if (extension.Equals(".rar", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return SubmissionArchive.ReadPackages(uploadStream, file.FileName);
+            }
 
-                var now = DateTime.UtcNow;
-                var storagePath = $"submissions/{submissionId}/{Guid.NewGuid():N}_{Normalize(Path.GetFileNameWithoutExtension(file.FileName))}{extension.ToLowerInvariant()}";
-                uploadStream.Position = 0;
-                await _storage.UploadAsync(storagePath, uploadStream, file.ContentType ?? "application/octet-stream", ct);
+            if (extension.Equals(".docx", StringComparison.OrdinalIgnoreCase))
+            {
+                var bytes = uploadStream.ToArray();
+                var singleContent = new SubmissionArchive.Content(
+                    bytes,
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase));
+
+                return
+                [
+                    new SubmissionArchive.ExtractedPackage(
+                        IsSuccess: true,
+                        DisplayFileName: file.FileName,
+                        ErrorMessage: null,
+                        OriginalBytes: bytes,
+                        StorageExtension: ".docx",
+                        StorageContentType: file.ContentType ?? "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        Content: singleContent,
+                        StudentHints: [Path.GetFileNameWithoutExtension(file.FileName)])
+                ];
+            }
 
                 StudentSubmission submission;
                 if (previous is null)
@@ -196,44 +210,81 @@ public sealed class SubmissionService : ISubmissionService
 
                 foreach (var question in questions)
                 {
-                    var answer = answers[question.QuestionId];
-                    _db.SubmissionParsedAnswers.Add(new SubmissionParsedAnswer
-                    {
-                        ParsedAnswerId = Guid.NewGuid(),
-                        SubmissionId = submissionId,
-                        QuestionId = question.QuestionId,
-                        ExtractedText = string.IsNullOrWhiteSpace(answer.Text) ? null : answer.Text,
-                        Extracted_Xml = answer.Xml,
-                        ExtractedImageUrl = answer.ImageUrl,
-                        CreatedAt = now
-                    });
+                    var imageUrl = answer.ImageIndexes.FirstOrDefault(imagePaths.ContainsKey) is var imageIndex && imageIndex > 0
+                        ? imagePaths[imageIndex] : null;
+                    answers[answer.QuestionId] = (answer.ExtractedText ?? string.Empty, null, imageUrl);
                 }
+            }
 
-                await _db.SaveChangesAsync(ct);
-                summary.SubmissionId = submissionId;
-                summary.FileSubmissions = storagePath;
-                summary.StudentId = student.Id;
-                summary.StudentExaminationId = Guid.Empty;
-                summary.Status = submission.Status.ToString();
-                summary.IsSuccess = true;
-            }
-            catch (Exception exception)
+            foreach (var diagram in content.DiagramSources)
             {
-                summary.IsSuccess = false;
-                summary.ErrorMessage = exception.Message;
+                var question = questions.FirstOrDefault(item => SubmissionArchive.GetQuestionKey(item.Title) == diagram.Key);
+                if (question is null) continue;
+                var current = answers[question.QuestionId];
+                answers[question.QuestionId] = (current.Text, diagram.Value, current.ImageUrl);
             }
-            summaries.Add(summary);
+
+            foreach (var image in content.ImageSources)
+            {
+                var question = questions.FirstOrDefault(item => SubmissionArchive.GetQuestionKey(item.Title) == image.Key);
+                if (question is null) continue;
+                var externalPath = $"submissions/{submissionId}/images/{Normalize(image.Key)}.png";
+                await _storage.UploadAsync(externalPath, new MemoryStream(image.Value), "image/png", ct);
+                var current = answers[question.QuestionId];
+                answers[question.QuestionId] = (current.Text, current.Xml, externalPath);
+            }
+
+            var now = DateTime.UtcNow;
+            var baseTitle = Path.GetFileNameWithoutExtension(Path.GetFileName(package.DisplayFileName));
+            var storagePath = $"submissions/{submissionId}/{Guid.NewGuid():N}_{Normalize(baseTitle)}{package.StorageExtension}";
+            using (var packageStream = new MemoryStream(package.OriginalBytes, writable: false))
+            {
+                await _storage.UploadAsync(storagePath, packageStream, package.StorageContentType, ct);
+            }
+
+            var submission = new StudentSubmission
+            {
+                SubmissionId = submissionId,
+                FileSubmissions = storagePath,
+                StudentId = student.Id,
+                Status = SubmissionStatus.Submitted,
+                CreatedDate = now,
+                UpdatedDate = now,
+                UploadedById = staffId,
+                ExaminationSessionId = sessionId
+            };
+            _db.StudentSubmissions.Add(submission);
+
+            foreach (var question in questions)
+            {
+                var answer = answers[question.QuestionId];
+                _db.SubmissionParsedAnswers.Add(new SubmissionParsedAnswer
+                {
+                    ParsedAnswerId = Guid.NewGuid(),
+                    SubmissionId = submissionId,
+                    QuestionId = question.QuestionId,
+                    ExtractedText = string.IsNullOrWhiteSpace(answer.Text) ? null : answer.Text,
+                    Extracted_Xml = answer.Xml,
+                    ExtractedImageUrl = answer.ImageUrl,
+                    CreatedAt = now
+                });
+            }
+
+            await _db.SaveChangesAsync(ct);
+            summary.SubmissionId = submissionId;
+            summary.FileSubmissions = storagePath;
+            summary.StudentId = student.Id;
+            summary.StudentExaminationId = Guid.Empty;
+            summary.Status = submission.Status.ToString();
+            summary.IsSuccess = true;
+        }
+        catch (Exception exception)
+        {
+            summary.IsSuccess = false;
+            summary.ErrorMessage = exception.Message;
         }
 
-        if (sessionId.HasValue && summaries.Any(item => item.IsSuccess))
-            await SyncGradingSessionCountsAsync(sessionId.Value, ct);
-
-        return Result<UploadSubmissionsResultDTO>.Success(new UploadSubmissionsResultDTO
-        {
-            TotalUploaded = files.Count,
-            TotalSucceeded = summaries.Count(item => item.IsSuccess),
-            Submissions = summaries
-        });
+        return summary;
     }
 
     public async Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListAsync(Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
@@ -299,7 +350,39 @@ public sealed class SubmissionService : ISubmissionService
             .FirstOrDefaultAsync(ct);
     }
 
-    private static Student ResolveStudent(string fileName, IReadOnlyList<Student> students)
+    private static Student ResolveStudent(
+        IReadOnlyList<string> hints,
+        SubmissionArchive.Content content,
+        IReadOnlyList<Student> students,
+        string displayFileName)
+    {
+        if (students.Count == 0)
+            throw new InvalidDataException("Không có danh sách sinh viên hợp lệ để gán bài nộp.");
+
+        foreach (var hint in hints)
+        {
+            if (string.IsNullOrWhiteSpace(hint))
+                continue;
+
+            var matched = FindStudentByCodesInText(hint, students);
+            if (matched is not null)
+                return matched;
+        }
+
+        var docxPlainText = SubmissionArchive.TryExtractDocxPlainText(content.WordDocument);
+        if (!string.IsNullOrWhiteSpace(docxPlainText))
+        {
+            var matched = FindStudentByCodesInText(docxPlainText, students);
+            if (matched is not null)
+                return matched;
+        }
+
+        throw new InvalidDataException(
+            $"Không thể xác định sinh viên thuộc phòng thi cho file '{displayFileName}'. " +
+            "Vui lòng đặt tên file/thư mục theo MSSV (ví dụ SE180001) hoặc ghi MSSV ở đầu bài làm.");
+    }
+
+    private static Student? FindStudentByCodesInText(string text, IReadOnlyList<Student> students)
     {
         var stem = Path.GetFileNameWithoutExtension(fileName);
         foreach (Match match in Regex.Matches(stem, @"[A-Za-z]{2}\d{5,8}"))
