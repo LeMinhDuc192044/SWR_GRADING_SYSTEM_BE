@@ -114,6 +114,7 @@ public sealed class GradingSessionService : IGradingSessionService
                 GradingSessionId = g.GradingSessionId,
                 ExaminationSessionId = g.ExaminationSessionId,
                 Title = g.Title,
+                Type = g.Type,
                 CreatedDate = g.CreatedDate,
                 UpdatedDate = g.UpdatedDate,
                 Deadline = g.Deadline,
@@ -153,6 +154,9 @@ public sealed class GradingSessionService : IGradingSessionService
         if (title is null)
             return Result<GradingSessionDTO>.Failure("Title is required and must be 200 characters or fewer.", "INVALID_GRADING_SESSION_TITLE");
 
+        if (!Enum.IsDefined(request.Type))
+            return Result<GradingSessionDTO>.Failure("Invalid grading session type.", "INVALID_GRADING_SESSION_TYPE");
+
         var today = DateOnly.FromDateTime(VietnamTime.Now);
         if (request.Deadline == default || request.Deadline <= today)
             return Result<GradingSessionDTO>.Failure("Deadline is required and must be in the future.", "INVALID_GRADING_SESSION_DEADLINE");
@@ -165,6 +169,7 @@ public sealed class GradingSessionService : IGradingSessionService
         {
             ExaminationSessionId = examinationSessionId,
             Title = title,
+            Type = request.Type,
             CreatedDate = today,
             UpdatedDate = today,
             Deadline = request.Deadline,
@@ -196,6 +201,12 @@ public sealed class GradingSessionService : IGradingSessionService
             if (title is null)
                 return Result<GradingSessionDTO>.Failure("Title is required and must be 200 characters or fewer.", "INVALID_GRADING_SESSION_TITLE");
             session.Title = title;
+        }
+        if (request.Type.HasValue)
+        {
+            if (!Enum.IsDefined(request.Type.Value))
+                return Result<GradingSessionDTO>.Failure("Invalid grading session type.", "INVALID_GRADING_SESSION_TYPE");
+            session.Type = request.Type.Value;
         }
         if (request.Deadline.HasValue)
             session.Deadline = request.Deadline.Value;
@@ -251,6 +262,7 @@ public sealed class GradingSessionService : IGradingSessionService
         GradingSessionId = session.GradingSessionId,
         ExaminationSessionId = session.ExaminationSessionId,
         Title = session.Title,
+        Type = session.Type,
         CreatedDate = session.CreatedDate,
         UpdatedDate = session.UpdatedDate,
         Deadline = session.Deadline,

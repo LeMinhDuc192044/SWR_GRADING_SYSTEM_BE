@@ -76,6 +76,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("student_id");
 
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
                     b.Property<DateTime>("UpdatedDay")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_day");
@@ -88,6 +92,9 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("StudentId");
+
+                    b.HasIndex("SubmissionId")
+                        .IsUnique();
 
                     b.ToTable("applications");
                 });
@@ -358,6 +365,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("title");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
 
                     b.Property<DateOnly>("UpdatedDate")
                         .HasColumnType("date")
@@ -873,7 +883,15 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.StudentSubmission", "StudentSubmission")
+                        .WithOne("Application")
+                        .HasForeignKey("Domain.Entities.Application", "SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Student");
+
+                    b.Navigation("StudentSubmission");
                 });
 
             modelBuilder.Entity("Domain.Entities.Assignment", b =>
@@ -1219,6 +1237,8 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.StudentSubmission", b =>
                 {
+                    b.Navigation("Application");
+
                     b.Navigation("Assignments");
 
                     b.Navigation("ParsedAnswers");

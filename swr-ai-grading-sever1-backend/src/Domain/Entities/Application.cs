@@ -33,4 +33,12 @@ public class Application
 
     // Navigation property
     [ForeignKey(nameof(StudentId))]
-    public Student Student { get; set; } = null!;}
+    public Student Student { get; set; } = null!;
+
+    [Required]
+    [Column("submission_id")]
+    public Guid SubmissionId { get; set; }
+
+    [ForeignKey(nameof(SubmissionId))]
+    public StudentSubmission StudentSubmission { get; set; } = null!;
+}
