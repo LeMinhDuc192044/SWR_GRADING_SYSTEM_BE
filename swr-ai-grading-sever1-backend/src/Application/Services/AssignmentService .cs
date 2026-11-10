@@ -63,46 +63,90 @@ public sealed class AssignmentService : IAssignmentService
         if (!staffCheck.IsSuccess)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure(staffCheck.Error!, staffCheck.ErrorCode);
 
+        var availability = await EnsureMonitorAvailableAsync(request.StaffId, gradingSessionId, ct);
+        if (!availability.IsSuccess)
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(availability.Error!, availability.ErrorCode);
+
         var examinationSessionId = gradingSession.ExaminationSessionId;
         var semesterId = gradingSession.ExaminationSession.SemesterId;
 
-        var alreadyAssigned = _db.Assignments
-            .Where(a => a.GradingSessionId == gradingSessionId)
-            .Select(a => a.SubmissionId);
+        // 1. Cannot request more than the examination session has. Nothing is created.
+        var totalSubmissions = await _db.StudentSubmissions.AsNoTracking()
+            .CountAsync(s => s.ExaminationSessionId == examinationSessionId, ct);
+        if (request.NumberSubmissions > totalSubmissions)
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                $"Cannot assign {request.NumberSubmissions} submission(s): the examination session only has {totalSubmissions}.",
+                "NUMBER_SUBMISSIONS_EXCEEDS_TOTAL");
 
         // Students this monitor is linked to in this semester: their work must not be graded by this monitor.
         var ownStudents = _db.StudentSemesters
             .Where(ss => ss.SemesterId == semesterId && ss.StaffId == request.StaffId)
             .Select(ss => ss.StudentId);
 
-        var eligible = await _db.StudentSubmissions
-            .AsNoTracking()
-            .Where(s => s.ExaminationSessionId == examinationSessionId
-                        && !alreadyAssigned.Contains(s.SubmissionId)
-                        && !ownStudents.Contains(s.StudentId))
+        var submissionIds = await _db.StudentSubmissions.AsNoTracking()
+            .Where(s => s.ExaminationSessionId == examinationSessionId && !ownStudents.Contains(s.StudentId))
             .OrderBy(s => s.CreatedDate)
-            .Take(request.NumberSubmissions)
+            .Select(s => s.SubmissionId)
             .ToListAsync(ct);
 
-        if (eligible.Count == 0)
+        // Tracked on purpose: reassigned rows are updated in place.
+        var existing = await _db.Assignments
+            .Where(a => a.GradingSessionId == gradingSessionId)
+            .ToListAsync(ct);
+        var rowsBySubmission = existing
+            .GroupBy(a => a.SubmissionId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.AssignedDate).ToList());
+
+        // 2. Never assigned yet -> create.
+        var toCreate = submissionIds
+            .Where(id => !rowsBySubmission.ContainsKey(id))
+            .Take(request.NumberSubmissions)
+            .ToList();
+
+        // 3. Assigned to another monitor and not completed/graded -> reassign (fills what is left of N).
+        var toReassign = submissionIds
+            .Where(id => rowsBySubmission.TryGetValue(id, out var rows)
+                        && rows.All(r => !IsLocked(r))
+                        && rows[0].StaffId != request.StaffId)
+            .Take(request.NumberSubmissions - toCreate.Count)
+            .Select(id => rowsBySubmission[id][0])
+            .ToList();
+
+        if (toCreate.Count + toReassign.Count == 0)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure(
                 "No eligible submissions available for this monitor.", "NO_ELIGIBLE_SUBMISSIONS");
 
         var now = VietnamTime.Now;
-        var created = eligible.Select(s => new Assignment
+
+        var created = toCreate.Select(submissionId => new Assignment
         {
             GradingSessionId = gradingSessionId,
-            SubmissionId = s.SubmissionId,
+            SubmissionId = submissionId,
             StaffId = request.StaffId,
             Status = AssignmentStatus.IN_PROGRESS,
             AssignedDate = now,
             UpdatedDate = now
         }).ToList();
 
-        _db.Assignments.AddRange(created);
-        await _unitOfWork.SaveChangesAsync(ct);
+        foreach (var row in toReassign)
+        {
+            row.StaffId = request.StaffId;
+            row.Status = AssignmentStatus.IN_PROGRESS;
+            row.AssignedDate = now;
+            row.UpdatedDate = now;
+        }
 
-        return Result<IReadOnlyList<AssignmentDTO>>.Success(created.Select(Map).ToList());
+        _db.Assignments.AddRange(created);
+        await _unitOfWork.SaveChangesAsync(ct);   // one save: all creates and reassigns succeed or none do
+
+        var result = created.Select(Map).ToList();
+        result.AddRange(toReassign.Select(a =>
+        {
+            var dto = Map(a);
+            dto.IsReassigned = true;
+            return dto;
+        }));
+        return Result<IReadOnlyList<AssignmentDTO>>.Success(result);
     }
 
     public async Task<Result<AssignmentDTO>> UpdateAsync(
@@ -173,6 +217,28 @@ public sealed class AssignmentService : IAssignmentService
         if (staff.Role != UserRole.Monitor)
             return Result.Failure("Only monitors can be assigned to grade submissions.", "INVALID_STAFF_ROLE");
         return Result.Success();
+    }
+
+    private async Task<Result> EnsureMonitorAvailableAsync(Guid staffId, Guid currentGradingSessionId, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(VietnamTime.Now);
+
+        var busy = await _db.Assignments.AsNoTracking()
+            .Where(a => a.StaffId == staffId
+                        && a.GradingSessionId != currentGradingSessionId
+                        && (a.GradingSession.Deadline == null || a.GradingSession.Deadline >= today))
+            .OrderBy(a => a.GradingSession.Deadline)
+            .Select(a => new { a.GradingSession.Title, a.GradingSession.Deadline })
+            .FirstOrDefaultAsync(ct);
+
+        if (busy is null)
+            return Result.Success();
+
+        var deadlineText = busy.Deadline is { } d ? $" (deadline {d:yyyy-MM-dd})" : " (no deadline)";
+        return Result.Failure(
+            $"This monitor is already assigned to grading session '{busy.Title}'{deadlineText}. " +
+            "A monitor can be assigned to another grading session only after that deadline has passed.",
+            "MONITOR_BUSY_IN_ANOTHER_GRADING_SESSION");
     }
 
     private static bool IsLocked(Assignment assignment)

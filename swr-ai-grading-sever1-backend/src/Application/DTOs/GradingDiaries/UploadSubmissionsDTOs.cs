@@ -20,6 +20,7 @@ public sealed class UploadedSubmissionSummaryDTO
     public string Status { get; set; } = string.Empty;
     public bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }
+    public bool IsReplaced { get; set; }
 }
 
 public sealed class UploadSubmissionsResultDTO

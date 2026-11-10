@@ -74,6 +74,26 @@ public sealed class SubmissionService : ISubmissionService
 
                 var submissionId = Guid.NewGuid();
                 var student = ResolveStudent(file.FileName, students);
+
+                var existing = await _db.StudentSubmissions
+                    .Where(s => s.StudentId == student.Id && s.ExaminationSessionId == session.ExaminationSessionId)
+                    .OrderByDescending(s => s.CreatedDate)
+                    .ToListAsync(ct);
+                var previous = existing.FirstOrDefault();
+
+                if (existing.Count > 0)
+                {
+                    var existingIds = existing.Select(s => s.SubmissionId).ToList();
+                    var alreadyGraded =
+                        await _db.Assignments.AnyAsync(a => existingIds.Contains(a.SubmissionId)
+                            && (a.Status == AssignmentStatus.COMPLETED || a.Status == AssignmentStatus.GRADED), ct)
+                        || await _db.SubmissionGradingHistories.AnyAsync(h => existingIds.Contains(h.SubmissionId)
+                            && h.Status == SubmissionGradingHistoryStatus.OFFICIAL, ct);
+                    if (alreadyGraded)
+                        throw new InvalidDataException(
+                            $"Student {student.StudentCode} already has a graded submission in this examination session; it cannot be replaced.");
+                }
+
                 var imagePaths = new Dictionary<int, string>();
                 string extractedText = string.Empty;
                 var extractedImages = new List<DocxImageDto>();
@@ -138,18 +158,41 @@ public sealed class SubmissionService : ISubmissionService
                 uploadStream.Position = 0;
                 await _storage.UploadAsync(storagePath, uploadStream, file.ContentType ?? "application/octet-stream", ct);
 
-                var submission = new StudentSubmission
+                StudentSubmission submission;
+                if (previous is null)
                 {
-                    SubmissionId = submissionId,
-                    FileSubmissions = storagePath,
-                    StudentId = student.Id,
-                    Status = SubmissionStatus.Submitted,
-                    CreatedDate = now,
-                    UpdatedDate = now,
-                    UploadedById = staff.Id,
-                    ExaminationSessionId = sessionId
-                };
-                _db.StudentSubmissions.Add(submission);
+                    submission = new StudentSubmission
+                    {
+                        SubmissionId = submissionId,
+                        FileSubmissions = storagePath,
+                        StudentId = student.Id,
+                        Status = SubmissionStatus.Submitted,
+                        CreatedDate = now,
+                        UpdatedDate = now,
+                        UploadedById = staff.Id,
+                        ExaminationSessionId = sessionId
+                    };
+                    _db.StudentSubmissions.Add(submission);
+                }
+                else
+                {
+                    submission = previous;
+                    submission.FileSubmissions = storagePath;
+                    submission.Status = SubmissionStatus.Submitted;
+                    submission.CreatedDate = now;
+                    submission.UpdatedDate = now;
+                    submission.UploadedById = staff.Id;
+
+                    // Old answers and old (draft) AI/review results belong to the old file: remove them.
+                    _db.SubmissionParsedAnswers.RemoveRange(
+                        await _db.SubmissionParsedAnswers.Where(p => p.SubmissionId == submissionId).ToListAsync(ct));
+                    _db.SubmissionGradingHistories.RemoveRange(
+                        await _db.SubmissionGradingHistories.Where(h => h.SubmissionId == submissionId).ToListAsync(ct));
+                    // Any extra duplicates already in the database are removed too.
+                    _db.StudentSubmissions.RemoveRange(existing.Skip(1));
+
+                    summary.IsReplaced = true;
+                }
 
                 foreach (var question in questions)
                 {
@@ -259,13 +302,13 @@ public sealed class SubmissionService : ISubmissionService
     private static Student ResolveStudent(string fileName, IReadOnlyList<Student> students)
     {
         var stem = Path.GetFileNameWithoutExtension(fileName);
-        var match = Regex.Match(stem, @"[A-Za-z]{2}\d{5,8}", RegexOptions.IgnoreCase);
-        if (match.Success)
+        foreach (Match match in Regex.Matches(stem, @"[A-Za-z]{2}\d{5,8}"))
         {
-            var student = students.FirstOrDefault(item => item.StudentCode.Equals(match.Value, StringComparison.OrdinalIgnoreCase));
+            var student = students.FirstOrDefault(item =>
+                item.StudentCode.Equals(match.Value, StringComparison.OrdinalIgnoreCase));
             if (student is not null) return student;
         }
-        return students.First();
+        throw new InvalidDataException($"No student code in the file name '{fileName}' matches an existing student.");
     }
 
     private static SubmissionDetailDTO ToDetail(StudentSubmission submission)
