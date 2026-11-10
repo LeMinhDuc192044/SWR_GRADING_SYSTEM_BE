@@ -36,10 +36,16 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         if (!access.IsSuccess)
             return Result<SubmissionGradingOverviewDTO>.Failure(access.Error!, access.ErrorCode);
 
-        var histories = await HistoriesWithDetails().AsNoTracking()
+        var allHistories = await HistoriesWithDetails().AsNoTracking()
             .Where(h => h.SubmissionId == submissionId)
             .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
             .ToListAsync(ct);
+
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        var visibleHistories = cycle.IsBlindRegrade
+            ? FilterHistoriesForCurrentCycle(allHistories, cycle)
+            : allHistories;
 
         var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
             .Include(p => p.Question)
@@ -63,7 +69,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
             SubmissionId = submissionId,
-            Histories = histories.Select(Map).ToList(),
+            Histories = visibleHistories.Select(Map).ToList(),
             ParsedAnswers = parsedAnswers.Select(p => new ParsedAnswerDTO
             {
                 ParsedAnswerId = p.ParsedAnswerId,
@@ -87,7 +93,14 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
         if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
 
-        if (await HasOfficialAsync(submissionId, ct))
+        var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        if (HasOfficialForCycle(allHistories, cycle))
             return Fail("This submission already has an official grade.", "ALREADY_FINALIZED");
 
         var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
@@ -173,15 +186,39 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             return Fail("At least one updated item is required.", "NO_CHANGES");
         if (request.Items.GroupBy(i => i.ParsedAnswerId).Any(g => g.Count() > 1))
             return Fail("Each answer can only be updated once per review.", "DUPLICATE_ITEMS");
-        if (await HasOfficialAsync(submissionId, ct))
+
+        var allHistories = await HistoriesWithDetails().AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        if (HasOfficialForCycle(allHistories, cycle))
             return Fail("This submission already has an official grade.", "ALREADY_FINALIZED");
 
-        var baseQuery = HistoriesWithDetails().AsNoTracking().Where(h => h.SubmissionId == submissionId);
-        var baseHistory = request.BaseHistoryId.HasValue
-            ? await baseQuery.FirstOrDefaultAsync(h => h.HistoryId == request.BaseHistoryId.Value, ct)
-            : await baseQuery.OrderByDescending(h => h.GradingRound).FirstOrDefaultAsync(ct);
-        if (baseHistory is null)
-            return Fail("No grading result to review. Run AI grading first.", "BASE_HISTORY_NOT_FOUND");
+        var currentCycleHistories = cycle.IsBlindRegrade
+            ? FilterHistoriesForCurrentCycle(allHistories, cycle)
+            : allHistories;
+
+        SubmissionGradingHistory? baseHistory = null;
+        if (request.BaseHistoryId.HasValue)
+        {
+            baseHistory = currentCycleHistories.FirstOrDefault(h => h.HistoryId == request.BaseHistoryId.Value);
+            if (baseHistory is null)
+            {
+                if (cycle.IsBlindRegrade && allHistories.Any(h => h.HistoryId == request.BaseHistoryId.Value))
+                    return Fail("Blind grading does not allow referencing grading results from a prior round.", "FORBIDDEN");
+
+                return Fail("No grading result to review. Run AI grading first.", "BASE_HISTORY_NOT_FOUND");
+            }
+        }
+        else
+        {
+            baseHistory = currentCycleHistories.OrderByDescending(h => h.GradingRound).FirstOrDefault();
+            if (baseHistory is null && !cycle.IsBlindRegrade)
+                return Fail("No grading result to review. Run AI grading first.", "BASE_HISTORY_NOT_FOUND");
+        }
 
         var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
             .Include(p => p.Question)
@@ -198,9 +235,10 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         }
 
         var overrides = request.Items.ToDictionary(i => i.ParsedAnswerId);
-        var previousByAnswer = baseHistory.Details.ToDictionary(d => d.ParsedAnswerId);
+        var previousByAnswer = baseHistory?.Details.ToDictionary(d => d.ParsedAnswerId)
+            ?? new Dictionary<Guid, SubmissionItemDetail>();
 
-        // New list = every answer: updated items replace old ones, the rest are carried over.
+        // New list = every answer: updated items replace old ones, the rest are carried over (or 0 in blind regrade).
         var details = new List<SubmissionItemDetail>();
         foreach (var answer in parsedAnswers)
         {
@@ -231,7 +269,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             EvaluationType = EvaluationType.Lecturer,
             GradingRound = await NextRoundAsync(submissionId, ct),
             TotalScore = total,
-            GeneralFeedback = request.GeneralFeedback ?? baseHistory.GeneralFeedback,
+            GeneralFeedback = request.GeneralFeedback ?? baseHistory?.GeneralFeedback,
             Status = SubmissionGradingHistoryStatus.DRAFT,
             CreatedAt = DateTime.UtcNow,
             Details = details
@@ -254,10 +292,20 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         if (history is null)
             return Fail("Grading result not found.", "GRADING_HISTORY_NOT_FOUND");
 
+        var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        if (cycle.IsBlindRegrade && !IsInCurrentCycle(history, cycle))
+            return Fail("Blind grading does not allow finalizing a grading result from a prior round.", "FORBIDDEN");
+
         if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
             return Fail("This grading result is already official.", "ALREADY_FINALIZED");
-        if (await HasOfficialAsync(submissionId, ct))
-            return Fail("Another grading result is already official for this submission.", "ALREADY_FINALIZED");
+        if (HasOfficialForCycle(allHistories, cycle))
+            return Fail("Another grading result is already official for this grading assignment.", "ALREADY_FINALIZED");
         if (history.TotalScore is null or > MaxTotalScore)
             return Fail($"Total score must be set and at most {MaxTotalScore}.", "INVALID_TOTAL_SCORE");
 
@@ -275,6 +323,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private async Task<Result<Assignment>> GetAssignmentAsync(Guid submissionId, Guid staffId, CancellationToken ct)
     {
         var assignment = await _db.Assignments
+            .Include(a => a.GradingSession)
             .Where(a => a.SubmissionId == submissionId && a.StaffId == staffId)
             .OrderByDescending(a => a.AssignedDate)
             .FirstOrDefaultAsync(ct);
@@ -284,9 +333,101 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             : Result<Assignment>.Success(assignment);
     }
 
-    private async Task<bool> HasOfficialAsync(Guid submissionId, CancellationToken ct)
-        => await _db.SubmissionGradingHistories.AsNoTracking().AnyAsync(h =>
-            h.SubmissionId == submissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL, ct);
+    private sealed record GradingCycleContext(
+        Assignment Assignment,
+        bool IsBlindRegrade,
+        int? BaselineRound);
+
+    private async Task<GradingCycleContext> ResolveCycleContextAsync(
+        Guid submissionId,
+        Assignment currentAssignment,
+        IReadOnlyList<SubmissionGradingHistory> allHistories,
+        CancellationToken ct)
+    {
+        var otherAssignments = await _db.Assignments.AsNoTracking()
+            .Include(a => a.GradingSession)
+            .Where(a => a.SubmissionId == submissionId && a.AssignmentId != currentAssignment.AssignmentId)
+            .ToListAsync(ct);
+
+        var isRegradeByTitle = IsRegradeSessionTitle(currentAssignment.GradingSession?.Title);
+        var currentSessionCreated = currentAssignment.GradingSession?.CreatedDate;
+        var hasPriorAssignment = otherAssignments.Any(a =>
+            a.AssignedDate < currentAssignment.AssignedDate
+            || (a.AssignedDate == currentAssignment.AssignedDate
+                && (a.Status is AssignmentStatus.GRADED or AssignmentStatus.COMPLETED
+                    || (currentSessionCreated.HasValue
+                        && a.GradingSession is not null
+                        && a.GradingSession.CreatedDate < currentSessionCreated.Value))));
+
+        var isBlindRegrade = isRegradeByTitle || hasPriorAssignment;
+        if (!isBlindRegrade)
+            return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
+
+        var officials = allHistories
+            .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToList();
+
+        int? baselineRound = null;
+        var isCurrentFinalized = currentAssignment.Status is AssignmentStatus.GRADED or AssignmentStatus.COMPLETED;
+
+        if (isCurrentFinalized && officials.Count >= 2)
+        {
+            baselineRound = officials[^2].GradingRound;
+        }
+        else if (!isCurrentFinalized && officials.Count > 0)
+        {
+            baselineRound = officials[^1].GradingRound;
+        }
+        else
+        {
+            var priorHistories = allHistories
+                .Where(h => h.CreatedAt < currentAssignment.AssignedDate)
+                .ToList();
+            if (priorHistories.Count > 0)
+                baselineRound = priorHistories.Max(h => h.GradingRound);
+        }
+
+        return new GradingCycleContext(currentAssignment, IsBlindRegrade: true, BaselineRound: baselineRound);
+    }
+
+    private static bool IsRegradeSessionTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        return title.Contains("phúc khảo", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("phuc khao", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("regrade", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsInCurrentCycle(SubmissionGradingHistory history, GradingCycleContext cycle)
+    {
+        if (!cycle.IsBlindRegrade)
+            return true;
+
+        if (cycle.BaselineRound.HasValue)
+            return history.GradingRound > cycle.BaselineRound.Value;
+
+        return history.CreatedAt >= cycle.Assignment.AssignedDate;
+    }
+
+    private static List<SubmissionGradingHistory> FilterHistoriesForCurrentCycle(
+        IReadOnlyList<SubmissionGradingHistory> allHistories,
+        GradingCycleContext cycle)
+        => allHistories.Where(h => IsInCurrentCycle(h, cycle)).ToList();
+
+    private static bool HasOfficialForCycle(
+        IReadOnlyList<SubmissionGradingHistory> allHistories,
+        GradingCycleContext cycle)
+    {
+        if (cycle.Assignment.Status is AssignmentStatus.GRADED or AssignmentStatus.COMPLETED)
+            return true;
+
+        return allHistories.Any(h =>
+            h.Status == SubmissionGradingHistoryStatus.OFFICIAL && IsInCurrentCycle(h, cycle));
+    }
 
     private async Task<int> NextRoundAsync(Guid submissionId, CancellationToken ct)
         => (await _db.SubmissionGradingHistories
