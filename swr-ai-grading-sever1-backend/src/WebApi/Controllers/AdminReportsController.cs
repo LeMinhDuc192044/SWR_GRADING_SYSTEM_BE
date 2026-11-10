@@ -10,7 +10,7 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/reports")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Manager")]
 public sealed class AdminReportsController : ControllerBase
 {
     private readonly IReportService _reportService;

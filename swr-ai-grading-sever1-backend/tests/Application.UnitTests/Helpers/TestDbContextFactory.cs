@@ -37,6 +37,19 @@ public class TestDbContext : DbContext, IApplicationDbContext
         builder.Entity<StudentSemester>()
             .HasKey(ss => new { ss.StudentId, ss.SemesterId });
 
+        builder.Entity<StudentExaminationSession>()
+            .HasKey(ses => new { ses.StudentId, ses.ExaminationSessionId });
+
+        builder.Entity<StudentExaminationSession>()
+            .HasOne(ses => ses.Student)
+            .WithMany(s => s.StudentExaminationSessions)
+            .HasForeignKey(ses => ses.StudentId);
+
+        builder.Entity<StudentExaminationSession>()
+            .HasOne(ses => ses.ExaminationSession)
+            .WithMany(es => es.StudentExaminationSessions)
+            .HasForeignKey(ses => ses.ExaminationSessionId);
+
         base.OnModelCreating(builder);
     }
 }
