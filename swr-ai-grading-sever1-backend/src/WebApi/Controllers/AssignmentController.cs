@@ -54,7 +54,7 @@ public class AssignmentController : ControllerBase
         var status = code switch
         {
             not null when code.EndsWith("_NOT_FOUND") => StatusCodes.Status404NotFound,
-            "ASSIGNMENT_LOCKED" => StatusCodes.Status409Conflict,
+            "ASSIGNMENT_LOCKED" or "MONITOR_DUPLICATE_SUBMISSION" or "SUBMISSION_ALREADY_ASSIGNED" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest
         };
         return StatusCode(status, ApiResponse.Failure(status, error ?? "Request failed."));

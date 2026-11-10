@@ -56,7 +56,13 @@ public sealed class AssignmentService : IAssignmentService
         if (gradingSession is null)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure("Grading session not found.", "GRADING_SESSION_NOT_FOUND");
 
-        if (request.NumberSubmissions <= 0)
+        var requestedIds = request.SubmissionIds?
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+        var hasExplicitSelection = requestedIds is { Count: > 0 };
+
+        if (!hasExplicitSelection && request.NumberSubmissions <= 0)
             return Result<IReadOnlyList<AssignmentDTO>>.Failure("Number of submissions must be greater than zero.", "INVALID_NUMBER_SUBMISSIONS");
 
         var staffCheck = await ValidateMonitorAsync(request.StaffId, ct);
@@ -66,27 +72,55 @@ public sealed class AssignmentService : IAssignmentService
         var examinationSessionId = gradingSession.ExaminationSessionId;
         var semesterId = gradingSession.ExaminationSession.SemesterId;
 
-        var alreadyAssigned = _db.Assignments
-            .Where(a => a.GradingSessionId == gradingSessionId)
-            .Select(a => a.SubmissionId);
+        List<StudentSubmission> eligible;
+        if (hasExplicitSelection)
+        {
+            var validationResult = await ValidateExplicitSelectionAsync(
+                requestedIds!,
+                examinationSessionId,
+                gradingSessionId,
+                semesterId,
+                request.StaffId,
+                ct);
+            if (!validationResult.IsSuccess)
+                return Result<IReadOnlyList<AssignmentDTO>>.Failure(validationResult.Error!, validationResult.ErrorCode);
 
-        // Students this monitor is linked to in this semester: their work must not be graded by this monitor.
-        var ownStudents = _db.StudentSemesters
-            .Where(ss => ss.SemesterId == semesterId && ss.StaffId == request.StaffId)
-            .Select(ss => ss.StudentId);
+            eligible = await _db.StudentSubmissions
+                .AsNoTracking()
+                .Where(s => requestedIds!.Contains(s.SubmissionId))
+                .OrderBy(s => s.CreatedDate)
+                .ToListAsync(ct);
+        }
+        else
+        {
+            var alreadyAssigned = _db.Assignments
+                .Where(a => a.GradingSessionId == gradingSessionId)
+                .Select(a => a.SubmissionId);
 
-        var eligible = await _db.StudentSubmissions
-            .AsNoTracking()
-            .Where(s => s.ExaminationSessionId == examinationSessionId
-                        && !alreadyAssigned.Contains(s.SubmissionId)
-                        && !ownStudents.Contains(s.StudentId))
-            .OrderBy(s => s.CreatedDate)
-            .Take(request.NumberSubmissions)
-            .ToListAsync(ct);
+            // Students this monitor is linked to in this semester: their work must not be graded by this monitor.
+            var ownStudents = _db.StudentSemesters
+                .Where(ss => ss.SemesterId == semesterId && ss.StaffId == request.StaffId)
+                .Select(ss => ss.StudentId);
 
-        if (eligible.Count == 0)
-            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
-                "No eligible submissions available for this monitor.", "NO_ELIGIBLE_SUBMISSIONS");
+            // A monitor who already graded or was assigned to a submission in another session (e.g. Round 1) cannot regrade it.
+            var previouslyAssignedToMonitor = _db.Assignments
+                .Where(a => a.StaffId == request.StaffId && a.GradingSessionId != gradingSessionId)
+                .Select(a => a.SubmissionId);
+
+            eligible = await _db.StudentSubmissions
+                .AsNoTracking()
+                .Where(s => s.ExaminationSessionId == examinationSessionId
+                            && !alreadyAssigned.Contains(s.SubmissionId)
+                            && !ownStudents.Contains(s.StudentId)
+                            && !previouslyAssignedToMonitor.Contains(s.SubmissionId))
+                .OrderBy(s => s.CreatedDate)
+                .Take(request.NumberSubmissions)
+                .ToListAsync(ct);
+
+            if (eligible.Count == 0)
+                return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    "No eligible submissions available for this monitor.", "NO_ELIGIBLE_SUBMISSIONS");
+        }
 
         var now = VietnamTime.Now;
         var created = eligible.Select(s => new Assignment
@@ -129,6 +163,15 @@ public sealed class AssignmentService : IAssignmentService
                 return Result<AssignmentDTO>.Failure(
                     "This monitor is linked to the student and cannot grade this submission.", "MONITOR_LINKED_TO_STUDENT");
 
+            var wasPreviouslyAssigned = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+                a.SubmissionId == assignment.SubmissionId
+                && a.GradingSessionId != gradingSessionId
+                && a.StaffId == request.StaffId.Value, ct);
+            if (wasPreviouslyAssigned)
+                return Result<AssignmentDTO>.Failure(
+                    "This monitor was already assigned to this submission in another grading session.",
+                    "MONITOR_DUPLICATE_SUBMISSION");
+
             assignment.StaffId = request.StaffId.Value;
         }
 
@@ -163,6 +206,45 @@ public sealed class AssignmentService : IAssignmentService
             .Include(a => a.Submission)
             .Include(a => a.GradingSession).ThenInclude(g => g.ExaminationSession)
             .FirstOrDefaultAsync(a => a.AssignmentId == assignmentId && a.GradingSessionId == gradingSessionId, ct);
+
+    private async Task<Result> ValidateExplicitSelectionAsync(
+        IReadOnlyList<Guid> submissionIds,
+        Guid examinationSessionId,
+        Guid gradingSessionId,
+        Guid semesterId,
+        Guid staffId,
+        CancellationToken ct)
+    {
+        var submissions = await _db.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => submissionIds.Contains(s.SubmissionId))
+            .Select(s => new { s.SubmissionId, s.StudentId, s.ExaminationSessionId })
+            .ToListAsync(ct);
+
+        if (submissions.Count != submissionIds.Count)
+            return Result.Failure("One or more requested submissions were not found.", "SUBMISSION_NOT_FOUND");
+
+        if (submissions.Any(s => s.ExaminationSessionId != examinationSessionId))
+            return Result.Failure("One or more submissions do not belong to this examination session.", "SUBMISSION_SESSION_MISMATCH");
+
+        var duplicateInSession = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+            a.GradingSessionId == gradingSessionId && submissionIds.Contains(a.SubmissionId), ct);
+        if (duplicateInSession)
+            return Result.Failure("One or more submissions are already assigned in this grading session.", "SUBMISSION_ALREADY_ASSIGNED");
+
+        var studentIds = submissions.Select(s => s.StudentId).Distinct().ToList();
+        var hasOwnStudent = await _db.StudentSemesters.AsNoTracking().AnyAsync(ss =>
+            ss.SemesterId == semesterId && ss.StaffId == staffId && studentIds.Contains(ss.StudentId), ct);
+        if (hasOwnStudent)
+            return Result.Failure("This monitor is linked to one or more students and cannot grade their submissions.", "MONITOR_LINKED_TO_STUDENT");
+
+        var gradedInOtherSession = await _db.Assignments.AsNoTracking().AnyAsync(a =>
+            a.StaffId == staffId && a.GradingSessionId != gradingSessionId && submissionIds.Contains(a.SubmissionId), ct);
+        if (gradedInOtherSession)
+            return Result.Failure("This monitor was already assigned to one or more of these submissions in another grading session.", "MONITOR_DUPLICATE_SUBMISSION");
+
+        return Result.Success();
+    }
 
     private async Task<Result> ValidateMonitorAsync(Guid staffId, CancellationToken ct)
     {
