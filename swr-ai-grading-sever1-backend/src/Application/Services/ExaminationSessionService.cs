@@ -265,7 +265,7 @@
             return Map(session, studentIds);
         }
 
-        public async Task<PagedResult<ExaminationSessionDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+        public async Task<PagedResult<ExaminationSessionListItemDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
         {
             var page = Math.Max(request.Page, 1);
             var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
@@ -274,7 +274,6 @@
             var totalCount = await query.CountAsync(ct);
 
             var sessions = await query
-                .Include(s => s.StudentExaminationSessions)
                 .OrderByDescending(s => s.CreatedDay)
                 .ThenByDescending(s => s.StartDate)
                 .ThenByDescending(s => s.StartTime)
@@ -283,9 +282,43 @@
                 .Take(pageSize)
                 .ToListAsync(ct);
 
-            // One query each for the semesters and examinations on this page (no N+1).
+            var sessionIds = sessions.Select(s => s.ExaminationSessionId).ToList();
             var semesterIds = sessions.Select(s => s.SemesterId).Distinct().ToList();
             var examinationIds = sessions.Select(s => s.ExaminationId).Distinct().ToList();
+
+            // One query each for the attendees, submission counts, semesters and examinations on this page (no N+1).
+            var attendees = await _db.StudentExaminationSessions.AsNoTracking()
+                .Where(a => sessionIds.Contains(a.ExaminationSessionId))
+                .OrderBy(a => a.Student.StudentCode)
+                .Select(a => new
+                {
+                    a.ExaminationSessionId,
+                    StudentId = a.Student.Id,
+                    a.Student.StudentCode,
+                    a.Student.FullName,
+                    a.Student.Email
+                })
+                .ToListAsync(ct);
+
+            var studentsBySession = attendees
+                .GroupBy(a => a.ExaminationSessionId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<ExaminationSessionStudentDTO>)g
+                        .Select(a => new ExaminationSessionStudentDTO
+                        {
+                            StudentId = a.StudentId,
+                            StudentCode = a.StudentCode,
+                            FullName = a.FullName,
+                            Email = a.Email
+                        })
+                        .ToList());
+
+            var submissionCounts = await _db.StudentSubmissions.AsNoTracking()
+                .Where(s => s.ExaminationSessionId.HasValue && sessionIds.Contains(s.ExaminationSessionId.Value))
+                .GroupBy(s => s.ExaminationSessionId!.Value)
+                .Select(g => new { ExaminationSessionId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExaminationSessionId, x => x.Count, ct);
 
             var semesters = await _db.Semesters.AsNoTracking()
                 .Where(s => semesterIds.Contains(s.SemesterId))
@@ -310,15 +343,25 @@
                 })
                 .ToDictionaryAsync(e => e.ExaminationId, ct);
 
-            var items = sessions.Select(session =>
+            var items = sessions.Select(session => new ExaminationSessionListItemDTO
             {
-                var dto = Map(session);
-                dto.Semester = semesters.GetValueOrDefault(session.SemesterId);
-                dto.Examination = examinations.GetValueOrDefault(session.ExaminationId);
-                return dto;
+                ExaminationSessionId = session.ExaminationSessionId,
+                ExaminationId = session.ExaminationId,
+                ExaminationCode = session.ExaminationCode,
+                StartDate = session.StartDate,
+                StartTime = session.StartTime,
+                Status = session.Status,
+                SemesterId = session.SemesterId,
+                PaperSetId = session.PaperSetId,
+                CreatedDay = session.CreatedDay,
+                UpdatedDay = session.UpdatedDay,
+                TotalSubmission = submissionCounts.GetValueOrDefault(session.ExaminationSessionId),
+                Students = studentsBySession.GetValueOrDefault(session.ExaminationSessionId) ?? [],
+                Semester = semesters.GetValueOrDefault(session.SemesterId),
+                Examination = examinations.GetValueOrDefault(session.ExaminationId)
             }).ToList();
 
-            return new PagedResult<ExaminationSessionDTO>
+            return new PagedResult<ExaminationSessionListItemDTO>
             {
                 Items = items,
                 TotalCount = totalCount,
