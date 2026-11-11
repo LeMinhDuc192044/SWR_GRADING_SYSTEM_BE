@@ -41,14 +41,15 @@ public sealed class AssignmentService : IAssignmentService
                 "GRADING_SESSION_NOT_FOUND");
         }
 
-        var assignments = await _db.Assignments
-            .AsNoTracking()
-            .Where(a => a.GradingSessionId == gradingSessionId)
+        // Assigner, student, paper set, examination session, examination and
+        // semester are all joined in a single query (no N+1).
+        var assignments = await ProjectDetails(_db.Assignments
+                .AsNoTracking()
+                .Where(a => a.GradingSessionId == gradingSessionId))
             .OrderByDescending(a => a.AssignedDate)
             .ToListAsync(ct);
 
-        return Result<IReadOnlyList<AssignmentDTO>>.Success(
-            assignments.Select(Map).ToList());
+        return Result<IReadOnlyList<AssignmentDTO>>.Success(assignments);
     }
 
     // =========================================================
@@ -60,18 +61,17 @@ public sealed class AssignmentService : IAssignmentService
         Guid assignmentId,
         CancellationToken ct = default)
     {
-        var assignment = await _db.Assignments
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                a => a.AssignmentId == assignmentId
-                     && a.GradingSessionId == gradingSessionId,
-                ct);
+        var assignment = await ProjectDetails(_db.Assignments
+                .AsNoTracking()
+                .Where(a => a.AssignmentId == assignmentId
+                            && a.GradingSessionId == gradingSessionId))
+            .FirstOrDefaultAsync(ct);
 
         return assignment is null
             ? Result<AssignmentDTO>.Failure(
                 "Assignment not found.",
                 "ASSIGNMENT_NOT_FOUND")
-            : Result<AssignmentDTO>.Success(Map(assignment));
+            : Result<AssignmentDTO>.Success(assignment);
     }
 
     // =========================================================
@@ -678,6 +678,55 @@ public sealed class AssignmentService : IAssignmentService
         return assignment.Status is
             AssignmentStatus.COMPLETED or
             AssignmentStatus.GRADED;
+    }
+
+    // =========================================================
+    // PROJECTION WITH RELATED DETAILS
+    // Includes the assigner, student, paper set, examination session,
+    // examination and semester of an assignment.
+    // =========================================================
+
+    private static IQueryable<AssignmentDTO> ProjectDetails(IQueryable<Assignment> query)
+    {
+        return query.Select(a => new AssignmentDTO
+        {
+            AssignmentId = a.AssignmentId,
+            GradingSessionId = a.GradingSessionId,
+            SubmissionId = a.SubmissionId,
+            StaffId = a.StaffId,
+            Status = a.Status,
+            AssignedDate = a.AssignedDate,
+            UpdatedDate = a.UpdatedDate,
+            Staff = new AssignmentStaffDTO
+            {
+                StaffId = a.Staff.Id,
+                StaffCode = a.Staff.StaffCode,
+                FullName = a.Staff.FullName,
+                Email = a.Staff.Email
+            },
+            Student = new AssignmentStudentDTO
+            {
+                StudentId = a.Submission.StudentId,
+                StudentCode = a.Submission.Student.StudentCode,
+                FullName = a.Submission.Student.FullName
+            },
+            PaperSet = a.GradingSession.ExaminationSession.PaperSet == null
+                ? null
+                : new AssignmentPaperSetDTO
+                {
+                    PaperSetId = a.GradingSession.ExaminationSession.PaperSet.PaperSetId,
+                    PaperSetCode = a.GradingSession.ExaminationSession.PaperSet.PaperSetCode,
+                    TotalQuestions = a.GradingSession.ExaminationSession.PaperSet.TotalQuestions
+                },
+            ExaminationSession = new AssignmentExaminationSessionDTO
+            {
+                ExaminationSessionId = a.GradingSession.ExaminationSessionId,
+                ExaminationCode = a.GradingSession.ExaminationSession.ExaminationCode,
+                ExaminationName = a.GradingSession.ExaminationSession.Examination.Name,
+                SemesterName = a.GradingSession.ExaminationSession.Examination.Semester.Name,
+                SemesterCode = a.GradingSession.ExaminationSession.Examination.Semester.SemesterCode
+            }
+        });
     }
 
     // =========================================================
