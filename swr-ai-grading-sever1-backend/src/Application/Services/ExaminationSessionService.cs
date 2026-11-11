@@ -265,7 +265,7 @@
             return Map(session, studentIds);
         }
 
-        public async Task<PagedResult<ExaminationSessionDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
+        public async Task<PagedResult<ExaminationSessionListItemDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
         {
             var page = Math.Max(request.Page, 1);
             var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
@@ -274,7 +274,6 @@
             var totalCount = await query.CountAsync(ct);
 
             var sessions = await query
-                .Include(s => s.StudentExaminationSessions)
                 .OrderByDescending(s => s.CreatedDay)
                 .ThenByDescending(s => s.StartDate)
                 .ThenByDescending(s => s.StartTime)
@@ -283,9 +282,43 @@
                 .Take(pageSize)
                 .ToListAsync(ct);
 
-            // One query each for the semesters and examinations on this page (no N+1).
+            var sessionIds = sessions.Select(s => s.ExaminationSessionId).ToList();
             var semesterIds = sessions.Select(s => s.SemesterId).Distinct().ToList();
             var examinationIds = sessions.Select(s => s.ExaminationId).Distinct().ToList();
+
+            // One query each for the attendees, submission counts, semesters and examinations on this page (no N+1).
+            var attendees = await _db.StudentExaminationSessions.AsNoTracking()
+                .Where(a => sessionIds.Contains(a.ExaminationSessionId))
+                .OrderBy(a => a.Student.StudentCode)
+                .Select(a => new
+                {
+                    a.ExaminationSessionId,
+                    StudentId = a.Student.Id,
+                    a.Student.StudentCode,
+                    a.Student.FullName,
+                    a.Student.Email
+                })
+                .ToListAsync(ct);
+
+            var studentsBySession = attendees
+                .GroupBy(a => a.ExaminationSessionId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<ExaminationSessionStudentDTO>)g
+                        .Select(a => new ExaminationSessionStudentDTO
+                        {
+                            StudentId = a.StudentId,
+                            StudentCode = a.StudentCode,
+                            FullName = a.FullName,
+                            Email = a.Email
+                        })
+                        .ToList());
+
+            var submissionCounts = await _db.StudentSubmissions.AsNoTracking()
+                .Where(s => s.ExaminationSessionId.HasValue && sessionIds.Contains(s.ExaminationSessionId.Value))
+                .GroupBy(s => s.ExaminationSessionId!.Value)
+                .Select(g => new { ExaminationSessionId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExaminationSessionId, x => x.Count, ct);
 
             var semesters = await _db.Semesters.AsNoTracking()
                 .Where(s => semesterIds.Contains(s.SemesterId))
@@ -310,21 +343,146 @@
                 })
                 .ToDictionaryAsync(e => e.ExaminationId, ct);
 
-            var items = sessions.Select(session =>
+            var items = sessions.Select(session => new ExaminationSessionListItemDTO
             {
-                var dto = Map(session);
-                dto.Semester = semesters.GetValueOrDefault(session.SemesterId);
-                dto.Examination = examinations.GetValueOrDefault(session.ExaminationId);
-                return dto;
+                ExaminationSessionId = session.ExaminationSessionId,
+                ExaminationId = session.ExaminationId,
+                ExaminationCode = session.ExaminationCode,
+                StartDate = session.StartDate,
+                StartTime = session.StartTime,
+                Status = session.Status,
+                SemesterId = session.SemesterId,
+                PaperSetId = session.PaperSetId,
+                CreatedDay = session.CreatedDay,
+                UpdatedDay = session.UpdatedDay,
+                TotalSubmission = submissionCounts.GetValueOrDefault(session.ExaminationSessionId),
+                Students = studentsBySession.GetValueOrDefault(session.ExaminationSessionId) ?? [],
+                Semester = semesters.GetValueOrDefault(session.SemesterId),
+                Examination = examinations.GetValueOrDefault(session.ExaminationId)
             }).ToList();
 
-            return new PagedResult<ExaminationSessionDTO>
+            return new PagedResult<ExaminationSessionListItemDTO>
             {
                 Items = items,
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
             };
+        }
+
+        public async Task<Result<ExaminationSessionResultsDTO>> GetResultsAsync(Guid examinationSessionId, CancellationToken ct = default)
+        {
+            var session = await _db.ExaminationSessions
+                .AsNoTracking()
+                .Where(s => s.ExaminationSessionId == examinationSessionId)
+                .Select(s => new ExaminationSessionResultsDTO
+                {
+                    ExaminationSessionId = s.ExaminationSessionId,
+                    ExaminationCode = s.ExaminationCode,
+                    StartDate = s.StartDate,
+                    StartTime = s.StartTime,
+                    Status = s.Status,
+                    Semester = new ExaminationSessionSemesterDTO
+                    {
+                        SemesterId = s.Examination.SemesterId,
+                        SemesterCode = s.Examination.Semester.SemesterCode,
+                        Name = s.Examination.Semester.Name,
+                        StartDate = s.Examination.Semester.StartDate,
+                        EndDate = s.Examination.Semester.EndDate
+                    },
+                    Examination = new ExaminationSessionExaminationDTO
+                    {
+                        ExaminationId = s.ExaminationId,
+                        Name = s.Examination.Name,
+                        StartDate = s.Examination.StartDate,
+                        EndDate = s.Examination.EndDate
+                    },
+                    PaperSet = s.PaperSetId == null
+                        ? null
+                        : new ExaminationSessionPaperSetDTO
+                        {
+                            PaperSetId = s.PaperSet!.PaperSetId,
+                            PaperSetCode = s.PaperSet.PaperSetCode
+                        }
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (session is null)
+                return Result<ExaminationSessionResultsDTO>.Failure("Examination session not found.", "EXAMINATION_SESSION_NOT_FOUND");
+
+            var submissions = await _db.StudentSubmissions
+                .AsNoTracking()
+                .Where(s => s.ExaminationSessionId == examinationSessionId)
+                .Include(s => s.Student)
+                .Include(s => s.SubmissionGradingHistories)
+                    .ThenInclude(h => h.Details)
+                        .ThenInclude(d => d.ParsedAnswer)
+                            .ThenInclude(a => a.Question)
+                .OrderBy(s => s.Student.StudentCode)
+                .ToListAsync(ct);
+
+            session.Results = submissions.Select(MapResult).ToList();
+            return Result<ExaminationSessionResultsDTO>.Success(session);
+        }
+
+        private static ExaminationSessionStudentResultDTO MapResult(StudentSubmission submission)
+        {
+            var history = FindLecturerHistory(submission.SubmissionGradingHistories);
+
+            return new ExaminationSessionStudentResultDTO
+            {
+                SubmissionId = submission.SubmissionId,
+                Student = new ExaminationSessionResultStudentDTO
+                {
+                    StudentId = submission.StudentId,
+                    StudentCode = submission.Student.StudentCode,
+                    FullName = submission.Student.FullName
+                },
+                Grading = history is null
+                    ? null
+                    : new ExaminationSessionResultGradingDTO
+                    {
+                        HistoryId = history.HistoryId,
+                        EvaluationType = history.EvaluationType,
+                        Status = history.Status,
+                        GradingRound = history.GradingRound,
+                        LecturerScore = history.TotalScore ?? history.Details.Sum(d => d.Score),
+                        GeneralFeedback = history.GeneralFeedback,
+                        GradedAt = history.CreatedAt,
+                        Questions = history.Details
+                            .OrderBy(d => d.ParsedAnswer.Question.Title)
+                            .Select(d => new ExaminationSessionQuestionScoreDTO
+                            {
+                                DetailId = d.DetailId,
+                                EvaluationId = d.EvaluationId,
+                                ParsedAnswerId = d.ParsedAnswerId,
+                                QuestionId = d.ParsedAnswer.QuestionId,
+                                QuestionTitle = d.ParsedAnswer.Question.Title,
+                                MaxScore = d.ParsedAnswer.Question.Point,
+                                Score = d.Score,
+                                Comment = d.Comment
+                            })
+                            .ToList()
+                    }
+            };
+        }
+
+        // The lecturer's official grade wins; otherwise the latest lecturer entry (still in review) is used.
+        private static SubmissionGradingHistory? FindLecturerHistory(IEnumerable<SubmissionGradingHistory> histories)
+        {
+            var lecturerHistories = histories
+                .Where(h => h.EvaluationType == EvaluationType.Lecturer)
+                .ToList();
+
+            return lecturerHistories
+                .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault()
+                ?? lecturerHistories
+                    .OrderByDescending(h => h.GradingRound)
+                    .ThenByDescending(h => h.CreatedAt)
+                    .FirstOrDefault();
         }
 
         private static ExaminationSessionDTO Map(ExaminationSession session, IReadOnlyList<Guid>? studentIds = null) => new()

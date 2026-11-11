@@ -225,8 +225,6 @@ public sealed class SubmissionService : ISubmissionService
             summaries.Add(summary);
         }
 
-        if (sessionId.HasValue && summaries.Any(item => item.IsSuccess))
-            await SyncGradingSessionCountsAsync(sessionId.Value, ct);
 
         return Result<UploadSubmissionsResultDTO>.Success(new UploadSubmissionsResultDTO
         {
@@ -349,25 +347,5 @@ public sealed class SubmissionService : ISubmissionService
         return string.IsNullOrWhiteSpace(normalized) ? "file" : normalized.Trim('_');
     }
 
-    private async Task SyncGradingSessionCountsAsync(Guid examinationSessionId, CancellationToken ct)
-{
-    var count = await _db.StudentSubmissions
-        .CountAsync(s => s.ExaminationSessionId == examinationSessionId, ct);
-
-    var gradingSessions = await _db.GradingSessions
-        .Where(g => g.ExaminationSessionId == examinationSessionId)
-        .ToListAsync(ct);
-
-    if (gradingSessions.Count == 0) return;
-
-    var now = VietnamTime.Now;
-    var today = DateOnly.FromDateTime(now);
-
-    foreach (var gradingSession in gradingSessions)
-    {
-        gradingSession.NumberSubmissions = count;
-        gradingSession.UpdatedDate = today;
-    }
-    await _db.SaveChangesAsync(ct);
-}
+    
 }

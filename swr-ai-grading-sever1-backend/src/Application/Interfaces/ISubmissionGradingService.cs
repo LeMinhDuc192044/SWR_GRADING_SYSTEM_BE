@@ -11,6 +11,9 @@ public interface ISubmissionGradingService
     Task<Result<GradingHistoryDTO>> GradeWithAiAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default);
 
+    Task<Result<GradingHistoryDTO>> CreateLecturerGradingAsync(
+        Guid submissionId, CreateLecturerGradingRequest request, Guid currentUserId, CancellationToken ct = default);
+
     Task<Result<GradingHistoryDTO>> ReviewAsync(
         Guid submissionId, ReviewGradingRequest request, Guid currentUserId, CancellationToken ct = default);
 

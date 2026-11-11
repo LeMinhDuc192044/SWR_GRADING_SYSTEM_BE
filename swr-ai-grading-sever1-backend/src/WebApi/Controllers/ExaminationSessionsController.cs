@@ -49,6 +49,16 @@ public sealed class ExaminationSessionsController : ControllerBase
         return Ok(ApiResponse.Success(result));
     }
 
+    [HttpGet("~/api/examination-sessions/{examinationSessionId:guid}/results")]
+    [Authorize]
+    public async Task<IActionResult> GetResults(Guid examinationSessionId, CancellationToken ct)
+    {
+        var result = await _service.GetResultsAsync(examinationSessionId, ct);
+        return result.IsSuccess
+            ? Ok(ApiResponse.Success(result.Data))
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+    }
+
     [HttpPut("{sessionId:guid}")]
     [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Update(Guid examinationId, Guid sessionId, [FromBody] UpdateExaminationSessionRequest request, CancellationToken ct)

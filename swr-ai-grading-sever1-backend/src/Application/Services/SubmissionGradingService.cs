@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Application.Common;
 using Application.Common.Interfaces;
 using Application.DTOs.Grading;
@@ -280,6 +282,108 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         return await ReloadAsync(history.HistoryId, ct);
     }
 
+    // ---------------------------------------------------------------- lecturer grading (manual entry)
+    public async Task<Result<GradingHistoryDTO>> CreateLecturerGradingAsync(
+        Guid submissionId, CreateLecturerGradingRequest request, Guid currentUserId, CancellationToken ct = default)
+    {
+        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
+        if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
+
+        if (request.Items.Count == 0)
+            return Fail("At least one graded question is required.", "NO_GRADING_ITEMS");
+
+        if (request.Items.Any(i => i.QuestionNumber <= 0))
+            return Fail("Question numbers start at 1.", "INVALID_QUESTION_NUMBER");
+
+        if (request.Items.GroupBy(i => i.QuestionNumber).Any(g => g.Count() > 1))
+            return Fail("Each question can only be graded once.", "DUPLICATE_QUESTION");
+
+        var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .Include(p => p.Question)
+            .Where(p => p.SubmissionId == submissionId)
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+        if (parsedAnswers.Count == 0)
+            return Fail("The submission has no parsed answers to grade.", "NO_PARSED_ANSWERS");
+
+        // Question number is the number in the question title, e.g. "Question 1" -> 1.
+        var answersByNumber = new Dictionary<int, Domain.Entities.SubmissionParsedAnswer>();
+        foreach (var answer in parsedAnswers)
+        {
+            var number = ExtractQuestionNumber(answer.Question.Title);
+            if (number <= 0)
+                return Fail(
+                    $"Question '{answer.Question.Title}' has no number in its title, so it cannot be graded by question number.",
+                    "INVALID_QUESTION_TITLE");
+
+            if (!answersByNumber.TryAdd(number, answer))
+                return Fail(
+                    $"More than one question is numbered {number}; grading by question number is ambiguous.",
+                    "DUPLICATE_QUESTION_NUMBER");
+        }
+
+        var submittedNumbers = request.Items
+            .Select(i => i.QuestionNumber)
+            .ToList();
+
+        var unknownNumbers = submittedNumbers
+            .Where(number => !answersByNumber.ContainsKey(number))
+            .OrderBy(number => number)
+            .ToList();
+        if (unknownNumbers.Count > 0)
+            return Fail(
+                $"These question numbers do not belong to the submission: {string.Join(", ", unknownNumbers)}.",
+                "QUESTION_NOT_FOUND");
+
+        // Every question of the paper must be scored so the total covers question 1..n.
+        var missingNumbers = answersByNumber.Keys
+            .Where(number => !submittedNumbers.Contains(number))
+            .OrderBy(number => number)
+            .ToList();
+        if (missingNumbers.Count > 0)
+            return Fail(
+                $"Missing scores for question number(s): {string.Join(", ", missingNumbers)}.",
+                "MISSING_QUESTION_SCORES");
+
+        var details = new List<SubmissionItemDetail>();
+        foreach (var item in request.Items)
+        {
+            var answer = answersByNumber[item.QuestionNumber];
+            if (item.Score < 0 || item.Score > answer.Question.Point)
+                return Fail(
+                    $"Score for question {item.QuestionNumber} must be between 0 and {answer.Question.Point}.",
+                    "INVALID_SCORE");
+
+            details.Add(new SubmissionItemDetail
+            {
+                ParsedAnswerId = answer.ParsedAnswerId,
+                Score = item.Score,
+                Comment = item.Comment
+            });
+        }
+
+        var total = details.Sum(d => d.Score);
+        if (total > MaxTotalScore)
+            return Fail($"Total score {total} exceeds the maximum of {MaxTotalScore}.", "TOTAL_SCORE_EXCEEDS_MAX");
+
+        var history = new SubmissionGradingHistory
+        {
+            SubmissionId = submissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            GradingRound = await NextRoundAsync(submissionId, ct),
+            TotalScore = total,
+            GeneralFeedback = request.GeneralFeedback,
+            Status = SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow,
+            Details = details
+        };
+
+        _db.SubmissionGradingHistories.Add(history);
+        await _unitOfWork.SaveChangesAsync(ct);
+        return await ReloadAsync(history.HistoryId, ct);
+    }
+
     // ---------------------------------------------------------------- finalize (DRAFT -> OFFICIAL)
     public async Task<Result<GradingHistoryDTO>> FinalizeAsync(
         Guid submissionId, Guid historyId, Guid currentUserId, CancellationToken ct = default)
@@ -390,6 +494,14 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         }
 
         return new GradingCycleContext(currentAssignment, IsBlindRegrade: true, BaselineRound: baselineRound);
+    }
+
+    private static int ExtractQuestionNumber(string? title)
+    {
+        var match = Regex.Match(title ?? string.Empty, @"\d+");
+        return match.Success && int.TryParse(match.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0;
     }
 
     private static bool IsRegradeSessionTitle(string? title)

@@ -28,6 +28,12 @@ public class SubmissionGradingController : ControllerBase
             ? ToResponse(await _grading.GradeWithAiAsync(submissionId, userId, ct))
             : Unauthorized();
 
+    [HttpPost("lecturer")]
+    public async Task<IActionResult> CreateLecturerGrading(Guid submissionId, [FromBody] CreateLecturerGradingRequest request, CancellationToken ct)
+        => CurrentUserId is { } userId
+            ? ToResponse(await _grading.CreateLecturerGradingAsync(submissionId, request, userId, ct))
+            : Unauthorized();
+
     [HttpPost("review")]
     public async Task<IActionResult> Review(Guid submissionId, [FromBody] ReviewGradingRequest request, CancellationToken ct)
         => CurrentUserId is { } userId
