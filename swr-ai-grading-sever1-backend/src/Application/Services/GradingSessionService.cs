@@ -150,6 +150,12 @@ public sealed class GradingSessionService : IGradingSessionService
         if (examinationSession is null)
             return Result<GradingSessionDTO>.Failure("Examination session not found.", "EXAMINATION_SESSION_NOT_FOUND");
 
+        // Grading can only start after the examination session has ended.
+        if (examinationSession.Status != Domain.Enums.ExaminationSessionStatus.ENDED)
+            return Result<GradingSessionDTO>.Failure(
+                "A grading session can only be created for an examination session that has ended.",
+                "EXAMINATION_SESSION_NOT_ENDED");
+
         var title = ValidateTitle(request.Title);
         if (title is null)
             return Result<GradingSessionDTO>.Failure("Title is required and must be 200 characters or fewer.", "INVALID_GRADING_SESSION_TITLE");

@@ -30,6 +30,9 @@ Env.Load(Path.GetFullPath(envPath));
 // Database
 builder.Services.AddDatabase();
 
+// Daily status updates (semester/examination closed, examination session ended)
+builder.Services.AddHostedService<WebApi.BackgroundServices.StatusUpdateBackgroundService>();
+
 // Unit of Work + Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
