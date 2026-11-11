@@ -13,4 +13,6 @@ public interface IExaminationSessionService
     Task<Result<ExaminationSessionImportResultDTO>> CreateWithStudentExcelAsync(
         Guid examinationId, CreateExaminationSessionRequest request, Stream excelStream, CancellationToken ct = default);
     Task<PagedResult<ExaminationSessionListItemDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
+
+    Task<Result<ExaminationSessionResultsDTO>> GetResultsAsync(Guid examinationSessionId, CancellationToken ct = default);
 }

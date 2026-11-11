@@ -370,6 +370,121 @@
             };
         }
 
+        public async Task<Result<ExaminationSessionResultsDTO>> GetResultsAsync(Guid examinationSessionId, CancellationToken ct = default)
+        {
+            var session = await _db.ExaminationSessions
+                .AsNoTracking()
+                .Where(s => s.ExaminationSessionId == examinationSessionId)
+                .Select(s => new ExaminationSessionResultsDTO
+                {
+                    ExaminationSessionId = s.ExaminationSessionId,
+                    ExaminationCode = s.ExaminationCode,
+                    StartDate = s.StartDate,
+                    StartTime = s.StartTime,
+                    Status = s.Status,
+                    Semester = new ExaminationSessionSemesterDTO
+                    {
+                        SemesterId = s.Examination.SemesterId,
+                        SemesterCode = s.Examination.Semester.SemesterCode,
+                        Name = s.Examination.Semester.Name,
+                        StartDate = s.Examination.Semester.StartDate,
+                        EndDate = s.Examination.Semester.EndDate
+                    },
+                    Examination = new ExaminationSessionExaminationDTO
+                    {
+                        ExaminationId = s.ExaminationId,
+                        Name = s.Examination.Name,
+                        StartDate = s.Examination.StartDate,
+                        EndDate = s.Examination.EndDate
+                    },
+                    PaperSet = s.PaperSetId == null
+                        ? null
+                        : new ExaminationSessionPaperSetDTO
+                        {
+                            PaperSetId = s.PaperSet!.PaperSetId,
+                            PaperSetCode = s.PaperSet.PaperSetCode
+                        }
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (session is null)
+                return Result<ExaminationSessionResultsDTO>.Failure("Examination session not found.", "EXAMINATION_SESSION_NOT_FOUND");
+
+            var submissions = await _db.StudentSubmissions
+                .AsNoTracking()
+                .Where(s => s.ExaminationSessionId == examinationSessionId)
+                .Include(s => s.Student)
+                .Include(s => s.SubmissionGradingHistories)
+                    .ThenInclude(h => h.Details)
+                        .ThenInclude(d => d.ParsedAnswer)
+                            .ThenInclude(a => a.Question)
+                .OrderBy(s => s.Student.StudentCode)
+                .ToListAsync(ct);
+
+            session.Results = submissions.Select(MapResult).ToList();
+            return Result<ExaminationSessionResultsDTO>.Success(session);
+        }
+
+        private static ExaminationSessionStudentResultDTO MapResult(StudentSubmission submission)
+        {
+            var history = FindLecturerHistory(submission.SubmissionGradingHistories);
+
+            return new ExaminationSessionStudentResultDTO
+            {
+                SubmissionId = submission.SubmissionId,
+                Student = new ExaminationSessionResultStudentDTO
+                {
+                    StudentId = submission.StudentId,
+                    StudentCode = submission.Student.StudentCode,
+                    FullName = submission.Student.FullName
+                },
+                Grading = history is null
+                    ? null
+                    : new ExaminationSessionResultGradingDTO
+                    {
+                        HistoryId = history.HistoryId,
+                        EvaluationType = history.EvaluationType,
+                        Status = history.Status,
+                        GradingRound = history.GradingRound,
+                        LecturerScore = history.TotalScore ?? history.Details.Sum(d => d.Score),
+                        GeneralFeedback = history.GeneralFeedback,
+                        GradedAt = history.CreatedAt,
+                        Questions = history.Details
+                            .OrderBy(d => d.ParsedAnswer.Question.Title)
+                            .Select(d => new ExaminationSessionQuestionScoreDTO
+                            {
+                                DetailId = d.DetailId,
+                                EvaluationId = d.EvaluationId,
+                                ParsedAnswerId = d.ParsedAnswerId,
+                                QuestionId = d.ParsedAnswer.QuestionId,
+                                QuestionTitle = d.ParsedAnswer.Question.Title,
+                                MaxScore = d.ParsedAnswer.Question.Point,
+                                Score = d.Score,
+                                Comment = d.Comment
+                            })
+                            .ToList()
+                    }
+            };
+        }
+
+        // The lecturer's official grade wins; otherwise the latest lecturer entry (still in review) is used.
+        private static SubmissionGradingHistory? FindLecturerHistory(IEnumerable<SubmissionGradingHistory> histories)
+        {
+            var lecturerHistories = histories
+                .Where(h => h.EvaluationType == EvaluationType.Lecturer)
+                .ToList();
+
+            return lecturerHistories
+                .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault()
+                ?? lecturerHistories
+                    .OrderByDescending(h => h.GradingRound)
+                    .ThenByDescending(h => h.CreatedAt)
+                    .FirstOrDefault();
+        }
+
         private static ExaminationSessionDTO Map(ExaminationSession session, IReadOnlyList<Guid>? studentIds = null) => new()
         {
             ExaminationSessionId = session.ExaminationSessionId,
