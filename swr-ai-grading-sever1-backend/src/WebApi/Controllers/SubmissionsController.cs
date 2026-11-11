@@ -1,9 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Domain.Enums;
 using Application.Common.Interfaces;
 using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WebApi.Common;
@@ -118,60 +118,7 @@ public sealed class SubmissionsController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!));
     }
 
-    /// <summary>
-    /// FLOW 3: Giảng viên xem xét bài nộp, nhập điểm hoặc chọn pick điểm AI (is_final_score).
-    /// </summary>
-    [HttpPut("{id:guid}/review")]
-    public async Task<IActionResult> Review(
-        Guid id,
-        [FromBody] ReviewSubmissionRequest request,
-        CancellationToken ct)
-    {
-        if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
 
-        var result = await _submissionService.ReviewAsync(id, request, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode is "INVALID_SCORE" or "SCORE_REQUIRED" or "AI_EVALUATION_NOT_FOUND")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
-
-    /// <summary>
-    /// FLOW 3: Chốt điểm cuối cùng cho bài nộp (trạng thái chuyển sang Final).
-    /// </summary>
-    [HttpPut("{id:guid}/finalize")]
-    public async Task<IActionResult> Finalize(Guid id, CancellationToken ct)
-    {
-        if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
-
-        var result = await _submissionService.FinalizeAsync(id, userId, IsElevatedRole(), ct);
-
-        if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
-
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
-
-        if (result.ErrorCode == "INVALID_STATUS")
-            return BadRequest(ApiResponse.Failure(400, result.Error!));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
-    }
 
     /// <summary>
     /// GET /api/submissions/{id}/history

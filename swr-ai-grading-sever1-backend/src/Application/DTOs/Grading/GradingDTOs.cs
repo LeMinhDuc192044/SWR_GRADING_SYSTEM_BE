@@ -26,6 +26,22 @@ public sealed class GradingItemDetailDTO
     public string? Comment { get; set; }
 }
 
+/// <summary>
+/// Manual lecturer grading: one item per question, addressed by question number (1, 2, ... n).
+/// </summary>
+public sealed class CreateLecturerGradingRequest
+{
+    public string? GeneralFeedback { get; set; }
+    public List<LecturerGradingItemRequest> Items { get; set; } = [];
+}
+
+public sealed class LecturerGradingItemRequest
+{
+    public int QuestionNumber { get; set; }
+    public decimal Score { get; set; }
+    public string? Comment { get; set; }
+}
+
 public sealed class ReviewGradingRequest
 {
     /// <summary>History to start from. Defaults to the latest one.</summary>
