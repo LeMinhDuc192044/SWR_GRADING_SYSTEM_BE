@@ -465,7 +465,23 @@ public sealed class GeminiAIService : IGeminiAIService
         }
 
         if (!success)
-            throw new InvalidOperationException($"Lỗi gọi Gemini API (Status: {response.StatusCode}): {responseBody}");
+        {
+            if (response?.StatusCode == (System.Net.HttpStatusCode)429 ||
+                responseBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) ||
+                responseBody.Contains("quota", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Hệ thống AI đã vượt quá hạn mức yêu cầu hoặc hết token API (Google Gemini Quota Exceeded / Rate Limit 429). Vui lòng thử lại sau vài phút hoặc thay thế GEMINI_API_KEY.");
+            }
+
+            if (response?.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                response?.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                responseBody.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Khóa GEMINI_API_KEY không hợp lệ hoặc không có quyền truy cập mô hình này.");
+            }
+
+            throw new InvalidOperationException($"Lỗi gọi Gemini API (Status: {response?.StatusCode}): {responseBody}");
+        }
 
         return CleanJsonFences(ExtractTextFromGeminiResponse(responseBody));
     }
