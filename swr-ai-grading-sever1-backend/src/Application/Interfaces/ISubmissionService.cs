@@ -14,6 +14,14 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
+    Task<Result<PagedResult<SubmissionDetailDTO>>> GetPagedListAsync(
+        PagedRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        Guid? examinationSessionId = null,
+        CancellationToken ct = default
+    );
+
     Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListAsync(
         Guid currentUserId,
         bool isElevatedRole,

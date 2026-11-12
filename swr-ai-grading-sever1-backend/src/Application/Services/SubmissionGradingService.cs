@@ -130,7 +130,16 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         }
         catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
         {
-            return Fail($"AI grading failed: {ex.Message}", "AI_GRADING_FAILED");
+            var isQuota = ex.Message.Contains("Quota", StringComparison.OrdinalIgnoreCase) ||
+                          ex.Message.Contains("hạn mức", StringComparison.OrdinalIgnoreCase) ||
+                          ex.Message.Contains("429");
+            var isTokenLimit = ex.Message.Contains("MAX_TOKENS", StringComparison.OrdinalIgnoreCase) ||
+                               ex.Message.Contains("giới hạn token", StringComparison.OrdinalIgnoreCase);
+
+            var errorCode = isQuota ? "AI_QUOTA_EXCEEDED" :
+                            isTokenLimit ? "AI_TOKEN_LIMIT" : "AI_GRADING_FAILED";
+
+            return Fail($"AI grading failed: {ex.Message}", errorCode);
         }
 
         // ASSUMPTION: GradingResultDto exposes CriteriaScores (QuestionId, ActualScore, Comment) and OverallComment.

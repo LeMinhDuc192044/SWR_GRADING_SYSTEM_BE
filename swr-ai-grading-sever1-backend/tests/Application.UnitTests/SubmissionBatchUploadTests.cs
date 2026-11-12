@@ -348,5 +348,81 @@ public class SubmissionBatchUploadTests
         Assert.False(result.Data.Submissions[0].IsSuccess);
         Assert.Empty(await db.StudentSubmissions.ToListAsync());
     }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_ReuploadBeforeGraded_ReplacesPreviousSubmissionAndCleansOldAnswers()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, sv1, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object);
+
+        var initialUpload = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001_v1.docx", CreateRealDocxBytes("Version 1"))],
+            examinerId,
+            sessionId);
+
+        Assert.True(initialUpload.IsSuccess);
+        Assert.Equal(1, initialUpload.Data!.TotalSucceeded);
+        Assert.False(initialUpload.Data.Submissions[0].IsReplaced);
+
+        var sub1 = await db.StudentSubmissions.SingleAsync();
+        var initialSubmissionId = sub1.SubmissionId;
+
+        var secondUpload = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001_v2.docx", CreateRealDocxBytes("Version 2"))],
+            examinerId,
+            sessionId);
+
+        Assert.True(secondUpload.IsSuccess);
+        Assert.Equal(1, secondUpload.Data!.TotalSucceeded);
+        Assert.True(secondUpload.Data.Submissions[0].IsReplaced);
+
+        var submissions = await db.StudentSubmissions.ToListAsync();
+        Assert.Single(submissions);
+        Assert.Equal(initialSubmissionId, submissions[0].SubmissionId);
+
+        var answers = await db.SubmissionParsedAnswers.Where(p => p.SubmissionId == initialSubmissionId).ToListAsync();
+        Assert.Single(answers);
+    }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_ReuploadAfterGraded_RejectsReplacementWithError()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, sv1, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object);
+
+        await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001.docx", CreateRealDocxBytes("Bai lam"))],
+            examinerId,
+            sessionId);
+
+        var submission = await db.StudentSubmissions.SingleAsync();
+
+        db.Assignments.Add(new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            SubmissionId = submission.SubmissionId,
+            StaffId = examinerId,
+            Status = AssignmentStatus.COMPLETED,
+            AssignedDate = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var secondUpload = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001_retry.docx", CreateRealDocxBytes("Nop de khi da cham"))],
+            examinerId,
+            sessionId);
+
+        Assert.True(secondUpload.IsSuccess);
+        Assert.Equal(1, secondUpload.Data!.TotalUploaded);
+        Assert.Equal(0, secondUpload.Data.TotalSucceeded);
+        Assert.False(secondUpload.Data.Submissions[0].IsSuccess);
+        Assert.Contains("cannot be replaced", secondUpload.Data.Submissions[0].ErrorMessage);
+    }
 }
 

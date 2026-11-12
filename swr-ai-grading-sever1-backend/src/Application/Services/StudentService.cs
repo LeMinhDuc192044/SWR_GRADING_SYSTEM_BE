@@ -38,12 +38,23 @@ public sealed class StudentService : IStudentService
     {
         var result = new StudentImportResultDto();
 
-        using var workbook = new XLWorkbook(fileStream);
-        var worksheet = workbook.Worksheets.FirstOrDefault();
-        if (worksheet is null)
+        XLWorkbook workbook;
+        try
         {
-            return Result<StudentImportResultDto>.Failure("File Excel không có worksheet nào.", "EXCEL_EMPTY");
+            workbook = new XLWorkbook(fileStream);
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không thể đọc file Excel tải lên.");
+            return Result<StudentImportResultDto>.Failure("File Excel bị hỏng hoặc không đúng định dạng.", "INVALID_EXCEL_FILE");
+        }
+        using var _ = workbook;
+
+        var worksheet = workbook.Worksheets.FirstOrDefault();
+            if (worksheet is null)
+            {
+                return Result<StudentImportResultDto>.Failure("File Excel không có worksheet nào.", "EXCEL_EMPTY");
+            }
 
         var expectedHeaders = new[]
         {

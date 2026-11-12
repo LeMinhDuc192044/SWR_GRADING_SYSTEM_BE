@@ -38,7 +38,7 @@ public class DiagramsController : ControllerBase
         var result = await _diagramService.GetByIdAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
     [HttpPost]
@@ -52,8 +52,8 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NAME_EXISTS" or "DUPLICATE_ELEMENT_CODE" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "DIAGRAM_NAME_EXISTS" or "DUPLICATE_ELEMENT_CODE" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 
@@ -69,9 +69,9 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "DIAGRAM_NAME_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "DIAGRAM_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "DIAGRAM_NAME_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 
@@ -84,9 +84,9 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "DIAGRAM_IN_USE" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "DIAGRAM_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "DIAGRAM_IN_USE" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 
@@ -110,9 +110,9 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 }
