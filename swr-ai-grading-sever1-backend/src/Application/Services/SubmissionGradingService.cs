@@ -282,6 +282,51 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         return await ReloadAsync(history.HistoryId, ct);
     }
 
+    // ---------------------------------------------------------------- update one graded item
+    public async Task<Result<GradingHistoryDTO>> UpdateItemDetailAsync(
+        Guid detailId, UpdateGradingItemRequest request,
+        Guid currentUserId, CancellationToken ct = default)
+    {
+        // Only the detail id is needed: its grading history, submission and question come from it.
+        var detail = await _db.SubmissionItemDetails
+            .Include(d => d.ParsedAnswer)
+                .ThenInclude(p => p.Question)
+            .Include(d => d.SubmissionGradingHistory)
+                .ThenInclude(h => h.Details)
+                    .ThenInclude(item => item.ParsedAnswer)
+                        .ThenInclude(p => p.Question)
+            .FirstOrDefaultAsync(d => d.DetailId == detailId, ct);
+
+        if (detail is null)
+            return Fail("Graded item not found.", "GRADING_DETAIL_NOT_FOUND");
+
+        var history = detail.SubmissionGradingHistory;
+        var submissionId = history.SubmissionId;
+
+        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
+        if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
+
+        if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            return Fail("An official grading result cannot be edited.", "GRADING_HISTORY_FINALIZED");
+
+        var question = detail.ParsedAnswer.Question;
+        if (request.Score < 0 || request.Score > question.Point)
+            return Fail(
+                $"Score for '{question.Title}' must be between 0 and {question.Point}.",
+                "INVALID_SCORE");
+
+        var newTotal = history.Details.Sum(d => d.DetailId == detailId ? request.Score : d.Score);
+        if (newTotal > MaxTotalScore)
+            return Fail($"Total score {newTotal} exceeds the maximum of {MaxTotalScore}.", "TOTAL_SCORE_EXCEEDS_MAX");
+
+        detail.Score = request.Score;
+        detail.Comment = request.Comment;
+        history.TotalScore = newTotal;
+
+        await _unitOfWork.SaveChangesAsync(ct);
+        return await ReloadAsync(history.HistoryId, ct);
+    }
+
     // ---------------------------------------------------------------- lecturer grading (manual entry)
     public async Task<Result<GradingHistoryDTO>> CreateLecturerGradingAsync(
         Guid submissionId, CreateLecturerGradingRequest request, Guid currentUserId, CancellationToken ct = default)
@@ -421,6 +466,39 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
 
         await _unitOfWork.SaveChangesAsync(ct);
         return await ReloadAsync(history.HistoryId, ct);
+    }
+
+    // ---------------------------------------------------------------- update status (ONLY OFFICIAL)
+    public async Task<Result<GradingHistoryDTO>> UpdateStatusAsync(
+        Guid historyId, UpdateGradingStatusRequest request,
+        Guid currentUserId, CancellationToken ct = default)
+    {
+        if (!Enum.IsDefined(request.Status))
+            return Fail("Invalid grading status.", "INVALID_GRADING_STATUS");
+
+        if (request.Status != SubmissionGradingHistoryStatus.OFFICIAL)
+            return Fail("Only the OFFICIAL status can be set through this endpoint.", "INVALID_GRADING_STATUS");
+
+        // Only the history id is needed: the submission it belongs to comes from it.
+        var history = await _db.SubmissionGradingHistories
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.HistoryId == historyId, ct);
+
+        if (history is null)
+            return Fail("Grading result not found.", "GRADING_HISTORY_NOT_FOUND");
+
+        var submissionId = history.SubmissionId;
+
+        // A submission may only have one official grading result.
+        var alreadyOfficial = await _db.SubmissionGradingHistories
+            .AsNoTracking()
+            .AnyAsync(h => h.SubmissionId == submissionId
+                           && h.Status == SubmissionGradingHistoryStatus.OFFICIAL, ct);
+
+        if (alreadyOfficial)
+            return Fail("This submission already has an official grading result.", "ALREADY_FINALIZED");
+
+        return await FinalizeAsync(submissionId, historyId, currentUserId, ct);
     }
 
     // ---------------------------------------------------------------- helpers

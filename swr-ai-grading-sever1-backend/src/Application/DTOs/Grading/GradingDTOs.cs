@@ -42,6 +42,23 @@ public sealed class LecturerGradingItemRequest
     public string? Comment { get; set; }
 }
 
+/// <summary>
+/// Updates the status of a grading result. Only OFFICIAL is accepted here.
+/// </summary>
+public sealed class UpdateGradingStatusRequest
+{
+    public SubmissionGradingHistoryStatus Status { get; set; }
+}
+
+/// <summary>
+/// Updates one graded item (question) of an existing grading result.
+/// </summary>
+public sealed class UpdateGradingItemRequest
+{
+    public decimal Score { get; set; }
+    public string? Comment { get; set; }
+}
+
 public sealed class ReviewGradingRequest
 {
     /// <summary>History to start from. Defaults to the latest one.</summary>
