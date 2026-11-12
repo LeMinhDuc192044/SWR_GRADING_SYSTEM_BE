@@ -179,61 +179,43 @@ public class AssignmentServiceTests
     };
 
     [Fact]
-    public async Task CreateAsync_AutoSelect_SkipsSubmissionsPreviouslyAssignedToSameMonitor()
+    public async Task CreateAsync_AssignsSameNumberOfSubmissionsToEachMonitor()
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
-        var (_, regradeSessionId, monitor1Id, _, _, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, sub1Id, sub2Id) = await SeedScenarioAsync(db);
         var service = new AssignmentService(db, new TestDbUnitOfWork(db));
 
-        // Yêu cầu gán 2 bài cho Monitor 1 ở session mới -> chỉ được nhận Sub2 vì Monitor 1 đã chấm Sub1 ở Round 1
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
         {
-            StaffId = monitor1Id,
-            NumberSubmissions = 2
+            Monitors = [monitor2Id, monitor3Id],
+            SubmissionPerMonitor = 1
         });
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Data);
-        Assert.Single(result.Data);
-        Assert.Equal(sub2Id, result.Data[0].SubmissionId);
-        Assert.DoesNotContain(result.Data, a => a.SubmissionId == sub1Id);
+        Assert.Equal(2, result.Data.Count);
+        Assert.Single(result.Data, assignment => assignment.StaffId == monitor2Id);
+        Assert.Single(result.Data, assignment => assignment.StaffId == monitor3Id);
+        Assert.Contains(result.Data, assignment => assignment.SubmissionId == sub1Id);
+        Assert.Contains(result.Data, assignment => assignment.SubmissionId == sub2Id);
     }
 
     [Fact]
-    public async Task CreateAsync_ExplicitSelectionWithPreviousMonitor_ReturnsDuplicateMonitorFailure()
+    public async Task CreateAsync_NotEnoughUnassignedSubmissions_ReturnsInsufficientFailure()
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
-        var (_, regradeSessionId, monitor1Id, _, _, sub1Id, _) = await SeedScenarioAsync(db);
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
         var service = new AssignmentService(db, new TestDbUnitOfWork(db));
 
+        // 2 monitors x 2 submissions = 4 required, but only 2 submissions exist.
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
         {
-            StaffId = monitor1Id,
-            SubmissionIds = [sub1Id]
+            Monitors = [monitor2Id, monitor3Id],
+            SubmissionPerMonitor = 2
         });
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("MONITOR_DUPLICATE_SUBMISSION", result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task CreateAsync_ExplicitSelectionWithDifferentMonitor_AssignsExactRegradeSubmission()
-    {
-        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
-        var (_, regradeSessionId, _, monitor2Id, _, sub1Id, _) = await SeedScenarioAsync(db);
-        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
-
-        var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
-        {
-            StaffId = monitor2Id,
-            SubmissionIds = [sub1Id]
-        });
-
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Data);
-        Assert.Single(result.Data);
-        Assert.Equal(sub1Id, result.Data[0].SubmissionId);
-        Assert.Equal(monitor2Id, result.Data[0].StaffId);
+        Assert.Equal("INSUFFICIENT_SUBMISSIONS", result.ErrorCode);
     }
 
     [Fact]
@@ -246,8 +228,8 @@ public class AssignmentServiceTests
         // Assign Sub1 cho Monitor 2 ở đợt phúc khảo
         var created = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
         {
-            StaffId = monitor2Id,
-            SubmissionIds = [sub1Id]
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 1
         });
         var assignmentId = created.Data![0].AssignmentId;
 

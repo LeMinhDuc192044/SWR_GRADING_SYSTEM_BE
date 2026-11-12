@@ -60,9 +60,8 @@ public sealed class AssignmentExaminationSessionDTO
 
 public sealed class CreateAssignmentRequest
 {
-    public Guid StaffId { get; set; }
-    public int NumberSubmissions { get; set; }
-    public List<Guid>? SubmissionIds { get; set; }
+    public List<Guid> Monitors { get; set; } = [];
+    public int SubmissionPerMonitor { get; set; }
 }
 
 public sealed class UpdateAssignmentRequest
