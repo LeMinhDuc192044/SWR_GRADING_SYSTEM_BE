@@ -201,17 +201,38 @@ public class AssignmentServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_NotEnoughUnassignedSubmissions_ReturnsInsufficientFailure()
+    public async Task CreateAsync_NotEnoughForRequestedCount_StillGivesEveryMonitorOne()
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
         var service = new AssignmentService(db, new TestDbUnitOfWork(db));
 
-        // 2 monitors x 2 submissions = 4 required, but only 2 submissions exist.
+        // 2 monitors x 2 submissions requested, but only 2 submissions exist.
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
         {
             Monitors = [monitor2Id, monitor3Id],
             SubmissionPerMonitor = 2
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal(2, result.Data.Count);
+        Assert.Single(result.Data, assignment => assignment.StaffId == monitor2Id);
+        Assert.Single(result.Data, assignment => assignment.StaffId == monitor3Id);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NotEnoughForEveryMonitor_ReturnsInsufficientFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
+        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
+
+        // 3 monitors but only 2 submissions: at least one monitor would get nothing.
+        var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id, monitor3Id, monitor1Id],
+            SubmissionPerMonitor = 1
         });
 
         Assert.False(result.IsSuccess);

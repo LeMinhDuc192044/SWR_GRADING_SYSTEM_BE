@@ -183,27 +183,36 @@ public sealed class AssignmentService : IAssignmentService
             .Take(required)
             .ToListAsync(ct);
 
-        // Each monitor gets exactly the requested number of submissions, so workloads
-        // stay balanced; if the session cannot supply that, reject instead of unbalancing it.
-        if (candidateIds.Count < required)
+        // Fewer submissions than requested is fine as long as every monitor still gets at
+        // least one; the workload is then spread as evenly as possible between them.
+        if (candidateIds.Count < monitorIds.Count)
         {
             return Result<IReadOnlyList<AssignmentDTO>>.Failure(
                 $"Not enough unassigned submissions in this grading session: " +
-                $"{monitorIds.Count} monitor(s) x {request.SubmissionPerMonitor} = {required} required, " +
+                $"{monitorIds.Count} monitor(s) need at least one submission each, " +
                 $"{candidateIds.Count} available.",
                 "INSUFFICIENT_SUBMISSIONS");
         }
 
+        var baseCount = candidateIds.Count / monitorIds.Count;
+        var extra = candidateIds.Count % monitorIds.Count;
+
         var now = VietnamTime.Now;
         var created = new List<Assignment>();
+        var offset = 0;
 
         for (var index = 0; index < monitorIds.Count; index++)
         {
             var monitorId = monitorIds[index];
 
+            // The first monitors take one extra submission, so counts differ by at most one.
+            var count = baseCount + (index < extra ? 1 : 0);
+
             var submissionsForMonitor = candidateIds
-                .Skip(index * request.SubmissionPerMonitor)
-                .Take(request.SubmissionPerMonitor);
+                .Skip(offset)
+                .Take(count);
+
+            offset += count;
 
             foreach (var submissionId in submissionsForMonitor)
             {
