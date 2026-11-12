@@ -21,7 +21,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     public async Task<IActionResult> GetAll(Guid examinationId, CancellationToken ct)
     {
         var result = await _service.GetByExaminationAsync(examinationId, ct);
-        return Ok(ApiResponse.Success(result.Data));
+        return ResultResponse(result);
     }
 
     [HttpGet("{sessionId:guid}")]
@@ -83,9 +83,9 @@ public sealed class ExaminationSessionsController : ControllerBase
         Guid examinationId, [FromForm] CreateExaminationSessionFromExcelForm form, CancellationToken ct)
     {
         if (!Path.GetExtension(form.File.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(ApiResponse.Failure(400, "Only .xlsx files are supported."));
+            return BadRequest(ApiResponse.Failure(400, "Only .xlsx files are supported.", "INVALID_FILE_FORMAT"));
         if (form.File.Length == 0 || form.File.Length > 5 * 1024 * 1024)
-            return BadRequest(ApiResponse.Failure(400, "The Excel file must be between 1 byte and 5 MB."));
+            return BadRequest(ApiResponse.Failure(400, "The Excel file must be between 1 byte and 5 MB.", "FILE_SIZE_LIMIT"));
 
         var request = new CreateExaminationSessionRequest
         {

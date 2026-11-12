@@ -36,10 +36,10 @@ public sealed class SubmissionsController : ControllerBase
     {
         
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         if (files is null || files.Count == 0)
-            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx, .rar hoặc .zip bài làm của sinh viên."));
+            return BadRequest(ApiResponse.Failure(400, "Vui lòng chọn ít nhất một file .docx, .rar hoặc .zip bài làm của sinh viên.", "FILES_REQUIRED"));
 
         var docFiles = files.Select(f => (IDocumentFile)new FormFileDocumentAdapter(f)).ToList();
         var result = await _submissionService.UploadSubmissionsAsync(docFiles, userId, examinationSessionId, ct);
@@ -48,9 +48,9 @@ public sealed class SubmissionsController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
 
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> GetList(CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetListAsync(userId, IsElevatedRole(), ct);
 
@@ -68,9 +68,9 @@ public sealed class SubmissionsController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
 
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     /// <summary>
@@ -80,19 +80,19 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetByIdAsync(id, userId, IsElevatedRole(), ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 
         if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
 
         if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
 
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     /// <summary>
@@ -102,7 +102,7 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> AiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
 
@@ -110,15 +110,13 @@ public sealed class SubmissionsController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
 
         if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
 
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
-
-
 
     /// <summary>
     /// GET /api/submissions/{id}/history
@@ -128,7 +126,7 @@ public sealed class SubmissionsController : ControllerBase
     public async Task<IActionResult> GetHistory(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
-            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng."));
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
         var result = await _submissionService.GetHistoryAsync(id, userId, IsElevatedRole(), ct);
 
@@ -136,12 +134,12 @@ public sealed class SubmissionsController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
 
         if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!));
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
 
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     private bool TryGetCurrentUserId(out Guid userId)

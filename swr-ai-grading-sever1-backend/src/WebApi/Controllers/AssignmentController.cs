@@ -57,6 +57,6 @@ public class AssignmentController : ControllerBase
             "ASSIGNMENT_LOCKED" or "MONITOR_DUPLICATE_SUBMISSION" or "SUBMISSION_ALREADY_ASSIGNED" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest
         };
-        return StatusCode(status, ApiResponse.Failure(status, error ?? "Request failed."));
+        return StatusCode(status, ApiResponse.Failure(status, error ?? "Request failed.", code));
     }
 }

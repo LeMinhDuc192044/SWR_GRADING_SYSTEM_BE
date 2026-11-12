@@ -11,7 +11,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/paper-sets")]
-[Authorize(Roles = "Monitor")]
+[Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
 public sealed class PaperSetsController : ControllerBase
 {
     private readonly IPaperSetService _service;
@@ -39,13 +39,13 @@ public sealed class PaperSetsController : ControllerBase
     public async Task<IActionResult> PreviewQuestions(IFormFile question, CancellationToken ct)
     {
         if (question is null || question.Length == 0)
-            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+            return BadRequest(ApiResponse.Failure(400, "A question file is required.", "FILE_REQUIRED"));
 
         var upload = ToUpload(question, PaperSetFileType.Question)!;
         var result = await _service.PreviewQuestionsAsync(upload, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPost("preview")]
@@ -56,7 +56,7 @@ public sealed class PaperSetsController : ControllerBase
         CancellationToken ct)
     {
         if (question is null || question.Length == 0)
-            return BadRequest(ApiResponse.Failure(400, "A question file is required."));
+            return BadRequest(ApiResponse.Failure(400, "A question file is required.", "FILE_REQUIRED"));
 
         var questionUpload = ToUpload(question, PaperSetFileType.Question)!;
         var rubricUpload = ToUpload(answerRubric, PaperSetFileType.AnswerRubric);
@@ -64,7 +64,7 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.PreviewPaperSetAsync(questionUpload, rubricUpload, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPost("read-document")]
@@ -73,7 +73,7 @@ public sealed class PaperSetsController : ControllerBase
     public async Task<IActionResult> ReadDocument(IFormFile file, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
-            return BadRequest(ApiResponse.Failure(400, "A non-empty document file is required."));
+            return BadRequest(ApiResponse.Failure(400, "A non-empty document file is required.", "FILE_REQUIRED"));
 
         await using var content = file.OpenReadStream();
         var upload = new MaterialFileUpload
@@ -87,7 +87,7 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.ReadDocumentAsync(upload, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpGet("{id:guid}/read-files")]
@@ -96,8 +96,8 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.ReadFilesAsync(id, ct);
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
         return result.ErrorCode == "PAPER_SET_NOT_FOUND"
-            ? NotFound(ApiResponse.Failure(404, result.Error!))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
+            ? NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode))
+            : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpGet("{id:guid}")]
@@ -115,23 +115,14 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.GetQuestionsByPaperSetIdAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
-
-    // [HttpGet("{id:guid}/rubrics")]
-    // public async Task<IActionResult> GetRubrics(Guid id, CancellationToken ct)
-    // {
-    //     var result = await _service.GetRubricsByPaperSetIdAsync(id, ct);
-    //     return result.IsSuccess
-    //         ? Ok(ApiResponse.Success(result.Data))
-    //         : NotFound(ApiResponse.Failure(404, result.Error!));
-    // }
 
     [HttpGet("{id:guid}/content")]
     public async Task<IActionResult> GetContent(Guid id, CancellationToken ct)
     {
         var result = await _service.DownloadAsync(id, ct);
-        if (!result.IsSuccess) return NotFound(ApiResponse.Failure(404, result.Error!));
+        if (!result.IsSuccess) return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
         return File(result.Data!.Content, result.Data.ContentType, result.Data.FileName);
     }
 
@@ -143,12 +134,12 @@ public sealed class PaperSetsController : ControllerBase
         CancellationToken ct)
     {
         var uploads = BuildUploads(request.Question, request.AnswerRubric, request.AnswerTemplate);
-        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
         var result = await _service.CreateAsync(request.Description, request.ExaminationId, request.Questions.Select(ToQuestionInput).ToList(), uploads, userId, ct);
 
         if (result.IsSuccess) return Ok(ApiResponse.Success(result.Data));
-        if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!));
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+        if (result.ErrorCode == "LECTURER_REQUIRED") return StatusCode(403, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPost("batch")]
@@ -168,17 +159,15 @@ public sealed class PaperSetsController : ControllerBase
            })
            .ToList();
 
-        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
             var result = await _service.CreateManyAsync(materials, userId, ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "LECTURER_REQUIRED")
-            return StatusCode(403, ApiResponse.Failure(403, result.Error!));
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+            return StatusCode(403, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
-
-    
 
     [HttpPost("{id:guid}/files")]
     [RequestSizeLimit(524_288_000)]
@@ -219,7 +208,9 @@ public sealed class PaperSetsController : ControllerBase
         var result = await _service.DeleteAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(null))
-            : result.ErrorCode == "PAPER_SET_NOT_FOUND" ? NotFound(ApiResponse.Failure(404, result.Error!)) : BadRequest(ApiResponse.Failure(400, result.Error!));
+            : result.ErrorCode == "PAPER_SET_NOT_FOUND" 
+                ? NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)) 
+                : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     private static List<MaterialFileUpload> BuildUploads(
@@ -254,5 +245,10 @@ public sealed class PaperSetsController : ControllerBase
     };
 
     private bool TryGetCurrentUserId(out Guid userId)
-        => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+    {
+        var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub")
+            ?? User.FindFirstValue("nameid");
+        return Guid.TryParse(idStr, out userId);
+    }
 }

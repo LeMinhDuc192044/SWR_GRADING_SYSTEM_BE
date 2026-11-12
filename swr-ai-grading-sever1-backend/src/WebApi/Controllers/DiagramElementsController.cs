@@ -35,7 +35,7 @@ public class DiagramElementsController : ControllerBase
         var result = await _service.GetByIdAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
     [HttpPost]
@@ -49,9 +49,9 @@ public class DiagramElementsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 
@@ -67,9 +67,9 @@ public class DiagramElementsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "ELEMENT_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "ELEMENT_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 
@@ -82,9 +82,9 @@ public class DiagramElementsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!)),
-            "ELEMENT_HAS_REFERENCES" or "ELEMENT_IN_USE" => Conflict(ApiResponse.Failure(409, result.Error!)),
-            _ => BadRequest(ApiResponse.Failure(400, result.Error!))
+            "ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_HAS_REFERENCES" or "ELEMENT_IN_USE" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
 }
