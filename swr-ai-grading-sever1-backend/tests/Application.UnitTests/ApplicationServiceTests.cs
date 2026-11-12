@@ -1,3 +1,4 @@
+using Application.Common;
 using Application.DTOs.Applications;
 using Application.Services;
 using Application.UnitTests.Helpers;
@@ -228,14 +229,36 @@ public class ApplicationServiceTests
             Reason = "Đơn của SV1"
         }, student.Id);
 
-        var myApps = await service.GetMyApplicationsAsync(student.Id);
-        var otherApps = await service.GetMyApplicationsAsync(otherStudent.Id);
+        var myApps = await service.GetMyApplicationsAsync(new PagedRequest(), student.Id);
+        var otherApps = await service.GetMyApplicationsAsync(new PagedRequest(), otherStudent.Id);
 
         Assert.True(myApps.IsSuccess);
-        Assert.Single(myApps.Data!);
-        Assert.Equal("Đơn của SV1", myApps.Data![0].Reason);
+        Assert.Single(myApps.Data!.Items);
+        Assert.Equal("Đơn của SV1", myApps.Data!.Items[0].Reason);
+        Assert.Equal(1, myApps.Data!.TotalCount);
 
         Assert.True(otherApps.IsSuccess);
-        Assert.Empty(otherApps.Data!);
+        Assert.Empty(otherApps.Data!.Items);
+        Assert.Equal(0, otherApps.Data!.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithPagination_ReturnsPagedApplications()
+    {
+        var (db, student, _, submission, _) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Đơn của SV1"
+        }, student.Id);
+
+        var pagedApps = await service.GetAllAsync(new PagedRequest { Page = 1, PageSize = 10 });
+
+        Assert.True(pagedApps.IsSuccess);
+        Assert.Equal(1, pagedApps.Data!.TotalCount);
+        Assert.Single(pagedApps.Data!.Items);
+        Assert.Equal("Nguyen Van A", pagedApps.Data!.Items[0].StudentName);
     }
 }
