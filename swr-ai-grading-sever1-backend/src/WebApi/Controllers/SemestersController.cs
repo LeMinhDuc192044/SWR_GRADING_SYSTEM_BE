@@ -28,7 +28,7 @@ public class SemestersController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!));
+        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
     [HttpPost]
@@ -42,8 +42,8 @@ public class SemestersController : ControllerBase
             return Ok(ApiResponse.Success(result.Data));
 
         return result.ErrorCode == "SEMESTER_CODE_EXISTS"
-            ? Conflict(ApiResponse.Failure(409, result.Error!))
-            : BadRequest(ApiResponse.Failure(400, result.Error!));
+            ? Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode))
+            : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPut("{id:guid}")]
@@ -57,10 +57,10 @@ public class SemestersController : ControllerBase
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
         if (result.ErrorCode == "SEMESTER_CODE_EXISTS")
-            return Conflict(ApiResponse.Failure(409, result.Error!));
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+            return Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpDelete("{id:guid}")]
@@ -71,10 +71,10 @@ public class SemestersController : ControllerBase
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(null));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
         if (result.ErrorCode == "SEMESTER_HAS_EXAMINATIONS")
-            return Conflict(ApiResponse.Failure(409, result.Error!));
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+            return Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPatch("{id:guid}/status")]
@@ -88,8 +88,8 @@ public class SemestersController : ControllerBase
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
-        return BadRequest(ApiResponse.Failure(400, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
     [HttpPost("{id:guid}/students")]
@@ -102,7 +102,7 @@ public class SemestersController : ControllerBase
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
         if (result.ErrorCode == "SEMESTER_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!));
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
         return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
@@ -121,14 +121,14 @@ public class SemestersController : ControllerBase
     public async Task<IActionResult> ImportStudents(Guid id, IFormFile? file, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
-            return BadRequest(ApiResponse.Failure(400, "Please select an Excel file."));
+            return BadRequest(ApiResponse.Failure(400, "Please select an Excel file.", "FILE_REQUIRED"));
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (extension != ".xlsx" && extension != ".xls")
-            return BadRequest(ApiResponse.Failure(400, "Only .xlsx or .xls files are supported."));
+            return BadRequest(ApiResponse.Failure(400, "Only .xlsx or .xls files are supported.", "INVALID_FILE_FORMAT"));
 
         if (file.Length > 10 * 1024 * 1024)
-            return BadRequest(ApiResponse.Failure(400, "The file size must not exceed 10 MB."));
+            return BadRequest(ApiResponse.Failure(400, "The file size must not exceed 10 MB.", "FILE_SIZE_LIMIT"));
 
         await using var stream = new MemoryStream();
         await file.CopyToAsync(stream, ct);
@@ -137,7 +137,7 @@ public class SemestersController : ControllerBase
         var result = await _service.ImportStudentsFromExcelAsync(id, stream, ct);
         if (!result.IsSuccess)
             return result.ErrorCode == "SEMESTER_NOT_FOUND"
-                ? NotFound(ApiResponse.Failure(404, result.Error!))
+                ? NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode))
                 : BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
 
         return Ok(ApiResponse.Success(result.Data));

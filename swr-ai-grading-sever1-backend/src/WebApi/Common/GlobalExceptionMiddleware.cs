@@ -36,7 +36,14 @@ public sealed class GlobalExceptionMiddleware
     private async Task HandleExceptionAsync(HttpContext context, Exception ex)
     {
         var traceId = context.TraceIdentifier;
-        _logger.LogError(ex, "[{TraceId}] Ngoại lệ chưa xử lý: {Message}", traceId, ex.Message);
+        if (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "[{TraceId}] Ngoại lệ chưa xử lý: {Message}", traceId, ex.Message);
+        }
+        else
+        {
+            _logger.LogInformation("[{TraceId}] Yêu cầu bị hủy bỏ bởi client.", traceId);
+        }
 
         int statusCode;
         string errorCode;
@@ -49,6 +56,24 @@ public sealed class GlobalExceptionMiddleware
                 statusCode = StatusCodes.Status404NotFound;
                 errorCode = "NOT_FOUND";
                 message = notFoundEx.Message;
+                break;
+
+            case KeyNotFoundException keyNotFoundEx:
+                statusCode = StatusCodes.Status404NotFound;
+                errorCode = "NOT_FOUND";
+                message = keyNotFoundEx.Message;
+                break;
+
+            case FileNotFoundException fileNotFoundEx:
+                statusCode = StatusCodes.Status404NotFound;
+                errorCode = "FILE_NOT_FOUND";
+                message = fileNotFoundEx.Message;
+                break;
+
+            case OperationCanceledException:
+                statusCode = 499; // Client Closed Request
+                errorCode = "REQUEST_CANCELLED";
+                message = "Yêu cầu đã bị hủy bỏ bởi client.";
                 break;
 
             case ValidationException valEx:

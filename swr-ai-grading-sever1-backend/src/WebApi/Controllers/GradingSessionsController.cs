@@ -62,15 +62,18 @@ public sealed class GradingSessionsController : ControllerBase
         return ResultResponse(result);
     }
 
+    [HttpPut("{gradingSessionId:guid}")]
     [HttpPut]
     public async Task<IActionResult> Update(
         Guid examinationSessionId,
         [FromBody] UpdateGradingSessionRequest request,
-        CancellationToken ct)
+        [FromRoute] Guid? gradingSessionId = null,
+        CancellationToken ct = default)
     {
         var result = await _service.UpdateAsync(
             examinationSessionId,
             request,
+            gradingSessionId,
             ct);
 
         return ResultResponse(result);

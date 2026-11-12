@@ -19,6 +19,7 @@ public interface IGradingSessionService
     Task<Result<GradingSessionDTO>> UpdateAsync(
         Guid examinationSessionId,
         UpdateGradingSessionRequest request,
+        Guid? gradingSessionId = null,
         CancellationToken ct = default);
 
     Task<PagedResult<GradingSessionDTO>> GetAllAsync(

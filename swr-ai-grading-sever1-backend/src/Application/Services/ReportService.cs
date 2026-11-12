@@ -613,5 +613,331 @@ public sealed class ReportService : IReportService
         public decimal? FinalOfficialScore { get; init; }
         public string Notes { get; init; } = string.Empty;
     }
+
+    public async Task<Result<ScoreDistributionComparisonDto>> GetScoreDistributionComparisonAsync(
+        Guid? examinationId, Guid? semesterId, CancellationToken ct = default)
+    {
+        var filterContext = await ResolveFilterContextAsync(examinationId, semesterId, ct);
+        var submissions = await QueryOfficialSubmissionsAsync(examinationId, semesterId, ct);
+
+        var humanScores = new List<decimal>();
+        var aiScores = new List<decimal>();
+
+        foreach (var sub in submissions)
+        {
+            var officialHistory = sub.SubmissionGradingHistories
+                .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL && h.TotalScore.HasValue)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault();
+
+            var aiHistory = sub.SubmissionGradingHistories
+                .Where(h => h.EvaluationType == EvaluationType.AI && h.TotalScore.HasValue)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault();
+
+            if (officialHistory?.TotalScore is not null)
+            {
+                humanScores.Add(officialHistory.TotalScore.Value);
+            }
+
+            if (aiHistory?.TotalScore is not null)
+            {
+                aiScores.Add(aiHistory.TotalScore.Value);
+            }
+        }
+
+        var definitions = new (string Label, decimal Min, decimal Max, bool UpperInclusive)[]
+        {
+            ("0 - 2đ", 0m, 2m, false),
+            ("2 - 4đ", 2m, 4m, false),
+            ("4 - 6đ", 4m, 6m, false),
+            ("6 - 8đ", 6m, 8m, false),
+            ("8 - 10đ", 8m, 10m, true)
+        };
+
+        var totalAi = aiScores.Count;
+        var totalHuman = humanScores.Count;
+
+        var buckets = definitions.Select(def =>
+        {
+            var aiCount = aiScores.Count(s => def.UpperInclusive ? s >= def.Min && s <= def.Max : s >= def.Min && s < def.Max);
+            var humanCount = humanScores.Count(s => def.UpperInclusive ? s >= def.Min && s <= def.Max : s >= def.Min && s < def.Max);
+
+            return new ScoreDistributionBucketComparisonDto
+            {
+                Label = def.Label,
+                MinScore = def.Min,
+                MaxScore = def.Max,
+                AiCount = aiCount,
+                AiPercentage = totalAi > 0 ? Math.Round((double)aiCount * 100.0 / totalAi, 2, MidpointRounding.AwayFromZero) : 0,
+                HumanCount = humanCount,
+                HumanPercentage = totalHuman > 0 ? Math.Round((double)humanCount * 100.0 / totalHuman, 2, MidpointRounding.AwayFromZero) : 0
+            };
+        }).ToList();
+
+        var dto = new ScoreDistributionComparisonDto
+        {
+            FilterContext = filterContext,
+            TotalOfficialSubmissions = submissions.Count,
+            TotalAiGradedSubmissions = totalAi,
+            TotalHumanOfficialSubmissions = totalHuman,
+            Buckets = buckets
+        };
+
+        return Result<ScoreDistributionComparisonDto>.Success(dto);
+    }
+
+    public async Task<Result<AiHumanScoreStatisticsDto>> GetAiHumanScoreStatisticsAsync(
+        Guid? examinationId, Guid? semesterId, CancellationToken ct = default)
+    {
+        var filterContext = await ResolveFilterContextAsync(examinationId, semesterId, ct);
+        var submissions = await QueryOfficialSubmissionsAsync(examinationId, semesterId, ct);
+
+        var pairs = new List<(decimal AiScore, decimal HumanScore)>();
+        var allHumanScores = new List<decimal>();
+        var allAiScores = new List<decimal>();
+
+        foreach (var sub in submissions)
+        {
+            var officialHistory = sub.SubmissionGradingHistories
+                .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL && h.TotalScore.HasValue)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault();
+
+            var aiHistory = sub.SubmissionGradingHistories
+                .Where(h => h.EvaluationType == EvaluationType.AI && h.TotalScore.HasValue)
+                .OrderByDescending(h => h.GradingRound)
+                .ThenByDescending(h => h.CreatedAt)
+                .FirstOrDefault();
+
+            if (officialHistory?.TotalScore is not null)
+            {
+                allHumanScores.Add(officialHistory.TotalScore.Value);
+            }
+
+            if (aiHistory?.TotalScore is not null)
+            {
+                allAiScores.Add(aiHistory.TotalScore.Value);
+            }
+
+            if (officialHistory?.TotalScore is not null && aiHistory?.TotalScore is not null)
+            {
+                pairs.Add((aiHistory.TotalScore.Value, officialHistory.TotalScore.Value));
+            }
+        }
+
+        var dto = new AiHumanScoreStatisticsDto
+        {
+            FilterContext = filterContext,
+            TotalOfficialSubmissions = submissions.Count,
+            BothGradedCount = pairs.Count,
+
+            HumanAverageScore = allHumanScores.Count > 0 ? Math.Round(allHumanScores.Average(), 2, MidpointRounding.AwayFromZero) : null,
+            HumanHighestScore = allHumanScores.Count > 0 ? allHumanScores.Max() : null,
+            HumanLowestScore = allHumanScores.Count > 0 ? allHumanScores.Min() : null,
+
+            AiAverageScore = allAiScores.Count > 0 ? Math.Round(allAiScores.Average(), 2, MidpointRounding.AwayFromZero) : null,
+            AiHighestScore = allAiScores.Count > 0 ? allAiScores.Max() : null,
+            AiLowestScore = allAiScores.Count > 0 ? allAiScores.Min() : null
+        };
+
+        if (pairs.Count > 0)
+        {
+            var diffs = pairs.Select(p => p.AiScore - p.HumanScore).ToList();
+            var absDiffs = pairs.Select(p => Math.Abs(p.AiScore - p.HumanScore)).ToList();
+
+            dto.AverageScoreDifference = Math.Round(diffs.Average(), 2, MidpointRounding.AwayFromZero);
+            dto.MeanAbsoluteError = Math.Round(absDiffs.Average(), 2, MidpointRounding.AwayFromZero);
+            dto.AiHigherCount = pairs.Count(p => p.AiScore > p.HumanScore);
+            dto.HumanHigherCount = pairs.Count(p => p.HumanScore > p.AiScore);
+            dto.EqualCount = pairs.Count(p => p.AiScore == p.HumanScore);
+            dto.AcceptableDeviationRate = Math.Round((double)pairs.Count(p => Math.Abs(p.AiScore - p.HumanScore) <= 0.5m) * 100.0 / pairs.Count, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return Result<AiHumanScoreStatisticsDto>.Success(dto);
+    }
+
+    public async Task<Result<MonitorPerformanceReportDto>> GetMonitorPerformanceAsync(
+        Guid? examinationId, Guid? semesterId, string? search, PagedRequest request, CancellationToken ct = default)
+    {
+        request ??= new PagedRequest();
+        var filterContext = await ResolveFilterContextAsync(examinationId, semesterId, ct);
+
+        var query = _db.Assignments.AsNoTracking()
+            .Include(a => a.Staff)
+            .Include(a => a.GradingSession)
+                .ThenInclude(gs => gs.ExaminationSession)
+            .Include(a => a.Submission)
+                .ThenInclude(s => s.SubmissionGradingHistories)
+            .AsQueryable();
+
+        if (examinationId.HasValue)
+        {
+            query = query.Where(a => a.GradingSession.ExaminationSession != null && a.GradingSession.ExaminationSession.ExaminationId == examinationId.Value);
+        }
+
+        if (semesterId.HasValue)
+        {
+            query = query.Where(a => a.GradingSession.ExaminationSession != null && a.GradingSession.ExaminationSession.SemesterId == semesterId.Value);
+        }
+
+        var allAssignments = await query.ToListAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var groupedByMonitor = allAssignments
+            .GroupBy(a => a.StaffId)
+            .Select(g =>
+            {
+                var staff = g.First().Staff;
+                var assignedCount = g.Count();
+                var completedCount = g.Count(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED);
+                var inProgressCount = g.Count(a => a.Status == AssignmentStatus.IN_PROGRESS);
+                var overdueCount = g.Count(a => a.Status == AssignmentStatus.OVERDUE ||
+                    (a.GradingSession.Deadline.HasValue && a.GradingSession.Deadline.Value < today && a.Status != AssignmentStatus.GRADED && a.Status != AssignmentStatus.COMPLETED));
+
+                var completionRate = assignedCount > 0
+                    ? Math.Round((double)completedCount * 100.0 / assignedCount, 2, MidpointRounding.AwayFromZero)
+                    : 0;
+
+                var lecturerScores = g
+                    .Where(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED)
+                    .SelectMany(a => a.Submission.SubmissionGradingHistories)
+                    .Where(h => h.EvaluationType == EvaluationType.Lecturer && h.TotalScore.HasValue)
+                    .Select(h => h.TotalScore!.Value)
+                    .ToList();
+
+                var avgScore = lecturerScores.Count > 0
+                    ? Math.Round(lecturerScores.Average(), 2, MidpointRounding.AwayFromZero)
+                    : (decimal?)null;
+
+                return new MonitorPerformanceItemDto
+                {
+                    MonitorId = staff.Id,
+                    StaffCode = staff.StaffCode ?? string.Empty,
+                    FullName = staff.FullName ?? string.Empty,
+                    Email = staff.Email ?? string.Empty,
+                    AssignedCount = assignedCount,
+                    CompletedCount = completedCount,
+                    InProgressCount = inProgressCount,
+                    OverdueCount = overdueCount,
+                    CompletionRate = completionRate,
+                    AverageGivenScore = avgScore
+                };
+            })
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            groupedByMonitor = groupedByMonitor
+                .Where(m => m.FullName.ToLower().Contains(s) ||
+                            m.StaffCode.ToLower().Contains(s) ||
+                            m.Email.ToLower().Contains(s))
+                .ToList();
+        }
+
+        groupedByMonitor = groupedByMonitor
+            .OrderByDescending(m => m.AssignedCount)
+            .ThenByDescending(m => m.CompletionRate)
+            .ThenBy(m => m.FullName)
+            .ToList();
+
+        var totalMonitors = groupedByMonitor.Count;
+        var totalAssignments = allAssignments.Count;
+        var totalCompleted = allAssignments.Count(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED);
+        var overallCompletionRate = totalAssignments > 0
+            ? Math.Round((double)totalCompleted * 100.0 / totalAssignments, 2, MidpointRounding.AwayFromZero)
+            : 0;
+
+        var pagedItems = groupedByMonitor
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToList();
+
+        var pagedResult = new PagedResult<MonitorPerformanceItemDto>
+        {
+            Items = pagedItems,
+            TotalCount = totalMonitors,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        var report = new MonitorPerformanceReportDto
+        {
+            FilterContext = filterContext,
+            TotalMonitors = totalMonitors,
+            TotalAssignments = totalAssignments,
+            TotalCompletedAssignments = totalCompleted,
+            OverallCompletionRate = overallCompletionRate,
+            PagedMonitors = pagedResult
+        };
+
+        return Result<MonitorPerformanceReportDto>.Success(report);
+    }
+
+    private async Task<ReportFilterContextDto> ResolveFilterContextAsync(
+        Guid? examinationId, Guid? semesterId, CancellationToken ct)
+    {
+        var context = new ReportFilterContextDto
+        {
+            ExaminationId = examinationId,
+            SemesterId = semesterId
+        };
+
+        if (examinationId.HasValue)
+        {
+            var exam = await _db.Examinations.AsNoTracking()
+                .Include(e => e.Semester)
+                .FirstOrDefaultAsync(e => e.ExaminationId == examinationId.Value, ct);
+            if (exam is not null)
+            {
+                context.ExaminationName = exam.Name;
+                context.ExaminationCode = exam.Name;
+                if (!semesterId.HasValue && exam.Semester is not null)
+                {
+                    context.SemesterId = exam.SemesterId;
+                    context.SemesterName = exam.Semester.Name;
+                    context.SemesterCode = exam.Semester.SemesterCode;
+                }
+            }
+        }
+
+        if (semesterId.HasValue && string.IsNullOrEmpty(context.SemesterName))
+        {
+            var sem = await _db.Semesters.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SemesterId == semesterId.Value, ct);
+            if (sem is not null)
+            {
+                context.SemesterName = sem.Name;
+                context.SemesterCode = sem.SemesterCode;
+            }
+        }
+
+        return context;
+    }
+
+    private async Task<List<StudentSubmission>> QueryOfficialSubmissionsAsync(
+        Guid? examinationId, Guid? semesterId, CancellationToken ct)
+    {
+        var query = _db.StudentSubmissions.AsNoTracking()
+            .Include(s => s.ExaminationSession)
+            .Include(s => s.SubmissionGradingHistories)
+            .Where(s => s.SubmissionGradingHistories.Any(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL));
+
+        if (examinationId.HasValue)
+        {
+            query = query.Where(s => s.ExaminationSession != null && s.ExaminationSession.ExaminationId == examinationId.Value);
+        }
+
+        if (semesterId.HasValue)
+        {
+            query = query.Where(s => s.ExaminationSession != null && s.ExaminationSession.SemesterId == semesterId.Value);
+        }
+
+        return await query.ToListAsync(ct);
+    }
 }
 

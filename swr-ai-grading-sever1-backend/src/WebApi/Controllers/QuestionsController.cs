@@ -24,18 +24,18 @@ public sealed class QuestionsController : ControllerBase
         var result = await _service.GetQuestionByIdAsync(id, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
     [HttpGet]
     public async Task<IActionResult> GetByPaperSetId([FromQuery] Guid? paperSetId, CancellationToken ct)
     {
         if (!paperSetId.HasValue)
-            return BadRequest(ApiResponse.Failure(400, "paperSetId query parameter is required."));
+            return BadRequest(ApiResponse.Failure(400, "paperSetId query parameter is required.", "PARAMETER_REQUIRED"));
 
         var result = await _service.GetQuestionsByPaperSetIdAsync(paperSetId.Value, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
-            : NotFound(ApiResponse.Failure(404, result.Error!));
+            : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 }

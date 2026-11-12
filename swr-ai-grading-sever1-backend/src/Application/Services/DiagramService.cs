@@ -151,6 +151,9 @@ public class DiagramService : IDiagramService
         if (diagram is null)
             return Result.Failure("Diagram not found.", "DIAGRAM_NOT_FOUND");
 
+        if (await _diagramRepository.HasRubricsAsync(id, ct))
+            return Result.Failure("Diagram đang được sử dụng trong đề thi.", "DIAGRAM_IN_USE");
+
         _diagramRepository.Remove(diagram);
         await _unitOfWork.SaveChangesAsync(ct);
 
