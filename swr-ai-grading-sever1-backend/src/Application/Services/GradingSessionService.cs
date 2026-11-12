@@ -190,11 +190,16 @@ public sealed class GradingSessionService : IGradingSessionService
     public async Task<Result<GradingSessionDTO>> UpdateAsync(
         Guid examinationSessionId,
         UpdateGradingSessionRequest request,
+        Guid? gradingSessionId = null,
         CancellationToken ct = default)
     {
-        var session = await _db.GradingSessions.FirstOrDefaultAsync(
-            s => s.ExaminationSessionId == examinationSessionId,
-            ct);
+        var session = gradingSessionId.HasValue
+            ? await _db.GradingSessions.FirstOrDefaultAsync(
+                s => s.GradingSessionId == gradingSessionId.Value && s.ExaminationSessionId == examinationSessionId,
+                ct)
+            : await _db.GradingSessions.FirstOrDefaultAsync(
+                s => s.ExaminationSessionId == examinationSessionId,
+                ct);
 
         if (session is null)
             return Result<GradingSessionDTO>.Failure(
