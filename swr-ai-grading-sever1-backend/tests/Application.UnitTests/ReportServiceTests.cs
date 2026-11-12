@@ -1,3 +1,5 @@
+using Application.Common;
+using Application.DTOs.Reports;
 using Application.Services;
 using Application.UnitTests.Helpers;
 using ClosedXML.Excel;
@@ -302,5 +304,288 @@ public class ReportServiceTests
         CreatedDay = DateTime.UtcNow,
         UpdatedDay = DateTime.UtcNow
     };
+
+    [Fact]
+    public async Task GetScoreDistributionComparisonAsync_ReturnsAiAndHumanBuckets()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (examId, sessionId, staffId) = await SeedExamWithSessionAsync(db);
+
+        // Sub 1: AI = 7.0, Human = 8.0 (OFFICIAL)
+        var student1 = CreateStudent("SE180010", "Student 10");
+        db.Students.Add(student1);
+        var sub1 = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            StudentId = student1.Id,
+            FileSubmissions = "sub1.docx",
+            ExaminationSessionId = sessionId,
+            UploadedById = staffId,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        db.StudentSubmissions.Add(sub1);
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub1.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            GradingRound = 1,
+            TotalScore = 7.0m,
+            Status = SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub1.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            GradingRound = 1,
+            TotalScore = 8.0m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        // Sub 2: AI = 1.5, Human = 2.5 (OFFICIAL)
+        var student2 = CreateStudent("SE180011", "Student 11");
+        db.Students.Add(student2);
+        var sub2 = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            StudentId = student2.Id,
+            FileSubmissions = "sub2.docx",
+            ExaminationSessionId = sessionId,
+            UploadedById = staffId,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        db.StudentSubmissions.Add(sub2);
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub2.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            GradingRound = 1,
+            TotalScore = 1.5m,
+            Status = SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub2.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            GradingRound = 1,
+            TotalScore = 2.5m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+
+        var service = new ReportService(db);
+        var result = await service.GetScoreDistributionComparisonAsync(examId, null);
+
+        Assert.True(result.IsSuccess);
+        var data = result.Data!;
+        Assert.Equal(2, data.TotalOfficialSubmissions);
+        Assert.Equal(2, data.TotalAiGradedSubmissions);
+        Assert.Equal(2, data.TotalHumanOfficialSubmissions);
+
+        // AI: 1.5 in [0, 2), 7.0 in [6, 8)
+        var aiBucket02 = data.Buckets.First(b => b.MinScore == 0m);
+        var aiBucket68 = data.Buckets.First(b => b.MinScore == 6m);
+        Assert.Equal(1, aiBucket02.AiCount);
+        Assert.Equal(1, aiBucket68.AiCount);
+
+        // Human: 2.5 in [2, 4), 8.0 in [8, 10]
+        var humanBucket24 = data.Buckets.First(b => b.MinScore == 2m);
+        var humanBucket810 = data.Buckets.First(b => b.MinScore == 8m);
+        Assert.Equal(1, humanBucket24.HumanCount);
+        Assert.Equal(1, humanBucket810.HumanCount);
+    }
+
+    [Fact]
+    public async Task GetAiHumanScoreStatisticsAsync_CalculatesAccurateDeviations()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (examId, sessionId, staffId) = await SeedExamWithSessionAsync(db);
+
+        // Sub 1: AI = 8.0, Human = 7.5 (diff = +0.5, abs = 0.5)
+        var student1 = CreateStudent("SE180020", "Student 20");
+        db.Students.Add(student1);
+        var sub1 = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            StudentId = student1.Id,
+            FileSubmissions = "sub1.docx",
+            ExaminationSessionId = sessionId,
+            UploadedById = staffId,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        db.StudentSubmissions.Add(sub1);
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub1.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            TotalScore = 8.0m,
+            Status = SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub1.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            TotalScore = 7.5m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        // Sub 2: AI = 6.0, Human = 7.0 (diff = -1.0, abs = 1.0)
+        var student2 = CreateStudent("SE180021", "Student 21");
+        db.Students.Add(student2);
+        var sub2 = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            StudentId = student2.Id,
+            FileSubmissions = "sub2.docx",
+            ExaminationSessionId = sessionId,
+            UploadedById = staffId,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        db.StudentSubmissions.Add(sub2);
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub2.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            TotalScore = 6.0m,
+            Status = SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub2.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            TotalScore = 7.0m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+
+        var service = new ReportService(db);
+        var result = await service.GetAiHumanScoreStatisticsAsync(examId, null);
+
+        Assert.True(result.IsSuccess);
+        var stats = result.Data!;
+        Assert.Equal(2, stats.TotalOfficialSubmissions);
+        Assert.Equal(2, stats.BothGradedCount);
+
+        // Human: avg = 7.25, max = 7.5, min = 7.0
+        Assert.Equal(7.25m, stats.HumanAverageScore);
+        Assert.Equal(7.5m, stats.HumanHighestScore);
+        Assert.Equal(7.0m, stats.HumanLowestScore);
+
+        // AI: avg = 7.0, max = 8.0, min = 6.0
+        Assert.Equal(7.0m, stats.AiAverageScore);
+        Assert.Equal(8.0m, stats.AiHighestScore);
+        Assert.Equal(6.0m, stats.AiLowestScore);
+
+        // Diff: (0.5 + -1.0)/2 = -0.25; MAE: (0.5 + 1.0)/2 = 0.75
+        Assert.Equal(-0.25m, stats.AverageScoreDifference);
+        Assert.Equal(0.75m, stats.MeanAbsoluteError);
+        Assert.Equal(1, stats.AiHigherCount);
+        Assert.Equal(1, stats.HumanHigherCount);
+        Assert.Equal(0, stats.EqualCount);
+        // Sub 1 has diff 0.5 <= 0.5 -> 1/2 = 50%
+        Assert.Equal(50.0, stats.AcceptableDeviationRate);
+    }
+
+    [Fact]
+    public async Task GetMonitorPerformanceAsync_ReturnsKPIAndPagedMonitors()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (examId, sessionId, staffId) = await SeedExamWithSessionAsync(db);
+
+        var monitor = new Staff
+        {
+            Id = Guid.NewGuid(),
+            StaffCode = "MON01",
+            FullName = "Monitor One",
+            Email = "mon01@fpt.edu.vn",
+            Role = UserRole.Monitor,
+            Birthday = new DateOnly(1992, 1, 1),
+            PasswordHash = "hash",
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+        db.Staff.Add(monitor);
+
+        var gradingSession = new GradingSession
+        {
+            GradingSessionId = Guid.NewGuid(),
+            Title = "Đợt chấm thi 1",
+            ExaminationSessionId = sessionId,
+            Type = GradingSessionType.Normal_Grading,
+            CreatedDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            UpdatedDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            Deadline = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)),
+            NumberSubmissions = 2
+        };
+        db.GradingSessions.Add(gradingSession);
+
+        var student = CreateStudent("SE180030", "Student 30");
+        db.Students.Add(student);
+        var sub = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            StudentId = student.Id,
+            FileSubmissions = "sub.docx",
+            ExaminationSessionId = sessionId,
+            UploadedById = staffId,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        db.StudentSubmissions.Add(sub);
+
+        db.Assignments.Add(new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            StaffId = monitor.Id,
+            GradingSessionId = gradingSession.GradingSessionId,
+            SubmissionId = sub.SubmissionId,
+            Status = AssignmentStatus.GRADED,
+            AssignedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        });
+
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            SubmissionId = sub.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            TotalScore = 8.5m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+
+        var service = new ReportService(db);
+        var result = await service.GetMonitorPerformanceAsync(examId, null, null, new PagedRequest { Page = 1, PageSize = 10 });
+
+        Assert.True(result.IsSuccess);
+        var report = result.Data!;
+        Assert.Equal(1, report.TotalMonitors);
+        Assert.Equal(1, report.TotalAssignments);
+        Assert.Equal(1, report.TotalCompletedAssignments);
+        Assert.Equal(100.0, report.OverallCompletionRate);
+
+        Assert.Single(report.PagedMonitors.Items);
+        var monitorItem = report.PagedMonitors.Items[0];
+        Assert.Equal("MON01", monitorItem.StaffCode);
+        Assert.Equal("Monitor One", monitorItem.FullName);
+        Assert.Equal(1, monitorItem.AssignedCount);
+        Assert.Equal(1, monitorItem.CompletedCount);
+        Assert.Equal(100.0, monitorItem.CompletionRate);
+        Assert.Equal(8.5m, monitorItem.AverageGivenScore);
+    }
 }
 
