@@ -322,6 +322,40 @@ public sealed class SubmissionService : ISubmissionService
         return summary;
     }
 
+    public async Task<Result<PagedResult<SubmissionDetailDTO>>> GetPagedListAsync(
+        PagedRequest request,
+        Guid currentUserId,
+        bool isElevatedRole,
+        Guid? examinationSessionId = null,
+        CancellationToken ct = default)
+    {
+        request ??= new PagedRequest();
+        var query = _db.StudentSubmissions.AsNoTracking();
+
+        if (examinationSessionId.HasValue)
+            query = query.Where(s => s.ExaminationSessionId == examinationSessionId.Value);
+
+        var totalCount = await query.CountAsync(ct);
+
+        var submissions = await query
+            .Include(item => item.ParsedAnswers).ThenInclude(answer => answer.Question)
+            .Include(item => item.SubmissionGradingHistories)
+            .OrderByDescending(item => item.CreatedDate)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToListAsync(ct);
+
+        var paged = new PagedResult<SubmissionDetailDTO>
+        {
+            Items = submissions.Select(ToDetail).ToList(),
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<SubmissionDetailDTO>>.Success(paged);
+    }
+
     public async Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListAsync(Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
     {
         var submissions = await _db.StudentSubmissions.AsNoTracking()

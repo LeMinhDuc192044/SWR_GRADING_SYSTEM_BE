@@ -32,7 +32,7 @@ public class SubmissionGradingController : ControllerBase
     public async Task<IActionResult> CreateLecturerGrading(Guid submissionId, [FromBody] CreateLecturerGradingRequest request, CancellationToken ct)
         => CurrentUserId is { } userId
             ? ToResponse(await _grading.CreateLecturerGradingAsync(submissionId, request, userId, ct))
-            : Unauthorized();
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
     [HttpPost("review")]
     public async Task<IActionResult> Review(Guid submissionId, [FromBody] ReviewGradingRequest request, CancellationToken ct)
@@ -60,6 +60,8 @@ public class SubmissionGradingController : ControllerBase
             "FORBIDDEN" => StatusCodes.Status403Forbidden,
             not null when code.EndsWith("_NOT_FOUND") => StatusCodes.Status404NotFound,
             "ALREADY_FINALIZED" => StatusCodes.Status409Conflict,
+            "AI_QUOTA_EXCEEDED" => StatusCodes.Status429TooManyRequests,
+            "AI_TOKEN_LIMIT" => StatusCodes.Status502BadGateway,
             "AI_GRADING_FAILED" => StatusCodes.Status502BadGateway,
             _ => StatusCodes.Status400BadRequest
         };

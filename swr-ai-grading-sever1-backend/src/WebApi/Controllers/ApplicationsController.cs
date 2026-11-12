@@ -37,30 +37,31 @@ public sealed class ApplicationsController : ControllerBase
 
     /// <summary>
     /// GET /api/applications/my
-    /// Sinh viên xem danh sách các đơn phúc khảo của chính mình.
+    /// Sinh viên xem danh sách các đơn phúc khảo của chính mình (hỗ trợ phân trang chuẩn PagedRequest).
     /// </summary>
     [HttpGet("my")]
-    public async Task<IActionResult> GetMyApplications(CancellationToken ct)
+    public async Task<IActionResult> GetMyApplications([FromQuery] PagedRequest request, CancellationToken ct)
     {
         if (CurrentUserId is not { } userId)
             return Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
-        var result = await _applicationService.GetMyApplicationsAsync(userId, ct);
+        var result = await _applicationService.GetMyApplicationsAsync(request, userId, ct);
         return result.ToActionResult(this);
     }
 
     /// <summary>
     /// GET /api/applications
-    /// Ban Khảo thí / Trưởng bộ môn xem danh sách tất cả các đơn phúc khảo.
+    /// Ban Khảo thí / Trưởng bộ môn xem danh sách tất cả các đơn phúc khảo (hỗ trợ phân trang chuẩn PagedRequest).
     /// </summary>
     [HttpGet]
     [Authorize(Roles = "Admin,Manager,Examiner")]
     public async Task<IActionResult> GetAll(
+        [FromQuery] PagedRequest request,
         [FromQuery] Guid? examinationSessionId,
         [FromQuery] ApplicationStatus? status,
         CancellationToken ct)
     {
-        var result = await _applicationService.GetAllAsync(examinationSessionId, status, ct);
+        var result = await _applicationService.GetAllAsync(request, examinationSessionId, status, ct);
         return result.ToActionResult(this);
     }
 
