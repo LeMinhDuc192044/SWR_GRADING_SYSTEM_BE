@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Application.Common;
 using Application.Common.Interfaces;
 using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
@@ -54,15 +55,18 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách toàn bộ bài nộp.
+    /// Lấy danh sách toàn bộ bài nộp (hỗ trợ phân trang chuẩn PagedRequest).
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetList(CancellationToken ct)
+    public async Task<IActionResult> GetList(
+        [FromQuery] PagedRequest request,
+        [FromQuery] Guid? examinationSessionId,
+        CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
-        var result = await _submissionService.GetListAsync(userId, IsElevatedRole(), ct);
+        var result = await _submissionService.GetPagedListAsync(request, userId, IsElevatedRole(), examinationSessionId, ct);
 
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));

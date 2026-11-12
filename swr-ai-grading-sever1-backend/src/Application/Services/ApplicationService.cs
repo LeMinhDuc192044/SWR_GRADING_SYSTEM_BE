@@ -70,11 +70,16 @@ public sealed class ApplicationService : IApplicationService
         return Result<ApplicationDTO>.Success(ToDto(application, student, submission, officialGrading?.TotalScore));
     }
 
-    public async Task<Result<IReadOnlyList<ApplicationDTO>>> GetMyApplicationsAsync(
-        Guid currentUserId, CancellationToken ct = default)
+    public async Task<Result<PagedResult<ApplicationDTO>>> GetMyApplicationsAsync(
+        PagedRequest? request, Guid currentUserId, CancellationToken ct = default)
     {
-        var applications = await _db.Applications.AsNoTracking()
-            .Where(a => a.StudentId == currentUserId)
+        request ??= new PagedRequest();
+        var query = _db.Applications.AsNoTracking()
+            .Where(a => a.StudentId == currentUserId);
+
+        var totalCount = await query.CountAsync(ct);
+
+        var applications = await query
             .Include(a => a.Student)
             .Include(a => a.StudentSubmission)
                 .ThenInclude(s => s.ExaminationSession)
@@ -82,6 +87,8 @@ public sealed class ApplicationService : IApplicationService
             .Include(a => a.StudentSubmission)
                 .ThenInclude(s => s.SubmissionGradingHistories)
             .OrderByDescending(a => a.CreatedDay)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .ToListAsync(ct);
 
         var list = applications.Select(a =>
@@ -91,12 +98,24 @@ public sealed class ApplicationService : IApplicationService
             return ToDto(a, a.Student, a.StudentSubmission, officialScore);
         }).ToList();
 
-        return Result<IReadOnlyList<ApplicationDTO>>.Success(list);
+        var pagedResult = new PagedResult<ApplicationDTO>
+        {
+            Items = list,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<ApplicationDTO>>.Success(pagedResult);
     }
 
-    public async Task<Result<IReadOnlyList<ApplicationDTO>>> GetAllAsync(
-        Guid? examinationSessionId = null, ApplicationStatus? status = null, CancellationToken ct = default)
+    public async Task<Result<PagedResult<ApplicationDTO>>> GetAllAsync(
+        PagedRequest? request,
+        Guid? examinationSessionId = null,
+        ApplicationStatus? status = null,
+        CancellationToken ct = default)
     {
+        request ??= new PagedRequest();
         var query = _db.Applications.AsNoTracking()
             .Include(a => a.Student)
             .Include(a => a.StudentSubmission)
@@ -112,8 +131,12 @@ public sealed class ApplicationService : IApplicationService
         if (examinationSessionId.HasValue)
             query = query.Where(a => a.StudentSubmission.ExaminationSessionId == examinationSessionId.Value);
 
+        var totalCount = await query.CountAsync(ct);
+
         var applications = await query
             .OrderByDescending(a => a.CreatedDay)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .ToListAsync(ct);
 
         var list = applications.Select(a =>
@@ -123,7 +146,15 @@ public sealed class ApplicationService : IApplicationService
             return ToDto(a, a.Student, a.StudentSubmission, officialScore);
         }).ToList();
 
-        return Result<IReadOnlyList<ApplicationDTO>>.Success(list);
+        var pagedResult = new PagedResult<ApplicationDTO>
+        {
+            Items = list,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<ApplicationDTO>>.Success(pagedResult);
     }
 
     public async Task<Result<ApplicationDTO>> GetByIdAsync(
