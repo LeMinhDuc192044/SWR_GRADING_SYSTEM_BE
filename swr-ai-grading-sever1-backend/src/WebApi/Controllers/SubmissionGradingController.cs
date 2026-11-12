@@ -20,13 +20,13 @@ public class SubmissionGradingController : ControllerBase
     public async Task<IActionResult> GetHistories(Guid submissionId, CancellationToken ct)
         => CurrentUserId is { } userId
             ? ToResponse(await _grading.GetHistoriesAsync(submissionId, userId, ct))
-            : Unauthorized();
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
     [HttpPost("ai")]
     public async Task<IActionResult> GradeWithAi(Guid submissionId, CancellationToken ct)
         => CurrentUserId is { } userId
             ? ToResponse(await _grading.GradeWithAiAsync(submissionId, userId, ct))
-            : Unauthorized();
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
     [HttpPost("lecturer")]
     public async Task<IActionResult> CreateLecturerGrading(Guid submissionId, [FromBody] CreateLecturerGradingRequest request, CancellationToken ct)
@@ -38,13 +38,13 @@ public class SubmissionGradingController : ControllerBase
     public async Task<IActionResult> Review(Guid submissionId, [FromBody] ReviewGradingRequest request, CancellationToken ct)
         => CurrentUserId is { } userId
             ? ToResponse(await _grading.ReviewAsync(submissionId, request, userId, ct))
-            : Unauthorized();
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
     [HttpPost("{historyId:guid}/finalize")]
     public async Task<IActionResult> Finalize(Guid submissionId, Guid historyId, CancellationToken ct)
         => CurrentUserId is { } userId
             ? ToResponse(await _grading.FinalizeAsync(submissionId, historyId, userId, ct))
-            : Unauthorized();
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
     // ASSUMPTION: the user id is in the NameIdentifier or "sub" claim. Match how your other controllers read it.
     private Guid? CurrentUserId
@@ -63,6 +63,6 @@ public class SubmissionGradingController : ControllerBase
             "AI_GRADING_FAILED" => StatusCodes.Status502BadGateway,
             _ => StatusCodes.Status400BadRequest
         };
-        return StatusCode(status, ApiResponse.Failure(status, error ?? "Request failed."));
+        return StatusCode(status, ApiResponse.Failure(status, error ?? "Request failed.", code));
     }
 }
