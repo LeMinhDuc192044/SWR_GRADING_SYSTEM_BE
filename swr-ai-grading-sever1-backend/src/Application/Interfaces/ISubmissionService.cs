@@ -28,6 +28,11 @@ public interface ISubmissionService
         CancellationToken ct = default
     );
 
+    Task<Result<IReadOnlyList<Application.DTOs.Submissions.StudentSubmissionDTO>>> GetByStudentAsync(
+        Guid studentId,
+        CancellationToken ct = default
+    );
+
     Task<Result<SubmissionDetailDTO>> GetByIdAsync(
         Guid submissionId,
         Guid currentUserId,

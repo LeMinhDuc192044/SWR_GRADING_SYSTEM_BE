@@ -366,6 +366,52 @@ public sealed class SubmissionService : ISubmissionService
         return Result<IReadOnlyList<SubmissionDetailDTO>>.Success(submissions.Select(ToDetail).ToList());
     }
 
+    public async Task<Result<IReadOnlyList<StudentSubmissionDTO>>> GetByStudentAsync(Guid studentId, CancellationToken ct = default)
+    {
+        var student = await _db.Students
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == studentId && !s.IsDeleted, ct);
+
+        if (student is null)
+            return Result<IReadOnlyList<StudentSubmissionDTO>>.Failure("Student not found.", "STUDENT_NOT_FOUND");
+
+        var submissions = await _db.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => s.StudentId == studentId)
+            .OrderByDescending(s => s.CreatedDate)
+            .Select(s => new StudentSubmissionDTO
+            {
+                SubmissionId = s.SubmissionId,
+                FileSubmissions = s.FileSubmissions,
+                StudentId = s.StudentId,
+                StudentCode = s.Student.StudentCode,
+                StudentName = s.Student.FullName,
+                Status = s.Status,
+                ExaminationSessionId = s.ExaminationSessionId,
+                ExaminationCode = s.ExaminationSession == null ? null : s.ExaminationSession.ExaminationCode,
+                Semester = s.ExaminationSession == null
+                    ? null
+                    : new StudentSubmissionSemesterDTO
+                    {
+                        SemesterId = s.ExaminationSession.Examination.Semester.SemesterId,
+                        SemesterCode = s.ExaminationSession.Examination.Semester.SemesterCode,
+                        Name = s.ExaminationSession.Examination.Semester.Name
+                    },
+                Examination = s.ExaminationSession == null
+                    ? null
+                    : new StudentSubmissionExaminationDTO
+                    {
+                        ExaminationId = s.ExaminationSession.Examination.ExaminationId,
+                        Name = s.ExaminationSession.Examination.Name
+                    },
+                CreatedDate = s.CreatedDate,
+                UpdatedDate = s.UpdatedDate
+            })
+            .ToListAsync(ct);
+
+        return Result<IReadOnlyList<StudentSubmissionDTO>>.Success(submissions);
+    }
+
     public async Task<Result<SubmissionDetailDTO>> GetByIdAsync(Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
     {
         var submission = await _db.StudentSubmissions.AsNoTracking()
