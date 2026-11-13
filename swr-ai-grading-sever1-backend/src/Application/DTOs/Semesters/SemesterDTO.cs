@@ -94,5 +94,6 @@ public sealed class StudentSemesterImportErrorDto
 {
     public int RowIndex { get; set; }
     public string? StudentCode { get; set; }
+    public string? StaffCode { get; set; }
     public string Reason { get; set; } = string.Empty;
 }

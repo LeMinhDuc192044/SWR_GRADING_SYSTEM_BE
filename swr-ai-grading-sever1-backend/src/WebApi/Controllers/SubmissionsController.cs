@@ -78,6 +78,24 @@ public sealed class SubmissionsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy toàn bộ bài nộp của một sinh viên kèm học kỳ (tên, mã) và tên kỳ thi.
+    /// </summary>
+    [HttpGet("student/{studentId:guid}")]
+    [Authorize]
+    public async Task<IActionResult> GetByStudent(Guid studentId, CancellationToken ct)
+    {
+        var result = await _submissionService.GetByStudentAsync(studentId, ct);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        if (result.ErrorCode == "STUDENT_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+    }
+
+    /// <summary>
     /// Lấy thông tin chi tiết một bài nộp (bao gồm điểm AI, điểm giảng viên, tiêu chí chi tiết).
     /// </summary>
     [HttpGet("{id:guid}")]

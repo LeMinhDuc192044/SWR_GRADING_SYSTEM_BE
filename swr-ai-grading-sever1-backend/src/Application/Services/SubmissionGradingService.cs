@@ -49,42 +49,34 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             ? FilterHistoriesForCurrentCycle(allHistories, cycle)
             : allHistories;
 
-        var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
-            .Include(p => p.Question)
-            .Where(p => p.SubmissionId == submissionId)
-            .OrderBy(p => p.Question.Title)
-            .ThenBy(p => p.CreatedAt)
-            .ToListAsync(ct);
-
-        var questionIds = parsedAnswers.Select(p => p.QuestionId).Distinct().ToList();
-        var criteria = await _db.QuestionCriteria.AsNoTracking()
-            .Where(c => questionIds.Contains(c.QuestionId))
-            .ToListAsync(ct);
-        var criteriaByQuestion = criteria
-            .GroupBy(c => c.QuestionId)
-            .ToDictionary(g => g.Key, g => g.Select(c => new ParsedAnswerCriteriaDTO
-            {
-                Criteria = c.Criteria,
-                Point = c.Point
-            }).ToList());
-
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
             SubmissionId = submissionId,
             Histories = visibleHistories.Select(Map).ToList(),
-            ParsedAnswers = parsedAnswers.Select(p => new ParsedAnswerDTO
-            {
-                ParsedAnswerId = p.ParsedAnswerId,
-                QuestionId = p.QuestionId,
-                QuestionTitle = p.Question.Title,
-                MaxScore = p.Question.Point,
-                Criteria = criteriaByQuestion.TryGetValue(p.QuestionId, out var list) ? list : [],
-                ElementId = p.ElementId,
-                ExtractedText = p.ExtractedText,
-                ExtractedXml = p.Extracted_Xml,
-                ExtractedImageUrl = p.ExtractedImageUrl,
-                CreatedAt = p.CreatedAt
-            }).ToList()
+            ParsedAnswers = await LoadParsedAnswersAsync(submissionId, ct)
+        });
+    }
+
+    // ---------------------------------------------------------------- official gradings only
+    public async Task<Result<SubmissionGradingOverviewDTO>> GetOfficialHistoriesAsync(
+        Guid submissionId, Guid currentUserId, CancellationToken ct = default)
+    {
+        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
+        if (!access.IsSuccess)
+            return Result<SubmissionGradingOverviewDTO>.Failure(access.Error!, access.ErrorCode);
+
+        var officialHistories = await HistoriesWithDetails().AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId
+                        && h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+
+        return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
+        {
+            SubmissionId = submissionId,
+            Histories = officialHistories.Select(Map).ToList(),
+            ParsedAnswers = await LoadParsedAnswersAsync(submissionId, ct)
         });
     }
 
@@ -511,6 +503,42 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     }
 
     // ---------------------------------------------------------------- helpers
+    private async Task<List<ParsedAnswerDTO>> LoadParsedAnswersAsync(Guid submissionId, CancellationToken ct)
+    {
+        var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .Include(p => p.Question)
+            .Where(p => p.SubmissionId == submissionId)
+            .OrderBy(p => p.Question.Title)
+            .ThenBy(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+        var questionIds = parsedAnswers.Select(p => p.QuestionId).Distinct().ToList();
+        var criteria = await _db.QuestionCriteria.AsNoTracking()
+            .Where(c => questionIds.Contains(c.QuestionId))
+            .ToListAsync(ct);
+        var criteriaByQuestion = criteria
+            .GroupBy(c => c.QuestionId)
+            .ToDictionary(g => g.Key, g => g.Select(c => new ParsedAnswerCriteriaDTO
+            {
+                Criteria = c.Criteria,
+                Point = c.Point
+            }).ToList());
+
+        return parsedAnswers.Select(p => new ParsedAnswerDTO
+        {
+            ParsedAnswerId = p.ParsedAnswerId,
+            QuestionId = p.QuestionId,
+            QuestionTitle = p.Question.Title,
+            MaxScore = p.Question.Point,
+            Criteria = criteriaByQuestion.TryGetValue(p.QuestionId, out var list) ? list : [],
+            ElementId = p.ElementId,
+            ExtractedText = p.ExtractedText,
+            ExtractedXml = p.Extracted_Xml,
+            ExtractedImageUrl = p.ExtractedImageUrl,
+            CreatedAt = p.CreatedAt
+        }).ToList();
+    }
+
     private async Task<Result<Assignment>> GetAssignmentAsync(Guid submissionId, Guid staffId, CancellationToken ct)
     {
         var assignment = await _db.Assignments

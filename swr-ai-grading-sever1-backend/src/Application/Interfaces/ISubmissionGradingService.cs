@@ -8,6 +8,9 @@ public interface ISubmissionGradingService
     Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default);
 
+    Task<Result<SubmissionGradingOverviewDTO>> GetOfficialHistoriesAsync(
+        Guid submissionId, Guid currentUserId, CancellationToken ct = default);
+
     Task<Result<GradingHistoryDTO>> GradeWithAiAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default);
 

@@ -8,7 +8,6 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Authorize(Roles = "Admin,Manager,Examiner")]
 [Route("api/grading-sessions/{gradingSessionId:guid}/assignments")]
 public class AssignmentController : ControllerBase
 {
@@ -28,6 +27,7 @@ public class AssignmentController : ControllerBase
         => ToResponse(await _assignments.GetByIdAsync(gradingSessionId, assignmentId, ct));
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager,Examiner")]
     public async Task<IActionResult> Create(Guid gradingSessionId, [FromBody] CreateAssignmentRequest request, CancellationToken ct)
         => ToResponse(await _assignments.CreateAsync(gradingSessionId, request, ct));
 
@@ -36,6 +36,7 @@ public class AssignmentController : ControllerBase
         => ToResponse(await _assignments.UpdateAsync(gradingSessionId, assignmentId, request, ct));
 
     [HttpDelete("{assignmentId:guid}")]
+    [Authorize(Roles = "Admin,Manager,Examiner")]
     public async Task<IActionResult> Delete(Guid gradingSessionId, Guid assignmentId, CancellationToken ct)
         => ToResponse(await _assignments.DeleteAsync(gradingSessionId, assignmentId, ct));
 

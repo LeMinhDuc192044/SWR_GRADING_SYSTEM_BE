@@ -22,6 +22,12 @@ public class SubmissionGradingController : ControllerBase
             ? ToResponse(await _grading.GetHistoriesAsync(submissionId, userId, ct))
             : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
+    [HttpGet("official")]
+    public async Task<IActionResult> GetOfficialHistories(Guid submissionId, CancellationToken ct)
+        => CurrentUserId is { } userId
+            ? ToResponse(await _grading.GetOfficialHistoriesAsync(submissionId, userId, ct))
+            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+
     [HttpPost("ai")]
     public async Task<IActionResult> GradeWithAi(Guid submissionId, CancellationToken ct)
         => CurrentUserId is { } userId

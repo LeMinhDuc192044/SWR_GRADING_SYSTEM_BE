@@ -1,4 +1,4 @@
-    using Application.Common;
+﻿    using Application.Common;
     using Application.Common.Interfaces;
     using Application.DTOs.Examinations;
     using Application.Interfaces;
@@ -282,11 +282,119 @@
                 .Take(pageSize)
                 .ToListAsync(ct);
 
+            var items = await BuildListItemsAsync(sessions, ct);
+
+            return new PagedResult<ExaminationSessionListItemDTO>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+
+        public async Task<Result<PagedResult<StudentExaminationSessionDTO>>> GetPagedByStudentAsync(
+            Guid studentId, PagedRequest request, CancellationToken ct = default)
+        {
+            var student = await _db.Students
+                .AsNoTracking()
+                .Where(s => s.Id == studentId && !s.IsDeleted)
+                .Select(s => new ExaminationSessionStudentDTO
+                {
+                    StudentId = s.Id,
+                    StudentCode = s.StudentCode,
+                    FullName = s.FullName,
+                    Email = s.Email
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (student is null)
+                return Result<PagedResult<StudentExaminationSessionDTO>>.Failure("Student not found.", "STUDENT_NOT_FOUND");
+
+            var page = Math.Max(request.Page, 1);
+            var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
+
+            // Sessions the student is registered for, plus any session the student submitted to.
+            var rosterSessionIds = await _db.StudentExaminationSessions
+                .AsNoTracking()
+                .Where(a => a.StudentId == studentId)
+                .Select(a => a.ExaminationSessionId)
+                .ToListAsync(ct);
+
+            var submittedSessionIds = await _db.StudentSubmissions
+                .AsNoTracking()
+                .Where(s => s.StudentId == studentId && s.ExaminationSessionId.HasValue)
+                .Select(s => s.ExaminationSessionId!.Value)
+                .ToListAsync(ct);
+
+            var sessionIds = rosterSessionIds
+                .Union(submittedSessionIds)
+                .ToList();
+
+            var query = _db.ExaminationSessions
+                .AsNoTracking()
+                .Where(s => sessionIds.Contains(s.ExaminationSessionId));
+
+            var totalCount = await query.CountAsync(ct);
+
+            // Only this student's own information is selected, never the other attendees.
+            var items = await query
+                .OrderByDescending(s => s.StartDate)
+                .ThenByDescending(s => s.StartTime)
+                .ThenByDescending(s => s.CreatedDay)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(s => new StudentExaminationSessionDTO
+                {
+                    ExaminationSessionId = s.ExaminationSessionId,
+                    ExaminationId = s.ExaminationId,
+                    ExaminationCode = s.ExaminationCode,
+                    StartDate = s.StartDate,
+                    StartTime = s.StartTime,
+                    Status = s.Status,
+                    SemesterId = s.SemesterId,
+                    PaperSetId = s.PaperSetId,
+                    CreatedDay = s.CreatedDay,
+                    UpdatedDay = s.UpdatedDay,
+                    Semester = new ExaminationSessionSemesterDTO
+                    {
+                        SemesterId = s.Semester.SemesterId,
+                        SemesterCode = s.Semester.SemesterCode,
+                        Name = s.Semester.Name,
+                        StartDate = s.Semester.StartDate,
+                        EndDate = s.Semester.EndDate
+                    },
+                    Examination = new ExaminationSessionExaminationDTO
+                    {
+                        ExaminationId = s.Examination.ExaminationId,
+                        Name = s.Examination.Name,
+                        StartDate = s.Examination.StartDate,
+                        EndDate = s.Examination.EndDate
+                    }
+                })
+                .ToListAsync(ct);
+
+            foreach (var item in items)
+                item.Student = student;
+
+            return Result<PagedResult<StudentExaminationSessionDTO>>.Success(new PagedResult<StudentExaminationSessionDTO>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            });
+        }
+
+        // Adds the attendees, submission counts, semesters and examinations for one page of sessions (no N+1).
+        private async Task<List<ExaminationSessionListItemDTO>> BuildListItemsAsync(
+            IReadOnlyList<ExaminationSession> sessions,
+            CancellationToken ct)
+        {
             var sessionIds = sessions.Select(s => s.ExaminationSessionId).ToList();
             var semesterIds = sessions.Select(s => s.SemesterId).Distinct().ToList();
             var examinationIds = sessions.Select(s => s.ExaminationId).Distinct().ToList();
 
-            // One query each for the attendees, submission counts, semesters and examinations on this page (no N+1).
             var attendees = await _db.StudentExaminationSessions.AsNoTracking()
                 .Where(a => sessionIds.Contains(a.ExaminationSessionId))
                 .OrderBy(a => a.Student.StudentCode)
@@ -343,7 +451,7 @@
                 })
                 .ToDictionaryAsync(e => e.ExaminationId, ct);
 
-            var items = sessions.Select(session => new ExaminationSessionListItemDTO
+            return sessions.Select(session => new ExaminationSessionListItemDTO
             {
                 ExaminationSessionId = session.ExaminationSessionId,
                 ExaminationId = session.ExaminationId,
@@ -360,14 +468,6 @@
                 Semester = semesters.GetValueOrDefault(session.SemesterId),
                 Examination = examinations.GetValueOrDefault(session.ExaminationId)
             }).ToList();
-
-            return new PagedResult<ExaminationSessionListItemDTO>
-            {
-                Items = items,
-                TotalCount = totalCount,
-                Page = page,
-                PageSize = pageSize
-            };
         }
 
         public async Task<Result<ExaminationSessionResultsDTO>> GetResultsAsync(Guid examinationSessionId, CancellationToken ct = default)
