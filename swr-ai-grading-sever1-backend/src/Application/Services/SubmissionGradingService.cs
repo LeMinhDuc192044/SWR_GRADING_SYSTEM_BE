@@ -151,7 +151,9 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             else
             {
                 score = Math.Clamp(Convert.ToDecimal(criterion.ActualScore), 0m, answer.Question.Point);
-                comment = criterion.Comment;
+                comment = string.IsNullOrWhiteSpace(criterion.NotRecognized)
+                    ? criterion.Comment
+                    : BuildManualGradingComment(criterion.NotRecognized);
             }
 
             details.Add(new SubmissionItemDetail { ParsedAnswerId = answer.ParsedAnswerId, Score = score, Comment = comment });
@@ -716,6 +718,20 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         ".webp" => "image/webp",
         _ => "image/png"
     };
+
+    // An unclear/unreadable image cannot be graded by AI, so the question is handed to the monitor.
+    private static string BuildManualGradingComment(string notRecognized)
+    {
+        var reason = notRecognized.Contains("clear", StringComparison.OrdinalIgnoreCase)
+                     || notRecognized.Contains("blur", StringComparison.OrdinalIgnoreCase)
+                     || notRecognized.Contains("mờ", StringComparison.OrdinalIgnoreCase)
+                     || notRecognized.Contains("nhòe", StringComparison.OrdinalIgnoreCase)
+                     || notRecognized.Contains("không rõ", StringComparison.OrdinalIgnoreCase)
+            ? "picture not clear"
+            : "unreadable";
+
+        return $"Monitor must grade this question manually because '{reason}'!";
+    }
 
     private static Result<GradingHistoryDTO> Fail(string? error, string? code)
         => Result<GradingHistoryDTO>.Failure(error ?? "Request failed.", code);

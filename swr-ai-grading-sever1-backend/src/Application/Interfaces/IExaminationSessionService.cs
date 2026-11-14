@@ -18,4 +18,9 @@ public interface IExaminationSessionService
         Guid studentId, PagedRequest request, CancellationToken ct = default);
 
     Task<Result<ExaminationSessionResultsDTO>> GetResultsAsync(Guid examinationSessionId, CancellationToken ct = default);
+
+    Task<Result<ExaminationSessionStudentAssignmentResultDTO>> AssignStudentsAsync(
+        Guid examinationSessionId,
+        AssignStudentsToExaminationSessionRequest request,
+        CancellationToken ct = default);
 }

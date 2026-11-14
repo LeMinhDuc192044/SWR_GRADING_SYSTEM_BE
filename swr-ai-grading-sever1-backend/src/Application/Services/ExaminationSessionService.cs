@@ -585,6 +585,84 @@
                     .FirstOrDefault();
         }
 
+        public async Task<Result<ExaminationSessionStudentAssignmentResultDTO>> AssignStudentsAsync(
+            Guid examinationSessionId,
+            AssignStudentsToExaminationSessionRequest request,
+            CancellationToken ct = default)
+        {
+            var sessionExists = await _db.ExaminationSessions
+                .AsNoTracking()
+                .AnyAsync(s => s.ExaminationSessionId == examinationSessionId, ct);
+
+            if (!sessionExists)
+                return Result<ExaminationSessionStudentAssignmentResultDTO>.Failure(
+                    "Examination session not found.", "EXAMINATION_SESSION_NOT_FOUND");
+
+            var studentCodes = (request.StudentCodes ?? [])
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Select(code => code.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (studentCodes.Count == 0)
+                return Result<ExaminationSessionStudentAssignmentResultDTO>.Failure(
+                    "At least one student code is required.", "INVALID_STUDENTS");
+
+            var foundByCode = await _db.Students
+                .AsNoTracking()
+                .Where(s => studentCodes.Contains(s.StudentCode) && !s.IsDeleted)
+                .Select(s => new { s.Id, s.StudentCode })
+                .ToListAsync(ct);
+
+            var missingCodes = studentCodes
+                .Where(code => !foundByCode.Any(s =>
+                    s.StudentCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (missingCodes.Count > 0)
+                return Result<ExaminationSessionStudentAssignmentResultDTO>.Failure(
+                    $"Student code(s) not found: {string.Join(", ", missingCodes)}.", "STUDENT_NOT_FOUND");
+
+            var resolvedIds = foundByCode
+                .Select(s => s.Id)
+                .Distinct()
+                .ToList();
+
+            var existingIds = await _db.StudentExaminationSessions
+                .AsNoTracking()
+                .Where(a => a.ExaminationSessionId == examinationSessionId)
+                .Select(a => a.StudentId)
+                .ToListAsync(ct);
+
+            var existingSet = existingIds.ToHashSet();
+
+            // Students already assigned to this session are skipped.
+            var toAdd = resolvedIds
+                .Where(id => !existingSet.Contains(id))
+                .ToList();
+
+            foreach (var studentId in toAdd)
+            {
+                _db.StudentExaminationSessions.Add(new StudentExaminationSession
+                {
+                    StudentId = studentId,
+                    ExaminationSessionId = examinationSessionId
+                });
+            }
+
+            if (toAdd.Count > 0)
+                await _unitOfWork.SaveChangesAsync(ct);
+
+            return Result<ExaminationSessionStudentAssignmentResultDTO>.Success(
+                new ExaminationSessionStudentAssignmentResultDTO
+                {
+                    ExaminationSessionId = examinationSessionId,
+                    AddedCount = toAdd.Count,
+                    SkippedCount = resolvedIds.Count - toAdd.Count,
+                    AddedStudentIds = toAdd
+                });
+        }
+
         private static ExaminationSessionDTO Map(ExaminationSession session, IReadOnlyList<Guid>? studentIds = null) => new()
         {
             ExaminationSessionId = session.ExaminationSessionId,
