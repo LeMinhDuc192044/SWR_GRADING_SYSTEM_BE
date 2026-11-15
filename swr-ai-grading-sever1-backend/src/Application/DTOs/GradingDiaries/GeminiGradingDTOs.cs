@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Application.Common;
 using Domain.Entities;
 
 namespace Application.DTOs.GradingDiaries;
@@ -77,7 +78,9 @@ public sealed class ExtractedQuestionAnswersDto
 
 public sealed class CriterionResultDto
 {
-    [JsonPropertyName("criterion_no")]   public int CriterionNo { get; set; }
+    [JsonPropertyName("criterion_no")]
+    [JsonConverter(typeof(FlexibleTextJsonConverter))]
+    public string CriterionNo { get; set; } = string.Empty;
     [JsonPropertyName("matched_items")]  public List<string> MatchedItems { get; set; } = [];
     [JsonPropertyName("rejected_items")] public List<string> RejectedItems { get; set; } = [];
     [JsonPropertyName("awarded_score")]  public decimal AwardedScore { get; set; }

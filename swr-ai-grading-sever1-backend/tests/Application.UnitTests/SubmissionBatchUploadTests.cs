@@ -222,7 +222,7 @@ public class SubmissionBatchUploadTests
             ("PhongThi101/SE189999_Outsider.docx", CreateRealDocxBytes("Sinh vien ngoai phong thi"))
         );
 
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
         var result = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("PhongThi101.zip", masterZip)],
             examinerId,
@@ -258,7 +258,7 @@ public class SubmissionBatchUploadTests
             ("RoomA/SE180002_Binh/Diagrams/Q1.puml", Encoding.UTF8.GetBytes("@startuml\nAlice -> Bob\n@enduml"))
         );
 
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
         var result = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("RoomA.zip", masterZip)],
             examinerId,
@@ -293,7 +293,7 @@ public class SubmissionBatchUploadTests
             ("SE180001.zip", sv1Zip),
             ("SE180002.zip", sv2Zip));
 
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
         var result = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("BatchNested.zip", masterZip)],
             examinerId,
@@ -314,7 +314,7 @@ public class SubmissionBatchUploadTests
         var (storage, gemini, _) = CreateMocks(questionId);
 
         var docxBytes = CreateRealDocxBytes("Student Name: Nguyen Van A - Roll Number: SE180001\nAnswer 1...");
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
 
         var result = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("BaiThiCuoiKy.docx", docxBytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")],
@@ -335,7 +335,7 @@ public class SubmissionBatchUploadTests
         var (storage, gemini, _) = CreateMocks(questionId);
 
         var evilZip = BuildZip(("../../evil/SE180001.docx", CreateRealDocxBytes("malicious")));
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
 
         var result = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("evil.zip", evilZip)],
@@ -356,7 +356,7 @@ public class SubmissionBatchUploadTests
         var (sessionId, examinerId, questionId, sv1, _, _) = await SeedExamRoomAsync(db);
         var (storage, gemini, _) = CreateMocks(questionId);
 
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
 
         var initialUpload = await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("SE180001_v1.docx", CreateRealDocxBytes("Version 1"))],
@@ -388,13 +388,52 @@ public class SubmissionBatchUploadTests
     }
 
     [Fact]
-    public async Task UploadSubmissionsAsync_ReuploadAfterGraded_RejectsReplacementWithError()
+    public async Task UploadSubmissionsAsync_ReuploadWithGradingHistory_RejectsReplacement()
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (sessionId, examinerId, questionId, sv1, _, _) = await SeedExamRoomAsync(db);
         var (storage, gemini, _) = CreateMocks(questionId);
 
-        var service = new SubmissionService(db, storage.Object, gemini.Object);
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
+
+        await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001.docx", CreateRealDocxBytes("Bai lam"))],
+            examinerId,
+            sessionId);
+
+        var submission = await db.StudentSubmissions.SingleAsync();
+
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            HistoryId = Guid.NewGuid(),
+            SubmissionId = submission.SubmissionId,
+            EvaluationType = EvaluationType.AI,
+            GradingRound = 1,
+            Status = Domain.Enums.SubmissionGradingHistoryStatus.DRAFT,
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var secondUpload = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SE180001_retry.docx", CreateRealDocxBytes("Nop lai"))],
+            examinerId,
+            sessionId);
+
+        Assert.True(secondUpload.IsSuccess);
+        Assert.Equal(1, secondUpload.Data!.TotalUploaded);
+        Assert.Equal(0, secondUpload.Data.TotalSucceeded);
+        Assert.False(secondUpload.Data.Submissions[0].IsSuccess);
+        Assert.Contains("cannot be replaced", secondUpload.Data.Submissions[0].ErrorMessage);
+    }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_ReuploadWithoutGradingHistory_ReplacesSubmission()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, sv1, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
 
         await service.UploadSubmissionsAsync(
             [new InMemoryDocumentFile("SE180001.docx", CreateRealDocxBytes("Bai lam"))],
@@ -420,9 +459,17 @@ public class SubmissionBatchUploadTests
 
         Assert.True(secondUpload.IsSuccess);
         Assert.Equal(1, secondUpload.Data!.TotalUploaded);
-        Assert.Equal(0, secondUpload.Data.TotalSucceeded);
-        Assert.False(secondUpload.Data.Submissions[0].IsSuccess);
-        Assert.Contains("cannot be replaced", secondUpload.Data.Submissions[0].ErrorMessage);
+        Assert.Equal(1, secondUpload.Data.TotalSucceeded);
+        Assert.True(secondUpload.Data.Submissions[0].IsSuccess);
+        Assert.True(secondUpload.Data.Submissions[0].IsReplaced);
+
+        var submissions = await db.StudentSubmissions.ToListAsync();
+        Assert.Single(submissions);
+        Assert.Equal(submission.SubmissionId, submissions[0].SubmissionId);
+
+        // The replaced submission must be graded again.
+        var assignment = await db.Assignments.SingleAsync();
+        Assert.Equal(AssignmentStatus.IN_PROGRESS, assignment.Status);
     }
 }
 

@@ -24,6 +24,11 @@ public sealed class StudentService : IStudentService
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // Mã sinh viên phải bắt đầu bằng "SE" và theo sau là đúng 6 chữ số (VD: SE192044).
+    private static readonly Regex StudentCodeRegex = new(
+        @"^SE\d{6}$",
+        RegexOptions.Compiled);
+
     public StudentService(
         IUserRepository userRepository,
         IAuthService authService,
@@ -114,6 +119,18 @@ public sealed class StudentService : IStudentService
             {
                 result.FailureCount++;
                 result.Errors.Add(new StudentImportErrorDto { RowIndex = row, Reason = "Mã sinh viên không được để trống." });
+                continue;
+            }
+
+            if (!StudentCodeRegex.IsMatch(studentCode))
+            {
+                result.FailureCount++;
+                result.Errors.Add(new StudentImportErrorDto
+                {
+                    RowIndex = row,
+                    StudentCode = studentCode,
+                    Reason = $"Mã sinh viên '{studentCode}' không đúng định dạng. Mã sinh viên phải bắt đầu bằng 'SE' và có 6 chữ số phía sau (VD: SE192044)."
+                });
                 continue;
             }
 

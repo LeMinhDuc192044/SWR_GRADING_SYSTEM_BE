@@ -16,12 +16,18 @@ public sealed class SubmissionService : ISubmissionService
     private readonly IApplicationDbContext _db;
     private readonly ISupabaseStorage _storage;
     private readonly IGeminiAIService _gemini;
+    private readonly IImageUrlProvider _imageUrls;
 
-    public SubmissionService(IApplicationDbContext db, ISupabaseStorage storage, IGeminiAIService gemini)
+    public SubmissionService(
+        IApplicationDbContext db,
+        ISupabaseStorage storage,
+        IGeminiAIService gemini,
+        IImageUrlProvider imageUrls)
     {
         _db = db;
         _storage = storage;
         _gemini = gemini;
+        _imageUrls = imageUrls;
     }
 
     public async Task<Result<UploadSubmissionsResultDTO>> UploadSubmissionsAsync(
@@ -174,14 +180,15 @@ public sealed class SubmissionService : ISubmissionService
             if (existing.Count > 0)
             {
                 var existingIds = existing.Select(s => s.SubmissionId).ToList();
-                var alreadyGraded =
-                    await _db.Assignments.AnyAsync(a => existingIds.Contains(a.SubmissionId)
-                        && (a.Status == AssignmentStatus.COMPLETED || a.Status == AssignmentStatus.GRADED), ct)
-                    || await _db.SubmissionGradingHistories.AnyAsync(h => existingIds.Contains(h.SubmissionId)
-                        && h.Status == SubmissionGradingHistoryStatus.OFFICIAL, ct);
-                if (alreadyGraded)
+
+                // A submission that has already been graded (any grading history) must not be replaced;
+                // the regrade flow has to be used instead.
+                var hasGradingHistory = await _db.SubmissionGradingHistories
+                    .AnyAsync(h => existingIds.Contains(h.SubmissionId), ct);
+
+                if (hasGradingHistory)
                     throw new InvalidDataException(
-                        $"Student {student.StudentCode} already has a graded submission in this examination session; it cannot be replaced.");
+                        $"Student {student.StudentCode} already has a grading history in this examination session; the submission cannot be replaced.");
             }
 
             var submissionId = previous?.SubmissionId ?? Guid.NewGuid();
@@ -281,6 +288,16 @@ public sealed class SubmissionService : ISubmissionService
                     await _db.SubmissionParsedAnswers.Where(p => p.SubmissionId == previous.SubmissionId).ToListAsync(ct));
                 _db.SubmissionGradingHistories.RemoveRange(
                     await _db.SubmissionGradingHistories.Where(h => h.SubmissionId == previous.SubmissionId).ToListAsync(ct));
+                // A replaced submission has to be graded again, so its assignments go back to in-progress.
+                var previousAssignments = await _db.Assignments
+                    .Where(a => a.SubmissionId == previous.SubmissionId)
+                    .ToListAsync(ct);
+                foreach (var assignment in previousAssignments)
+                {
+                    assignment.Status = AssignmentStatus.IN_PROGRESS;
+                    assignment.UpdatedDate = now;
+                }
+
                 // Any extra duplicates already in the database are removed too.
                 if (existing.Count > 1)
                 {
@@ -510,7 +527,7 @@ public sealed class SubmissionService : ISubmissionService
         return null;
     }
 
-    private static SubmissionDetailDTO ToDetail(StudentSubmission submission)
+    private SubmissionDetailDTO ToDetail(StudentSubmission submission)
     {
         var histories = submission.SubmissionGradingHistories.OrderByDescending(item => item.CreatedAt).ToList();
         var ai = histories.FirstOrDefault(item => item.EvaluationType == EvaluationType.AI);
@@ -526,10 +543,11 @@ public sealed class SubmissionService : ISubmissionService
             Status = submission.Status,
             StudentAnswers = submission.ParsedAnswers.OrderBy(answer => answer.CreatedAt).Select(answer => new StudentAnswerDto
             {
+                ParsedAnswerId = answer.ParsedAnswerId,
                 QuestionNumber = ExtractQuestionNumber(answer.Question?.Title),
                 Question = answer.Question?.Title ?? string.Empty,
                 ExtractedText = answer.ExtractedText,
-                ExtractedImageUrl = answer.ExtractedImageUrl
+                ExtractedImageUrl = _imageUrls.BuildParsedAnswerImageUrl(answer.ParsedAnswerId, answer.ExtractedImageUrl)
             }).ToList(),
             CreatedDate = submission.CreatedDate,
             UpdatedDate = submission.UpdatedDate

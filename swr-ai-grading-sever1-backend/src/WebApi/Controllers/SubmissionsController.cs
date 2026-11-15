@@ -46,7 +46,31 @@ public sealed class SubmissionsController : ControllerBase
         var result = await _submissionService.UploadSubmissionsAsync(docFiles, userId, examinationSessionId, ct);
 
         if (result.IsSuccess)
-            return Ok(ApiResponse.Success(result.Data));
+        {
+            var data = result.Data!;
+
+            // Nothing was imported: report a failure instead of a successful empty result.
+            if (data.TotalUploaded > 0 && data.TotalSucceeded == 0)
+            {
+                var reasons = data.Submissions
+                    .Where(item => !item.IsSuccess && !string.IsNullOrWhiteSpace(item.ErrorMessage))
+                    .Select(item => item.ErrorMessage!.Trim())
+                    .Distinct()
+                    .ToList();
+
+                var message = reasons.Count > 0
+                    ? string.Join(" | ", reasons)
+                    : "Không thể tải lên bài nộp nào.";
+
+                return BadRequest(ApiResponse.Failure(
+                    StatusCodes.Status400BadRequest,
+                    message,
+                    "UPLOAD_FAILED",
+                    errors: data.Submissions));
+            }
+
+            return Ok(ApiResponse.Success(data));
+        }
 
         if (result.ErrorCode == "FORBIDDEN")
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));

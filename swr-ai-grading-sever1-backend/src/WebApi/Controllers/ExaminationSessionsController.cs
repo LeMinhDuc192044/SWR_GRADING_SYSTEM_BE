@@ -59,6 +59,17 @@ public sealed class ExaminationSessionsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
+    [HttpPost("~/api/examination-sessions/{examinationSessionId:guid}/students")]
+    [Authorize(Roles = "Admin,Examiner")]
+    public async Task<IActionResult> AssignStudents(
+        Guid examinationSessionId,
+        [FromBody] AssignStudentsToExaminationSessionRequest request,
+        CancellationToken ct)
+    {
+        var result = await _service.AssignStudentsAsync(examinationSessionId, request, ct);
+        return ResultResponse(result);
+    }
+
     [HttpGet("~/api/examination-sessions/{examinationSessionId:guid}/results")]
     [Authorize]
     public async Task<IActionResult> GetResults(Guid examinationSessionId, CancellationToken ct)

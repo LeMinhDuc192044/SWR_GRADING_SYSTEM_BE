@@ -11,11 +11,14 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
 {
     private readonly IApplicationDbContext _db;
     private readonly ISupabaseStorage _storage;
+    private readonly IImageUrlProvider _imageUrls;
 
-    public SubmissionParsedAnswerService(IApplicationDbContext db, ISupabaseStorage storage)
+    public SubmissionParsedAnswerService(
+        IApplicationDbContext db, ISupabaseStorage storage, IImageUrlProvider imageUrls)
     {
         _db = db;
         _storage = storage;
+        _imageUrls = imageUrls;
     }
 
     public async Task<Result<IReadOnlyList<SubmissionParsedAnswerDTO>>> GetBySubmissionIdAsync(
@@ -153,6 +156,13 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         //         question.QuestionId == request.QuestionId && question.PaperSetId == paperSetId, ct))
         //     return Result<StudentSubmission>.Failure("Question does not belong to the paper set for this submission.", "QUESTION_NOT_IN_PAPER_SET");
 
+        // ExtractedImageUrl is a private storage path. A full URL (for example the signed link
+        // returned to clients) must never be persisted, otherwise the image can no longer be read.
+        if (!string.IsNullOrWhiteSpace(request.ExtractedImageUrl) &&
+            Uri.TryCreate(request.ExtractedImageUrl, UriKind.Absolute, out _))
+            return Result<StudentSubmission>.Failure(
+                "ExtractedImageUrl must be the stored image path, not a URL.", "INVALID_IMAGE_URL");
+
         if (request.ElementId.HasValue &&
             !await _db.DiagramElements.AnyAsync(element => element.ElementId == request.ElementId.Value, ct))
             return Result<StudentSubmission>.Failure("Diagram element not found.", "ELEMENT_NOT_FOUND");
@@ -173,14 +183,14 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         return Result<StudentSubmission>.Success(submission);
     }
 
-    private static SubmissionParsedAnswerDTO ToDto(SubmissionParsedAnswer answer) => new()
+    private SubmissionParsedAnswerDTO ToDto(SubmissionParsedAnswer answer) => new()
     {
         ParsedAnswerId = answer.ParsedAnswerId,
         SubmissionId = answer.SubmissionId,
         QuestionId = answer.QuestionId,
         ElementId = answer.ElementId,
         ExtractedText = answer.ExtractedText,
-        ExtractedImageUrl = answer.ExtractedImageUrl,
+        ExtractedImageUrl = _imageUrls.BuildParsedAnswerImageUrl(answer.ParsedAnswerId, answer.ExtractedImageUrl),
         ExtractedXml = answer.Extracted_Xml,
         CreatedAt = answer.CreatedAt
     };

@@ -44,6 +44,7 @@ public sealed class AdminStudentsController : ControllerBase
     [HttpPost("import-excel")]
     [Authorize(Roles = "Admin")]
     [Consumes("multipart/form-data")]
+    [Authorize(Roles = "Examiner")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
@@ -82,7 +83,7 @@ public sealed class AdminStudentsController : ControllerBase
     /// Tải file Excel mẫu để import danh sách sinh viên.
     /// </summary>
     [HttpGet("import-template")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Examiner")]
     public IActionResult DownloadTemplate()
     {
         var content = _studentService.GenerateStudentImportTemplate();

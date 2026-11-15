@@ -338,8 +338,12 @@ public sealed class GeminiAIService : IGeminiAIService
             2. Tiêu chí dạng "Award X point for each ...": liệt kê trong matched_items MỖI ý đúng (một chuỗi ngắn, ghi nguồn trong ngoặc, ví dụ "Book an appointment (xml)"). Ý trùng lặp, ý sai, ý không phù hợp với kịch bản trong question_content, hoặc ý không đúng loại mà tiêu chí yêu cầu (ví dụ không phải yêu cầu chức năng) KHÔNG được tính: đưa vào rejected_items kèm lý do ngắn. awarded_score = số ý đúng x X, không vượt max_point của tiêu chí.
             3. Tiêu chí dạng khác: awarded_score theo đúng mô tả tiêu chí, không vượt max_point; matched_items là các ý đã thỏa. Không có bằng chứng thì không cho điểm.
             4. Chỉ tính những gì NHÌN THẤY trong bài. Không suy đoán, không cho điểm thiện chí. Phần nào không đọc được thì ghi vào not_recognized và không cho điểm phần đó. KHÔNG kết luận sinh viên bỏ trống khi có văn bản, XML hoặc hình ảnh: phải xem đủ cả ba.
+            - Nếu hình ảnh của câu bị mờ, nhòe hoặc không đủ nét để đọc: not_recognized = "picture not clear".
+            - Nếu hình ảnh của câu không đọc được nội dung (chữ/hình vẽ không thể nhận dạng): not_recognized = "unreadable".
+            - Khi not_recognized khác null, KHÔNG cộng điểm cho phần hình ảnh đó. Nếu câu chỉ có hình ảnh và not_recognized khác null thì actual_score = 0.
             5. actual_score của câu = tổng awarded_score các tiêu chí và không vượt max_score của câu.
             6. Mỗi question_id chỉ trả về MỘT mục trong criteria_scores (gộp mọi câu trả lời của câu đó).
+            7. criterion_no phải dùng đúng số hiệu trong rubric. Tiêu chí con (ví dụ 8.d) phải là chuỗi có ngoặc kép: "8.d". TUYỆT ĐỐI không viết giá trị trần như 8.d vì JSON sẽ không hợp lệ.
 
             [QUY TẮC VIẾT NHẬN XÉT]
             - CẤM mọi lời khen, động viên, đánh giá cảm tính (ví dụ: "tốt", "xuất sắc", "rất đầy đủ", "ấn tượng", "good", "great", "well done").
@@ -357,7 +361,7 @@ public sealed class GeminiAIService : IGeminiAIService
                 "actual_score": 1.5,
                 "criteria_results": [
                     {
-                    "criterion_no": 1,
+                    "criterion_no": "1",
                     "matched_items": ["Book an appointment (xml)"],
                     "rejected_items": ["Login: không có trong kịch bản"],
                     "awarded_score": 0.25,
@@ -375,22 +379,63 @@ public sealed class GeminiAIService : IGeminiAIService
 
         var cleanJson = await GenerateJsonResponseAsync(prompt, images, ct, temperature: 0);
 
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString,
+            AllowTrailingCommas = true,
+            ReadCommentHandling = JsonCommentHandling.Skip
+        };
+
         try
         {
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-            };
             var gradingResult = JsonSerializer.Deserialize<GradingResultDto>(cleanJson, options) ?? new GradingResultDto();
             gradingResult.RawAiLogJson = cleanJson;
             return gradingResult;
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            throw new InvalidOperationException($"Không thể phân tích kết quả JSON chấm điểm từ Gemini: {cleanJson}", ex);
+            // Gemini sometimes emits sub-criterion numbers such as 8.d without quotes, which is not valid JSON.
+            var repairedJson = QuoteBareCriterionNumbers(cleanJson);
+            try
+            {
+                var gradingResult = JsonSerializer.Deserialize<GradingResultDto>(repairedJson, options) ?? new GradingResultDto();
+                gradingResult.RawAiLogJson = repairedJson;
+                return gradingResult;
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Không thể phân tích kết quả JSON chấm điểm từ Gemini: {TruncateForLog(cleanJson, 2000)} | Lỗi: {ex.Message}", ex);
+            }
         }
     }
+
+    private static readonly Regex BareCriterionNumberRegex = new(
+        "(?<key>\"criterion_no\"\\s*:\\s*)(?<value>[^\"\\s,}\\]]+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ValidJsonNumberRegex = new(
+        @"^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$",
+        RegexOptions.Compiled);
+
+    // Wraps values like 8.d in quotes so the payload becomes valid JSON.
+    private static string QuoteBareCriterionNumbers(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return json;
+
+        return BareCriterionNumberRegex.Replace(json, match =>
+        {
+            var value = match.Groups["value"].Value;
+            return ValidJsonNumberRegex.IsMatch(value)
+                ? match.Value
+                : match.Groups["key"].Value + "\"" + value + "\"";
+        });
+    }
+
+    private static string TruncateForLog(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength] + "… (đã rút gọn)";
 
     private async Task<string> GenerateJsonResponseAsync(string prompt, List<DocxImageDto>? images, CancellationToken ct, float temperature)
     {

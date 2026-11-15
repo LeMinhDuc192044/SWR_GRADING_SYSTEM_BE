@@ -196,11 +196,30 @@ public sealed class ApplicationService : IApplicationService
         if (application is null)
             return Result<ApplicationDTO>.Failure("Không tìm thấy đơn phúc khảo.", "APPLICATION_NOT_FOUND");
 
+        var wasApproved = application.Status == ApplicationStatus.APPROVED;
         application.Status = request.Status;
         application.UpdatedDay = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync(ct);
+        // Only on the transition to APPROVED, so approving twice can't wipe a re-grade.
+        if (request.Status == ApplicationStatus.APPROVED && !wasApproved)
+        {
+            foreach (var history in application.StudentSubmission.SubmissionGradingHistories)
+                history.Status = SubmissionGradingHistoryStatus.DRAFT;
 
+            // The monitor's assignment was GRADED: reopen it so the submission can be re-graded and finalized again.
+            var assignments = await _db.Assignments
+                .Where(a => a.SubmissionId == application.SubmissionId
+                            && (a.Status == AssignmentStatus.COMPLETED || a.Status == AssignmentStatus.GRADED))
+                .ToListAsync(ct);
+            foreach (var assignment in assignments)
+            {
+                assignment.Status = AssignmentStatus.IN_PROGRESS;
+                assignment.UpdatedDate = VietnamTime.Now;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        
         var officialScore = application.StudentSubmission.SubmissionGradingHistories
             .FirstOrDefault(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)?.TotalScore;
 
