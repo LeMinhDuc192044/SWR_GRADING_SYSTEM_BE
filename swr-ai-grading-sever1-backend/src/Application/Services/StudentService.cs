@@ -1,11 +1,13 @@
 using System.Text.RegularExpressions;
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.AuthDTOs;
 using Application.DTOs.Students;
 using Application.Interfaces;
 using Domain.Enums;
 using ClosedXML.Excel;
 using Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Services;
@@ -16,6 +18,7 @@ public sealed class StudentService : IStudentService
     private readonly IAuthService _authService;
     private readonly IEmailService _emailService;
     private readonly ILogger<StudentService> _logger;
+    private readonly IApplicationDbContext _db;
 
     private static readonly Regex EmailRegex = new(
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
@@ -30,12 +33,14 @@ public sealed class StudentService : IStudentService
         IUserRepository userRepository,
         IAuthService authService,
         IEmailService emailService,
-        ILogger<StudentService> logger)
+        ILogger<StudentService> logger,
+        IApplicationDbContext db)
     {
         _userRepository = userRepository;
         _authService = authService;
         _emailService = emailService;
         _logger = logger;
+        _db = db;
     }
 
     public async Task<Result<StudentImportResultDto>> ImportStudentsFromExcelAsync(Stream fileStream, CancellationToken ct = default)
@@ -362,6 +367,73 @@ public sealed class StudentService : IStudentService
                 Đây là email tự động. Vui lòng không trả lời trực tiếp email này.
             </div>
         </div>";
+    }
+
+    public async Task<Result<PagedResult<StudentResponseDto>>> GetPagedStudentsAsync(
+        StudentFilterRequest request, CancellationToken ct = default)
+    {
+        request ??= new StudentFilterRequest();
+
+        var query = _db.Students.AsNoTracking()
+            .Where(s => !s.IsDeleted);
+
+        if (request.ExaminationSessionId.HasValue)
+        {
+            query = query.Where(s => s.StudentExaminationSessions
+                .Any(ses => ses.ExaminationSessionId == request.ExaminationSessionId.Value));
+        }
+
+        if (request.ExaminationId.HasValue)
+        {
+            query = query.Where(s => s.StudentExaminationSessions
+                .Any(ses => ses.ExaminationSession.ExaminationId == request.ExaminationId.Value));
+        }
+
+        if (request.SemesterId.HasValue)
+        {
+            query = query.Where(s =>
+                s.StudentSemesters.Any(ss => ss.SemesterId == request.SemesterId.Value) ||
+                s.StudentExaminationSessions.Any(ses => ses.ExaminationSession.SemesterId == request.SemesterId.Value));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var term = request.Search.Trim().ToLower();
+            query = query.Where(s =>
+                s.FullName.ToLower().Contains(term) ||
+                s.StudentCode.ToLower().Contains(term) ||
+                s.Email.ToLower().Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(s => s.StudentCode)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(s => new StudentResponseDto
+            {
+                Id = s.Id,
+                StudentCode = s.StudentCode,
+                FullName = s.FullName,
+                Email = s.Email,
+                Birthday = s.Birthday,
+                Major = s.Major,
+                IsActive = s.IsActive,
+                CreatedDay = s.CreatedDay,
+                UpdatedDay = s.UpdatedDay
+            })
+            .ToListAsync(ct);
+
+        var pagedResult = new PagedResult<StudentResponseDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<StudentResponseDto>>.Success(pagedResult);
     }
 }
 

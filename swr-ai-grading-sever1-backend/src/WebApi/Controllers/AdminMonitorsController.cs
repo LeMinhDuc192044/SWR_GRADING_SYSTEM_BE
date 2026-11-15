@@ -1,15 +1,21 @@
 using Application.Common;
+using Application.DTOs.Monitors;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using WebApi.Common;
 
 namespace WebApi.Controllers;
 
 /// <summary>
-/// Quản lý tài khoản Monitor và import danh sách monitor từ Excel dành cho Admin.
+/// Quản lý tài khoản Monitor, lấy danh sách phân trang cho Manager/Admin và import từ Excel.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/admin/monitors")]
+[Route("api/manager/monitors")]
+[Route("api/monitors")]
 public sealed class AdminMonitorsController : ControllerBase
 {
     private readonly IMonitorService _monitorService;
@@ -20,10 +26,24 @@ public sealed class AdminMonitorsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/manager/monitors (hoặc /api/admin/monitors, /api/monitors)
+    /// Lấy danh sách tài khoản cán bộ chấm thi (Monitor) dành cho Manager / Admin có phân trang và tìm kiếm.
+    /// Dành cho role: Manager, Admin, Examiner.
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Manager,Admin,Examiner")]
+    public async Task<IActionResult> GetMonitors([FromQuery] MonitorFilterRequest request, CancellationToken ct)
+    {
+        var result = await _monitorService.GetPagedMonitorsAsync(request, ct);
+        return result.ToActionResult(this);
+    }
+
+    /// <summary>
     /// POST /api/admin/monitors/import-excel
     /// Tạo tài khoản monitor từ file Excel; mỗi tài khoản trả về mật khẩu được tạo.
     /// </summary>
     [HttpPost("import-excel")]
+    [Authorize(Roles = "Admin")]
     [Consumes("multipart/form-data")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
