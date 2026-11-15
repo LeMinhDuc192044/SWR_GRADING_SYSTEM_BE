@@ -1,16 +1,20 @@
 using Application.Common;
+using Application.DTOs.Students;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using WebApi.Common;
 
 namespace WebApi.Controllers;
 
 /// <summary>
-/// Controller quản lý tài khoản Sinh viên và Import từ Excel dành cho Admin.
+/// Controller quản lý tài khoản Sinh viên, lấy danh sách phân trang và Import từ Excel dành cho Admin, Examiner, Manager.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/admin/students")]
+[Route("api/students")]
 public sealed class AdminStudentsController : ControllerBase
 {
     private readonly IStudentService _studentService;
@@ -21,10 +25,24 @@ public sealed class AdminStudentsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/admin/students (hoặc /api/students)
+    /// Lấy danh sách tài khoản sinh viên đầy đủ thông tin, có phân trang và bộ lọc theo học kỳ, kỳ thi, ca thi.
+    /// Dành cho role: Admin, Examiner, Manager.
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Admin,Examiner,Manager")]
+    public async Task<IActionResult> GetStudents([FromQuery] StudentFilterRequest request, CancellationToken ct)
+    {
+        var result = await _studentService.GetPagedStudentsAsync(request, ct);
+        return result.ToActionResult(this);
+    }
+
+    /// <summary>
     /// POST /api/admin/students/import-excel
     /// Upload file Excel chứa danh sách sinh viên để tạo tài khoản tự động và gửi thông tin về email sinh viên.
     /// </summary>
     [HttpPost("import-excel")]
+    [Authorize(Roles = "Admin")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
     {
@@ -64,6 +82,7 @@ public sealed class AdminStudentsController : ControllerBase
     /// Tải file Excel mẫu để import danh sách sinh viên.
     /// </summary>
     [HttpGet("import-template")]
+    [Authorize(Roles = "Admin")]
     public IActionResult DownloadTemplate()
     {
         var content = _studentService.GenerateStudentImportTemplate();
@@ -71,4 +90,3 @@ public sealed class AdminStudentsController : ControllerBase
         return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 }
-
