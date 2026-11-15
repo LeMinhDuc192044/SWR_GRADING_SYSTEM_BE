@@ -13,7 +13,7 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/monitors")]
+[Route("api/manager/monitors")]
 public sealed class AdminMonitorsController : ControllerBase
 {
     private readonly IMonitorService _monitorService;

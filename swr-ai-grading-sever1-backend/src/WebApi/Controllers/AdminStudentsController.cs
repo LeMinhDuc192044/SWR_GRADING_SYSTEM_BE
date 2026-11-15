@@ -13,7 +13,7 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/students")]
+[Route("api/admin/students")]
 public sealed class AdminStudentsController : ControllerBase
 {
     private readonly IStudentService _studentService;
