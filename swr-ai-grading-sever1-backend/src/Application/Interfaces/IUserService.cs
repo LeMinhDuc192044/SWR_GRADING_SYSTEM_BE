@@ -1,15 +1,12 @@
-//using Application.Common;
-//using Application.DTOs.Users;
+using Application.Common;
+using Application.DTOs.Users;
 
-//namespace Application.Interfaces;
+namespace Application.Interfaces;
 
-///// <summary>
-///// Service quản lý người dùng (sinh viên, giảng viên).
-///// </summary>
-//public interface IUserService
-//{
-//    Task<PagedResult<UserDto>> GetPagedAsync(PagedRequest request, CancellationToken ct = default);
-//    Task<Result<UserDto>> GetByIdAsync(Guid id, CancellationToken ct = default);
-//    Task<Result<UserDto>> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default);
-//    Task<Result> DeleteAsync(Guid id, CancellationToken ct = default); // soft delete
-//}
+public interface IUserService
+{
+    /// <summary>
+    /// Lấy danh sách tài khoản cán bộ (Examiner, Monitor, Manager, Admin) có phân trang và bộ lọc theo vai trò.
+    /// </summary>
+    Task<Result<PagedResult<UserStaffResponseDto>>> GetPagedStaffAsync(StaffFilterRequest request, CancellationToken ct = default);
+}
