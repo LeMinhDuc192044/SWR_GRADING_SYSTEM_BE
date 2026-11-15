@@ -1,10 +1,12 @@
 using System.Text.RegularExpressions;
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.AuthDTOs;
 using Application.DTOs.Monitors;
 using Application.Interfaces;
 using ClosedXML.Excel;
 using Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Services;
@@ -14,6 +16,7 @@ public sealed class MonitorService : IMonitorService
     private readonly IUserRepository _userRepository;
     private readonly IAuthService _authService;
     private readonly ILogger<MonitorService> _logger;
+    private readonly IApplicationDbContext _db;
 
     private static readonly Regex EmailRegex = new(
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
@@ -22,11 +25,13 @@ public sealed class MonitorService : IMonitorService
     public MonitorService(
         IUserRepository userRepository,
         IAuthService authService,
-        ILogger<MonitorService> logger)
+        ILogger<MonitorService> logger,
+        IApplicationDbContext db)
     {
         _userRepository = userRepository;
         _authService = authService;
         _logger = logger;
+        _db = db;
     }
 
     public async Task<Result<MonitorImportResultDto>> ImportMonitorsFromExcelAsync(Stream fileStream, CancellationToken ct = default)
@@ -247,5 +252,59 @@ public sealed class MonitorService : IMonitorService
             Email = email,
             Reason = reason
         });
+    }
+
+    public async Task<Result<PagedResult<MonitorResponseDto>>> GetPagedMonitorsAsync(
+        MonitorFilterRequest request, CancellationToken ct = default)
+    {
+        request ??= new MonitorFilterRequest();
+
+        var query = _db.Staff.AsNoTracking()
+            .Where(s => !s.IsDeleted && s.Role == UserRole.Monitor);
+
+        if (request.IsActive.HasValue)
+        {
+            query = query.Where(s => s.IsActive == request.IsActive.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var term = request.Search.Trim().ToLower();
+            query = query.Where(s =>
+                s.FullName.ToLower().Contains(term) ||
+                s.StaffCode.ToLower().Contains(term) ||
+                s.Email.ToLower().Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(s => s.StaffCode)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(s => new MonitorResponseDto
+            {
+                Id = s.Id,
+                StaffCode = s.StaffCode,
+                FullName = s.FullName,
+                Email = s.Email,
+                Birthday = s.Birthday,
+                Role = s.Role,
+                IsActive = s.IsActive,
+                CreatedDay = s.CreatedDay,
+                UpdatedDay = s.UpdatedDay,
+                AssignedCount = s.Assignments.Count
+            })
+            .ToListAsync(ct);
+
+        var pagedResult = new PagedResult<MonitorResponseDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<MonitorResponseDto>>.Success(pagedResult);
     }
 }
