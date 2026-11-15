@@ -1,5 +1,6 @@
 using System.Text;
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.Interfaces;
 using Application.Services;
 using Application.Validators.PaperSets;
@@ -159,6 +160,9 @@ builder.Services.AddScoped<ISupabaseStorage>(sp =>
     var inner = sp.GetRequiredService<SupabaseStorage>();
     return new EncryptedSupabaseStorage(inner);
 });
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IImageUrlProvider, WebApi.Common.ParsedAnswerImageUrlProvider>();
 
 // Controllers
 builder.Services.AddControllers();

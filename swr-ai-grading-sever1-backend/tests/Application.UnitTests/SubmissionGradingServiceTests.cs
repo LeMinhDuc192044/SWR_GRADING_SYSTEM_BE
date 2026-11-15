@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Grading;
 using Application.Interfaces;
 using Application.Services;
@@ -22,7 +23,8 @@ public class SubmissionGradingServiceTests
     {
         var gemini = new Mock<IGeminiAIService>();
         var storage = new Mock<ISupabaseStorage>();
-        return new SubmissionGradingService(db, new TestDbUnitOfWork(db), gemini.Object, storage.Object);
+        return new SubmissionGradingService(
+            db, new TestDbUnitOfWork(db), gemini.Object, storage.Object, new Mock<IImageUrlProvider>().Object);
     }
 
     private static async Task<(

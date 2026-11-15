@@ -1,5 +1,6 @@
 using Application.Common;
 using Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers;
@@ -24,6 +25,7 @@ public sealed class AdminMonitorsController : ControllerBase
     /// </summary>
     [HttpPost("import-excel")]
     [Consumes("multipart/form-data")]
+    [Authorize(Roles = "Manager")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
@@ -53,6 +55,7 @@ public sealed class AdminMonitorsController : ControllerBase
     /// Tải file Excel mẫu để import danh sách monitor.
     /// </summary>
     [HttpGet("import-template")]
+    [Authorize(Roles = "Manager")]
     public IActionResult DownloadTemplate()
     {
         var content = _monitorService.GenerateMonitorImportTemplate();

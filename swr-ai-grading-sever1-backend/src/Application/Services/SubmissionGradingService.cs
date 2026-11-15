@@ -20,14 +20,20 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGeminiAIService _gemini;
     private readonly ISupabaseStorage _storage;
+    private readonly IImageUrlProvider _imageUrls;
 
     public SubmissionGradingService(
-        IApplicationDbContext db, IUnitOfWork unitOfWork, IGeminiAIService gemini, ISupabaseStorage storage)
+        IApplicationDbContext db,
+        IUnitOfWork unitOfWork,
+        IGeminiAIService gemini,
+        ISupabaseStorage storage,
+        IImageUrlProvider imageUrls)
     {
         _db = db;
         _unitOfWork = unitOfWork;
         _gemini = gemini;
         _storage = storage;
+        _imageUrls = imageUrls;
     }
 
     // ---------------------------------------------------------------- list
@@ -536,7 +542,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             ElementId = p.ElementId,
             ExtractedText = p.ExtractedText,
             ExtractedXml = p.Extracted_Xml,
-            ExtractedImageUrl = p.ExtractedImageUrl,
+            ExtractedImageUrl = _imageUrls.BuildParsedAnswerImageUrl(p.ParsedAnswerId, p.ExtractedImageUrl),
             CreatedAt = p.CreatedAt
         }).ToList();
     }

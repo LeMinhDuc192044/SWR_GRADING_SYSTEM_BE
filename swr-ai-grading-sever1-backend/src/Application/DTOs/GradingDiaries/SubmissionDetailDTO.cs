@@ -44,6 +44,7 @@ public sealed class SubmissionItemDetailDto
 
 public sealed class StudentAnswerDto
 {
+    public Guid ParsedAnswerId { get; set; }
     public int QuestionNumber { get; set; }
     public string Question { get; set; } = string.Empty;
     public string? ExtractedText { get; set; }

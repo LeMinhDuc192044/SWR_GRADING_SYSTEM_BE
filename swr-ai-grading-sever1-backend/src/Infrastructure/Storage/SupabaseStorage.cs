@@ -38,7 +38,10 @@ public sealed class SupabaseStorage : ISupabaseStorage
             string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
         binaryContent.Headers.ContentLength = buffered.Length;
         request.Content = binaryContent;
-        request.Headers.Add("x-upsert", "false");
+        // Overwrite when the path already exists: re-uploads reuse the same object keys
+        // (e.g. submissions/{id}/images/image-1.png), and Supabase otherwise answers 400/409
+        // {"error":"Duplicate","code":"KeyAlreadyExists"}.
+        request.Headers.Add("x-upsert", "true");
         using var response = await _httpClient.SendAsync(request, ct);
         await EnsureSuccessAsync(response, "upload");
     }
