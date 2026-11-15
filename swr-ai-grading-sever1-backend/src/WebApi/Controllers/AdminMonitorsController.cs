@@ -13,8 +13,6 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/admin/monitors")]
-[Route("api/manager/monitors")]
 [Route("api/monitors")]
 public sealed class AdminMonitorsController : ControllerBase
 {
@@ -43,8 +41,6 @@ public sealed class AdminMonitorsController : ControllerBase
     /// Tạo tài khoản monitor từ file Excel; mỗi tài khoản trả về mật khẩu được tạo.
     /// </summary>
     [HttpPost("import-excel")]
-    [Authorize(Roles = "Admin")]
-    [Consumes("multipart/form-data")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
     {

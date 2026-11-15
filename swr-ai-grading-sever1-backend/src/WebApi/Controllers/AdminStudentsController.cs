@@ -13,7 +13,6 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/admin/students")]
 [Route("api/students")]
 public sealed class AdminStudentsController : ControllerBase
 {
@@ -42,7 +41,6 @@ public sealed class AdminStudentsController : ControllerBase
     /// Upload file Excel chứa danh sách sinh viên để tạo tài khoản tự động và gửi thông tin về email sinh viên.
     /// </summary>
     [HttpPost("import-excel")]
-    [Authorize(Roles = "Admin")]
     [Consumes("multipart/form-data")]
     [Authorize(Roles = "Examiner")]
     public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken ct)
