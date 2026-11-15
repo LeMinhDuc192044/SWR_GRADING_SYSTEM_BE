@@ -46,7 +46,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Examiner")]
     public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateExaminationRequest request,
@@ -78,7 +78,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Examiner")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(id, ct);
