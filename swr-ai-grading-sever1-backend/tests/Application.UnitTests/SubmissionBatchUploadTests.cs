@@ -471,5 +471,82 @@ public class SubmissionBatchUploadTests
         var assignment = await db.Assignments.SingleAsync();
         Assert.Equal(AssignmentStatus.IN_PROGRESS, assignment.Status);
     }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_ExamSessionBundle_ProcessesEachStudentFolderIndependently()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, _, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        byte[] Inner(string text) => BuildZip(("BaiLam.docx", CreateRealDocxBytes(text)));
+
+        var bundle = BuildZip(
+            ("SWR302_ROOM_101/SE180001_1/SE180001_1.zip", Inner("Bai lam SV1")),
+            ("SWR302_ROOM_101/SE180002/SE180002.zip", Inner("Bai lam SV2")),
+            ("SWR302_ROOM_101/SE180002_2/SE180002_2.zip", Inner("Bai lam SV2 lan 2")),
+            ("SWR302_ROOM_101/SE189999/SE189999.zip", Inner("Ngoai phong thi")),
+            ("SWR302_ROOM_101/anonymous/BaiLam.zip", Inner("Khong co ma")),
+            ("SWR302_ROOM_101/readme.txt", Encoding.UTF8.GetBytes("junk in root")),
+            ("__MACOSX/._junk", Encoding.UTF8.GetBytes("mac junk"))
+        );
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
+        var result = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SWR302_ROOM_101.zip", bundle)],
+            examinerId,
+            sessionId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(5, result.Data!.TotalUploaded);
+        Assert.Equal(2, result.Data.TotalSucceeded);
+        Assert.Contains(result.Data.Submissions, s => s.IsSuccess && s.StudentCode == "SE180001" && s.FolderName == "SE180001_1");
+        Assert.Contains(result.Data.Submissions, s => s.IsSuccess && s.StudentCode == "SE180002");
+        Assert.Contains(result.Data.Submissions, s => s.ErrorCode == "DUPLICATE_STUDENT_FOLDER" && s.FolderName == "SE180002_2");
+        Assert.Contains(result.Data.Submissions, s => s.ErrorCode == "STUDENT_NOT_IN_SESSION" && s.StudentCode == "SE189999");
+        Assert.Contains(result.Data.Submissions, s => s.ErrorCode == "STUDENT_CODE_NOT_FOUND_IN_NAME" && s.FolderName == "anonymous");
+    }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_BundleArchiveNamedForAnotherStudent_ReturnsMismatch()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, _, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        var bundle = BuildZip(
+            ("SWR302_ROOM_101/SE180001/SE180002.zip", BuildZip(("BaiLam.docx", CreateRealDocxBytes("Sai ma")))));
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
+        var result = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("SWR302_ROOM_101.zip", bundle)],
+            examinerId,
+            sessionId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Data!.TotalSucceeded);
+        Assert.Equal("STUDENT_CODE_MISMATCH", result.Data.Submissions[0].ErrorCode);
+    }
+
+    [Fact]
+    public async Task UploadSubmissionsAsync_BundleForAnotherExamSession_ReturnsFolderMismatch()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (sessionId, examinerId, questionId, _, _, _) = await SeedExamRoomAsync(db);
+        var (storage, gemini, _) = CreateMocks(questionId);
+
+        var bundle = BuildZip(
+            ("WRONG_ROOM_999/SE180001/SE180001.zip", BuildZip(("BaiLam.docx", CreateRealDocxBytes("Bai lam")))));
+
+        var service = new SubmissionService(db, storage.Object, gemini.Object, new Mock<IImageUrlProvider>().Object);
+        var result = await service.UploadSubmissionsAsync(
+            [new InMemoryDocumentFile("WRONG_ROOM_999.zip", bundle)],
+            examinerId,
+            sessionId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Data!.TotalSucceeded);
+        Assert.Equal("EXAM_SESSION_FOLDER_MISMATCH", result.Data.Submissions[0].ErrorCode);
+    }
 }
 

@@ -15,6 +15,7 @@ public class AiModel
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
+
     [Required]
     [MaxLength(500)]
     [Column("api_key")]

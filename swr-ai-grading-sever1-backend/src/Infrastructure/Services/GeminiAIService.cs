@@ -1,12 +1,14 @@
 using System.Text;
 using System.Text.Json;
+using Application.Common;
 using Application.DTOs.GradingDiaries;
 using Application.Interfaces;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using Domain.Entities;
 using IronOcr;
-using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
+using Application.Common.Interfaces;
 using System.Xml.Linq;
 using System.Text.RegularExpressions;
 
@@ -15,19 +17,12 @@ namespace Infrastructure.Services;
 public sealed class GeminiAIService : IGeminiAIService
 {
     private readonly HttpClient _httpClient;
-    private readonly string _apiKey;
-    private readonly string _model;
+    private readonly IApplicationDbContext _db;
 
-    public GeminiAIService(HttpClient httpClient, IConfiguration configuration)
+    public GeminiAIService(HttpClient httpClient, IApplicationDbContext db)
     {
         _httpClient = httpClient;
-        _apiKey = configuration["GEMINI_API_KEY"]
-            ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? string.Empty;
-
-        _model = configuration["GEMINI_MODEL"]
-            ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-3-flash-preview";
+        _db = db;
     }
 
     public async Task<string> ExtractTextFromDocxAsync(Stream docxStream, CancellationToken ct = default)
@@ -437,10 +432,34 @@ public sealed class GeminiAIService : IGeminiAIService
     private static string TruncateForLog(string value, int maxLength)
         => value.Length <= maxLength ? value : value[..maxLength] + "… (đã rút gọn)";
 
+    private sealed record ActiveAiModel(string Name, string ApiKey);
+
+    /// <summary>
+    /// The model and API key come from the AiModel row that is enabled (status = true).
+    /// AiModelService keeps exactly one model enabled at a time.
+    /// </summary>
+    private async Task<ActiveAiModel> ResolveActiveModelAsync(CancellationToken ct)
+    {
+        var active = await _db.AiModels.AsNoTracking()
+            .Where(model => model.Status)
+            .OrderBy(model => model.Name)
+            .Select(model => new { model.Name, model.ApiKey })
+            .FirstOrDefaultAsync(ct);
+
+        if (active is null)
+            throw new InvalidOperationException(
+                "Chưa có AI model nào được bật. Hãy bật một model trong /api/ai-models trước khi sử dụng AI.");
+
+        if (string.IsNullOrWhiteSpace(active.ApiKey))
+            throw new InvalidOperationException(
+                $"AI model '{active.Name}' chưa có API key. Cập nhật API key cho model này trong /api/ai-models.");
+
+        return new ActiveAiModel(active.Name.Trim(), active.ApiKey.Trim());
+    }
+
     private async Task<string> GenerateJsonResponseAsync(string prompt, List<DocxImageDto>? images, CancellationToken ct, float temperature)
     {
-        if (string.IsNullOrWhiteSpace(_apiKey))
-            throw new InvalidOperationException("GEMINI_API_KEY chưa được cấu hình trong biến môi trường hoặc .env.");
+        var activeModel = await ResolveActiveModelAsync(ct);
 
         var partsList = new List<object> { new { text = prompt } };
         if (images is not null)
@@ -470,14 +489,15 @@ public sealed class GeminiAIService : IGeminiAIService
         HttpResponseMessage response = null!;
         string responseBody = string.Empty;
         var success = false;
-        foreach (var currentModel in new[] { _model, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.5-flash-lite" })
+        // Tried in order when the selected model is not available for the configured API key.
+        foreach (var currentModel in new[] { activeModel.Name }.Concat(SupportedAiModels.Names).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             for (var attempt = 1; attempt <= 5; attempt++)
             {
                 using var request = new HttpRequestMessage(
                     HttpMethod.Post,
                     $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:generateContent");
-                request.Headers.Add("x-goog-api-key", _apiKey);
+                request.Headers.Add("x-goog-api-key", activeModel.ApiKey);
                 request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
                 response = await _httpClient.SendAsync(request, ct);
                 responseBody = await response.Content.ReadAsStringAsync(ct);
@@ -515,14 +535,14 @@ public sealed class GeminiAIService : IGeminiAIService
                 responseBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) ||
                 responseBody.Contains("quota", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException("Hệ thống AI đã vượt quá hạn mức yêu cầu hoặc hết token API (Google Gemini Quota Exceeded / Rate Limit 429). Vui lòng thử lại sau vài phút hoặc thay thế GEMINI_API_KEY.");
+                throw new InvalidOperationException($"Hệ thống AI đã vượt quá hạn mức yêu cầu hoặc hết token API (Google Gemini Quota Exceeded / Rate Limit 429). Vui lòng thử lại sau vài phút hoặc bật một AI model khác trong /api/ai-models (model hiện tại: {activeModel.Name}).");
             }
 
             if (response?.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
                 response?.StatusCode == System.Net.HttpStatusCode.Forbidden ||
                 responseBody.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException("Khóa GEMINI_API_KEY không hợp lệ hoặc không có quyền truy cập mô hình này.");
+                throw new InvalidOperationException($"Khóa API của AI model '{activeModel.Name}' không hợp lệ hoặc không có quyền truy cập mô hình này.");
             }
 
             throw new InvalidOperationException($"Lỗi gọi Gemini API (Status: {response?.StatusCode}): {responseBody}");

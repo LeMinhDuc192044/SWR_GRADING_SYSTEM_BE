@@ -43,6 +43,13 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasIndex(staff => staff.StaffCode)
             .IsUnique();
 
+        // One API key belongs to one AI model row; rows without a key are exempt.
+        builder.Entity<AiModel>()
+            .HasIndex(model => model.ApiKey)
+            .IsUnique()
+            .HasFilter("api_key <> ''")
+            .HasDatabaseName("ix_ai_models_api_key");
+
         builder.Entity<StudentSemester>()
             .HasKey(studentSemester => new { studentSemester.StudentId, studentSemester.SemesterId });
 

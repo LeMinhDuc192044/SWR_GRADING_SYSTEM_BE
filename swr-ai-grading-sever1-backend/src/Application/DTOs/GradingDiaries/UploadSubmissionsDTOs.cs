@@ -20,7 +20,12 @@ public sealed class UploadedSubmissionSummaryDTO
     public string Status { get; set; } = string.Empty;
     public bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? ErrorCode { get; set; }
     public bool IsReplaced { get; set; }
+
+    // Set for exam-session bundle uploads: the parsed student code and the folder it came from.
+    public string? StudentCode { get; set; }
+    public string? FolderName { get; set; }
 }
 
 public sealed class UploadSubmissionsResultDTO

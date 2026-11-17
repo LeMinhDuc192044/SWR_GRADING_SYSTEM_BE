@@ -47,7 +47,7 @@ internal static class SubmissionArchive
         Content? Content,
         IReadOnlyList<string> StudentHints);
 
-    private sealed record RawEntry(
+    internal sealed record RawEntry(
         string RelativePath,
         string FileName,
         string Extension,
@@ -63,6 +63,26 @@ internal static class SubmissionArchive
     {
         return ReadPackagesRecursive(archiveStream, archiveFileName, depth: 0, inheritedHints: []);
     }
+
+    /// <summary>
+    /// Raw entries of an archive, used to detect an exam-session bundle before the
+    /// regular per-file pipeline runs.
+    /// </summary>
+    public static IReadOnlyList<RawEntry> ReadEntries(Stream archiveStream)
+        => ExtractRawEntries(archiveStream);
+
+    public static bool IsArchiveExtension(string extension)
+        => ArchiveExtensions.Contains(extension);
+
+    /// <summary>
+    /// A bundle is an archive that holds an archive inside a student folder, i.e. an entry
+    /// with at least three path segments such as root/exam-folder/SE192044/SE192044_1.rar.
+    /// Flat archives and single-student archives keep the existing behaviour.
+    /// </summary>
+    public static bool IsExamSessionBundle(IReadOnlyList<RawEntry> entries)
+        => entries.Any(entry =>
+            ArchiveExtensions.Contains(entry.Extension) &&
+            entry.RelativePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Length >= 3);
 
     public static string TryExtractDocxPlainText(byte[]? docxBytes)
     {
