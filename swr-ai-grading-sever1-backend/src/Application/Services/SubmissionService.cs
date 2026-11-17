@@ -35,7 +35,9 @@ public sealed class SubmissionService : ISubmissionService
     {
         var summaries = new List<UploadedSubmissionSummaryDTO>();
         var session = examinationSessionId.HasValue
-            ? await _db.ExaminationSessions.AsNoTracking().FirstOrDefaultAsync(item => item.ExaminationSessionId == examinationSessionId.Value, ct)
+            ? await _db.ExaminationSessions.AsNoTracking()
+                .Include(item => item.Examination).ThenInclude(examination => examination.Semester)
+                .FirstOrDefaultAsync(item => item.ExaminationSessionId == examinationSessionId.Value, ct)
             : await ResolveDefaultSessionAsync(ct);
         var sessionId = session?.ExaminationSessionId;
         var paperSetId = session?.PaperSetId ?? (await _db.PaperSets.AsNoTracking().Where(p => p.PaperSetId != Guid.Empty).OrderByDescending(p => p.PaperSetId).FirstOrDefaultAsync(ct))?.PaperSetId;
@@ -73,6 +75,17 @@ public sealed class SubmissionService : ISubmissionService
 
         foreach (var file in files)
         {
+            // Exam-session bundle: root folder -> student folders -> one inner archive per student.
+            var bundleSummaries = await TryProcessExamSessionBundleAsync(
+                file, session, staff.Id, questions, students, roomStudentIds.Count > 0, ct);
+
+            if (bundleSummaries is not null)
+            {
+                summaries.AddRange(bundleSummaries);
+                continue;
+            }
+
+            // Everything else keeps the existing behaviour.
             foreach (var package in await ExtractPackagesFromFileAsync(file, ct))
             {
                 var summary = await ProcessPackageAsync(package, sessionId!.Value, staff.Id, questions, students, ct);
@@ -88,6 +101,264 @@ public sealed class SubmissionService : ISubmissionService
             Submissions = summaries
         });
     }
+
+    // ------------------------------------------------------------ exam-session bundle
+
+    /// <summary>
+    /// Returns null when the uploaded file is not an exam-session bundle, so the caller
+    /// falls back to the existing flat / single-student pipeline.
+    /// </summary>
+    private async Task<IReadOnlyList<UploadedSubmissionSummaryDTO>?> TryProcessExamSessionBundleAsync(
+        IDocumentFile file,
+        ExaminationSession session,
+        Guid staffId,
+        IReadOnlyList<Question> questions,
+        IReadOnlyList<Student> students,
+        bool hasRoster,
+        CancellationToken ct)
+    {
+        if (!SubmissionArchive.IsArchiveExtension(Path.GetExtension(file.FileName)))
+            return null;
+
+        byte[] bytes;
+        using (var buffer = new MemoryStream())
+        {
+            await file.CopyToAsync(buffer, ct);
+            bytes = buffer.ToArray();
+        }
+
+        IReadOnlyList<SubmissionArchive.RawEntry> entries;
+        try
+        {
+            using var archiveStream = new MemoryStream(bytes, writable: false);
+            entries = SubmissionArchive.ReadEntries(archiveStream);
+        }
+        catch
+        {
+            // A broken archive is reported by the regular pipeline with its original message.
+            return null;
+        }
+
+        if (entries.Count == 0 || !SubmissionArchive.IsExamSessionBundle(entries))
+            return null;
+
+        var results = new List<UploadedSubmissionSummaryDTO>();
+
+        // The bundle normally sits inside one exam-session folder.
+        var topSegments = entries
+            .Select(entry => entry.RelativePath.Split('/', StringSplitOptions.RemoveEmptyEntries)[0])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var rootFolder = topSegments.Count == 1 && entries.All(entry => entry.RelativePath.Contains('/'))
+            ? topSegments[0]
+            : string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(rootFolder) && !MatchesExaminationSessionFolder(rootFolder, session))
+        {
+            results.Add(BundleFailure(
+                file.FileName,
+                rootFolder,
+                null,
+                "EXAM_SESSION_FOLDER_MISMATCH",
+                $"Folder '{rootFolder}' does not match examination session '{session.ExaminationCode}'."));
+            return results;
+        }
+
+        // Student folders are the first segment below the root folder; files directly in the
+        // root are junk for this layout. Folders are handled in sorted order so duplicates are stable.
+        var studentFolders = entries
+            .Select(entry => new
+            {
+                Entry = entry,
+                Relative = rootFolder.Length == 0
+                    ? entry.RelativePath
+                    : entry.RelativePath[(rootFolder.Length + 1)..]
+            })
+            .Where(item => item.Relative.Contains('/'))
+            .GroupBy(item => item.Relative.Split('/')[0], StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (studentFolders.Count == 0)
+        {
+            results.Add(BundleFailure(
+                file.FileName, rootFolder, null, "NO_STUDENT_FOLDERS",
+                "The exam-session bundle does not contain any student folder."));
+            return results;
+        }
+
+        var processedCodes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var folder in studentFolders)
+        {
+            var folderName = folder.Key;
+            var folderEntries = folder.Select(item => item.Entry).ToList();
+
+            try
+            {
+                // 1. Student code from the folder name, else from the inner archive name.
+                if (!StudentCodeParser.TryExtract(folderName, out var folderCode))
+                {
+                    var innerArchive = folderEntries.FirstOrDefault(entry =>
+                        SubmissionArchive.IsArchiveExtension(entry.Extension));
+
+                    if (innerArchive is null ||
+                        !StudentCodeParser.TryExtract(
+                            Path.GetFileNameWithoutExtension(innerArchive.FileName), out folderCode))
+                    {
+                        results.Add(BundleFailure(
+                            file.FileName, folderName, null, "STUDENT_CODE_NOT_FOUND_IN_NAME",
+                            $"No student code found in folder name '{folderName}'."));
+                        continue;
+                    }
+                }
+
+                folderCode = StudentCodeParser.Normalize(folderCode);
+
+                // 2. Duplicate student folder within the same bundle.
+                if (processedCodes.TryGetValue(folderCode, out var firstFolder))
+                {
+                    results.Add(BundleFailure(
+                        file.FileName, folderName, folderCode, "DUPLICATE_STUDENT_FOLDER",
+                        $"Student code {folderCode} appears in more than one folder: '{firstFolder}' and '{folderName}'."));
+                    continue;
+                }
+
+                processedCodes[folderCode] = folderName;
+
+                // 3. The student must exist and belong to this examination session's roster.
+                var student = students.FirstOrDefault(item =>
+                    item.StudentCode.Equals(folderCode, StringComparison.OrdinalIgnoreCase));
+
+                if (student is null)
+                {
+                    var existsInDatabase = await _db.Students.AsNoTracking()
+                        .AnyAsync(item => item.StudentCode.ToUpper() == folderCode && !item.IsDeleted, ct);
+
+                    if (existsInDatabase && hasRoster)
+                    {
+                        results.Add(BundleFailure(
+                            file.FileName, folderName, folderCode, "STUDENT_NOT_IN_SESSION",
+                            $"Student code {folderCode} is not in this examination session."));
+                    }
+                    else
+                    {
+                        results.Add(BundleFailure(
+                            file.FileName, folderName, folderCode, "STUDENT_NOT_FOUND",
+                            $"Student code {folderCode} does not exist."));
+                    }
+
+                    continue;
+                }
+
+                // 4. Exactly one inner archive per student folder.
+                var innerArchives = folderEntries
+                    .Where(entry => SubmissionArchive.IsArchiveExtension(entry.Extension))
+                    .ToList();
+
+                if (innerArchives.Count == 0)
+                {
+                    results.Add(BundleFailure(
+                        file.FileName, folderName, folderCode, "NO_SUBMISSION_ARCHIVE",
+                        $"Folder '{folderName}' does not contain a .zip or .rar submission."));
+                    continue;
+                }
+
+                if (innerArchives.Count > 1)
+                {
+                    results.Add(BundleFailure(
+                        file.FileName, folderName, folderCode, "MULTIPLE_SUBMISSION_ARCHIVES",
+                        $"Folder '{folderName}' contains {innerArchives.Count} archives; exactly one is required."));
+                    continue;
+                }
+
+                var inner = innerArchives[0];
+
+                // 5. The inner archive must not name a different student.
+                if (StudentCodeParser.TryExtract(
+                        Path.GetFileNameWithoutExtension(inner.FileName), out var innerCode) &&
+                    !string.Equals(
+                        StudentCodeParser.Normalize(innerCode), folderCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    results.Add(BundleFailure(
+                        file.FileName, folderName, folderCode, "STUDENT_CODE_MISMATCH",
+                        $"Folder '{folderName}' holds an archive for student {innerCode}."));
+                    continue;
+                }
+
+                // 6. Hand the inner archive to the existing pipeline, hinted with the clean code only.
+                using var innerStream = new MemoryStream(inner.Data, writable: false);
+                var packages = SubmissionArchive.ReadPackages(innerStream, inner.FileName);
+
+                foreach (var package in packages)
+                {
+                    var hinted = package with
+                    {
+                        StudentHints = [folderCode],
+                        DisplayFileName = $"{folderName}/{package.DisplayFileName}"
+                    };
+
+                    var summary = await ProcessPackageAsync(
+                        hinted, session.ExaminationSessionId, staffId, questions, students, ct);
+
+                    summary.StudentCode = folderCode;
+                    summary.FolderName = folderName;
+                    results.Add(summary);
+                }
+            }
+            catch (Exception exception)
+            {
+                // One broken student folder must never stop the others.
+                results.Add(BundleFailure(
+                    file.FileName, folderName, null, "STUDENT_FOLDER_FAILED", exception.Message));
+            }
+        }
+
+        return results;
+    }
+
+    private static UploadedSubmissionSummaryDTO BundleFailure(
+        string fileName, string folderName, string? studentCode, string errorCode, string message) => new()
+    {
+        SubmissionFile = string.IsNullOrWhiteSpace(folderName) ? fileName : $"{fileName}/{folderName}",
+        FolderName = folderName,
+        StudentCode = studentCode,
+        ErrorCode = errorCode,
+        IsSuccess = false,
+        ErrorMessage = message
+    };
+
+    private static bool MatchesExaminationSessionFolder(string folderName, ExaminationSession session)
+    {
+        var normalizedFolder = NormalizeForComparison(folderName);
+        if (normalizedFolder.Length == 0)
+            return true;
+
+        var candidates = new[]
+        {
+            session.ExaminationCode,
+            session.Examination?.Name,
+            session.Examination?.Semester?.SemesterCode,
+            session.Examination?.Semester?.Name
+        };
+
+        var normalizedCandidates = candidates
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Select(candidate => NormalizeForComparison(candidate!))
+            .Where(candidate => candidate.Length > 0)
+            .ToList();
+
+        if (normalizedCandidates.Count == 0)
+            return true;
+
+        return normalizedCandidates.Any(candidate =>
+            normalizedFolder.Contains(candidate, StringComparison.Ordinal) ||
+            candidate.Contains(normalizedFolder, StringComparison.Ordinal));
+    }
+
+    private static string NormalizeForComparison(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     private static async Task<IReadOnlyList<SubmissionArchive.ExtractedPackage>> ExtractPackagesFromFileAsync(
         IDocumentFile file,
@@ -476,6 +747,7 @@ public sealed class SubmissionService : ISubmissionService
     private async Task<ExaminationSession?> ResolveDefaultSessionAsync(CancellationToken ct)
     {
         return await _db.ExaminationSessions.AsNoTracking()
+            .Include(item => item.Examination).ThenInclude(examination => examination.Semester)
             .Where(item => item.PaperSetId.HasValue)
             .OrderByDescending(item => item.StartDate)
             .ThenByDescending(item => item.StartTime)
