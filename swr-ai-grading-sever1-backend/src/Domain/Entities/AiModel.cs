@@ -15,8 +15,7 @@ public class AiModel
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
-    // Uniqueness is enforced by the filtered unique index in AppDbContext, so rows
-    // without a key (not configured yet) are allowed.
+
     [Required]
     [MaxLength(500)]
     [Column("api_key")]
