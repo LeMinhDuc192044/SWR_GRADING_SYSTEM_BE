@@ -120,6 +120,20 @@ public sealed class SubmissionService : ISubmissionService
         if (!SubmissionArchive.IsArchiveExtension(Path.GetExtension(file.FileName)))
             return null;
 
+        // Reject oversized archives before buffering the whole file into memory.
+        if (file.Length > SubmissionArchive.MaxArchiveBytes)
+        {
+            return
+            [
+                new UploadedSubmissionSummaryDTO
+                {
+                    SubmissionFile = file.FileName,
+                    IsSuccess = false,
+                    ErrorMessage = "Submission file exceeds the 500 MB limit."
+                }
+            ];
+        }
+
         byte[] bytes;
         using (var buffer = new MemoryStream())
         {
@@ -225,8 +239,6 @@ public sealed class SubmissionService : ISubmissionService
                     continue;
                 }
 
-                processedCodes[folderCode] = folderName;
-
                 // 3. The student must exist and belong to this examination session's roster.
                 var student = students.FirstOrDefault(item =>
                     item.StudentCode.Equals(folderCode, StringComparison.OrdinalIgnoreCase));
@@ -286,6 +298,10 @@ public sealed class SubmissionService : ISubmissionService
                         $"Folder '{folderName}' holds an archive for student {innerCode}."));
                     continue;
                 }
+
+                // From here on the folder is valid: only now does it claim the student code,
+                // so an invalid folder can never block a valid folder for the same student.
+                processedCodes[folderCode] = folderName;
 
                 // 6. Hand the inner archive to the existing pipeline, hinted with the clean code only.
                 using var innerStream = new MemoryStream(inner.Data, writable: false);

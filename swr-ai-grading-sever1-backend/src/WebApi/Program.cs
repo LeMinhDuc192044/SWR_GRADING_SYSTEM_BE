@@ -131,6 +131,7 @@ builder.Services.AddScoped<ISubmissionGradingService, SubmissionGradingService>(
 builder.Services.AddScoped<IApplicationService, ApplicationService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IStudentCodeExcelReader, StudentCodeExcelReader>();
+builder.Services.AddScoped<IAiModelService, AiModelService>();
 // Smtp Settings
 builder.Services.Configure<SmtpSettings>(options =>
 {
@@ -154,6 +155,10 @@ builder.Services.AddHttpClient<SupabaseStorage>();
 builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>
 {
     client.Timeout = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddHttpClient<IAiModelKeyValidator, GeminiApiKeyValidator>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 builder.Services.AddScoped<ISupabaseStorage>(sp =>
@@ -247,6 +252,21 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// A fresh database gets the default selectable AI models; the API key is stored in the
+// database so the grading pipeline only reads AiModel rows afterwards.
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var aiModelService = scope.ServiceProvider.GetRequiredService<IAiModelService>();
+        await aiModelService.EnsureDefaultModelsAsync(Environment.GetEnvironmentVariable("GEMINI_API_KEY"));
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogWarning(exception, "Không thể khởi tạo danh sách AI model mặc định.");
+    }
+}
 
 app.UseMiddleware<WebApi.Common.GlobalExceptionMiddleware>();
 

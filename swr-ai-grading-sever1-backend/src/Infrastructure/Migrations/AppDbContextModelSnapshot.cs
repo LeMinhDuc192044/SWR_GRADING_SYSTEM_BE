@@ -55,6 +55,11 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("ModelId");
 
+                    b.HasIndex("ApiKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ai_models_api_key")
+                        .HasFilter("api_key <> ''");
+
                     b.ToTable("ai_models");
                 });
 
