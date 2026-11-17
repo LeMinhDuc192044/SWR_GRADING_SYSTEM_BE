@@ -17,6 +17,10 @@ public sealed class MonitorResponseDto
     public bool IsActive { get; set; }
     public DateTime CreatedDay { get; set; }
     public DateTime UpdatedDay { get; set; }
+    public bool IsBusy { get; set; }
+    public string WorkingStatus { get; set; } = "AVAILABLE";
+    public int InProgressCount { get; set; }
+    public int CompletedCount { get; set; }
     public int AssignedCount { get; set; }
 }
 
@@ -28,4 +32,5 @@ public sealed class MonitorFilterRequest : PagedRequest
 {
     public string? Search { get; set; }
     public bool? IsActive { get; set; }
+    public bool? IsBusy { get; set; }
 }
