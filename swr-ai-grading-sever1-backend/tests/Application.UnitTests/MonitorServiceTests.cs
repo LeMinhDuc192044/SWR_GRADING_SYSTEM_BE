@@ -212,7 +212,7 @@ public class MonitorServiceTests
     }
 
     [Fact]
-    public async Task GetPagedMonitorsAsync_AssignedCount_ReturnsCorrectCount()
+    public async Task GetPagedMonitorsAsync_WorkloadAndAvailability_ReturnsCorrectStatusAndCounts()
     {
         var (db, m1, m2, _, _, _, _) = await SeedAsync();
         var service = CreateService(db);
@@ -223,7 +223,96 @@ public class MonitorServiceTests
         var monitor1Dto = result.Data!.Items.First(x => x.Id == m1.Id);
         var monitor2Dto = result.Data!.Items.First(x => x.Id == m2.Id);
 
+        // m1 có 1 IN_PROGRESS và 1 COMPLETED -> Bận
+        Assert.True(monitor1Dto.IsBusy);
+        Assert.Equal("BUSY", monitor1Dto.WorkingStatus);
+        Assert.Equal(1, monitor1Dto.InProgressCount);
+        Assert.Equal(1, monitor1Dto.CompletedCount);
         Assert.Equal(2, monitor1Dto.AssignedCount);
+
+        // m2 không có assignment nào -> Rảnh
+        Assert.False(monitor2Dto.IsBusy);
+        Assert.Equal("AVAILABLE", monitor2Dto.WorkingStatus);
+        Assert.Equal(0, monitor2Dto.InProgressCount);
+        Assert.Equal(0, monitor2Dto.CompletedCount);
         Assert.Equal(0, monitor2Dto.AssignedCount);
+    }
+
+    [Fact]
+    public async Task GetPagedMonitorsAsync_FilterByIsBusy_ReturnsOnlyMatchingMonitors()
+    {
+        var (db, m1, m2, inactiveMonitor, _, _, _) = await SeedAsync();
+        var service = CreateService(db);
+
+        // Lọc danh sách bận (isBusy = true)
+        var busyResult = await service.GetPagedMonitorsAsync(new MonitorFilterRequest { IsBusy = true });
+        Assert.True(busyResult.IsSuccess);
+        Assert.Single(busyResult.Data!.Items);
+        Assert.Equal(m1.Id, busyResult.Data.Items[0].Id);
+        Assert.True(busyResult.Data.Items[0].IsBusy);
+        Assert.Equal("BUSY", busyResult.Data.Items[0].WorkingStatus);
+
+        // Lọc danh sách rảnh (isBusy = false)
+        var availableResult = await service.GetPagedMonitorsAsync(new MonitorFilterRequest { IsBusy = false });
+        Assert.True(availableResult.IsSuccess);
+        Assert.Equal(2, availableResult.Data!.Items.Count); // m2 và inactiveMonitor
+        Assert.All(availableResult.Data.Items, item =>
+        {
+            Assert.False(item.IsBusy);
+            Assert.Equal("AVAILABLE", item.WorkingStatus);
+            Assert.Equal(0, item.InProgressCount);
+        });
+        Assert.Contains(availableResult.Data.Items, x => x.Id == m2.Id);
+    }
+
+    [Fact]
+    public async Task GetPagedMonitorsAsync_MonitorWithOnlyCompletedOrGradedAssignments_IsMarkedAvailable()
+    {
+        var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var m3 = new Staff
+        {
+            Id = Guid.NewGuid(),
+            StaffCode = "MON99",
+            FullName = "Completed Only Monitor",
+            Email = "mon99@fpt.edu.vn",
+            Role = UserRole.Monitor,
+            IsActive = true,
+            IsDeleted = false,
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+        db.Staff.Add(m3);
+
+        db.Assignments.AddRange(
+            new Assignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                StaffId = m3.Id,
+                SubmissionId = Guid.NewGuid(),
+                GradingSessionId = Guid.NewGuid(),
+                Status = AssignmentStatus.COMPLETED
+            },
+            new Assignment
+            {
+                AssignmentId = Guid.NewGuid(),
+                StaffId = m3.Id,
+                SubmissionId = Guid.NewGuid(),
+                GradingSessionId = Guid.NewGuid(),
+                Status = AssignmentStatus.GRADED
+            }
+        );
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var result = await service.GetPagedMonitorsAsync(new MonitorFilterRequest());
+
+        Assert.True(result.IsSuccess);
+        var dto = Assert.Single(result.Data!.Items);
+        Assert.Equal(m3.Id, dto.Id);
+        Assert.False(dto.IsBusy);
+        Assert.Equal("AVAILABLE", dto.WorkingStatus);
+        Assert.Equal(0, dto.InProgressCount);
+        Assert.Equal(2, dto.CompletedCount);
+        Assert.Equal(2, dto.AssignedCount);
     }
 }

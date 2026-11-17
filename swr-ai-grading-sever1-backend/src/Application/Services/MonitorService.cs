@@ -267,6 +267,18 @@ public sealed class MonitorService : IMonitorService
             query = query.Where(s => s.IsActive == request.IsActive.Value);
         }
 
+        if (request.IsBusy.HasValue)
+        {
+            if (request.IsBusy.Value)
+            {
+                query = query.Where(s => s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS));
+            }
+            else
+            {
+                query = query.Where(s => !s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS));
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var term = request.Search.Trim().ToLower();
@@ -293,7 +305,11 @@ public sealed class MonitorService : IMonitorService
                 IsActive = s.IsActive,
                 CreatedDay = s.CreatedDay,
                 UpdatedDay = s.UpdatedDay,
-                AssignedCount = s.Assignments.Count
+                InProgressCount = s.Assignments.Count(a => a.Status == AssignmentStatus.IN_PROGRESS),
+                CompletedCount = s.Assignments.Count(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED),
+                AssignedCount = s.Assignments.Count,
+                IsBusy = s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS),
+                WorkingStatus = s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS) ? "BUSY" : "AVAILABLE"
             })
             .ToListAsync(ct);
 
