@@ -21,14 +21,30 @@ public sealed class AiModelService : IAiModelService
         _keyValidator = keyValidator;
     }
 
-    public async Task<Result<IReadOnlyList<AiModelDTO>>> GetAllAsync(CancellationToken ct = default)
+    public async Task<Result<PagedResult<AiModelDTO>>> GetAllAsync(PagedRequest request, CancellationToken ct = default)
     {
-        var models = await _db.AiModels.AsNoTracking()
+        request ??= new PagedRequest();
+        var page = request.Page < 1 ? 1 : request.Page;
+        var pageSize = request.PageSize < 1 ? 10 : Math.Min(request.PageSize, 100);
+
+        var query = _db.AiModels.AsNoTracking();
+        var totalCount = await query.CountAsync(ct);
+
+        var models = await query
             .OrderByDescending(model => model.Status)
             .ThenBy(model => model.Name)
+            .ThenBy(model => model.ModelId)   // tie-breaker: stable pages when names repeat
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
 
-        return Result<IReadOnlyList<AiModelDTO>>.Success(models.Select(ToDTO).ToList());
+        return Result<PagedResult<AiModelDTO>>.Success(new PagedResult<AiModelDTO>
+        {
+            Items = models.Select(ToDTO).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 
     public async Task<Result<AiModelDTO>> GetByIdAsync(Guid modelId, CancellationToken ct = default)

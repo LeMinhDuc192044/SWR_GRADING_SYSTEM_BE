@@ -5,7 +5,7 @@ namespace Application.Interfaces;
 
 public interface IAiModelService
 {
-    Task<Result<IReadOnlyList<AiModelDTO>>> GetAllAsync(CancellationToken ct = default);
+    Task<Result<PagedResult<AiModelDTO>>> GetAllAsync(PagedRequest request, CancellationToken ct = default);
     Task<Result<AiModelDTO>> GetByIdAsync(Guid modelId, CancellationToken ct = default);
     Task<Result<AiModelDTO>> CreateAsync(CreateAiModelRequest request, CancellationToken ct = default);
     Task<Result<AiModelDTO>> UpdateAsync(Guid modelId, UpdateAiModelRequest request, CancellationToken ct = default);
