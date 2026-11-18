@@ -23,19 +23,30 @@ public sealed class AiModelsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
+    public async Task<IActionResult> GetAll([FromQuery] PagedRequest request, CancellationToken ct)
     {
-        var result = await _service.GetAllAsync(ct);
+        var result = await _service.GetAllAsync(request, ct);
         return result.ToActionResult(this);
     }
 
-    /// <summary>
-    /// GET /api/ai-models/supported
-    /// Danh sách tên model AI mà hệ thống hỗ trợ (dùng cho ô chọn khi tạo model mới).
-    /// </summary>
     [HttpGet("supported")]
-    public IActionResult GetSupportedModels()
-        => Ok(ApiResponse.Success(SupportedAiModels.Names));
+    public IActionResult GetSupportedModels([FromQuery] PagedRequest request)
+    {
+        request ??= new PagedRequest();
+        var page = request.Page < 1 ? 1 : request.Page;
+        var pageSize = request.PageSize < 1 ? 10 : Math.Min(request.PageSize, 100);
+
+        var all = SupportedAiModels.Names.ToList();
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Ok(ApiResponse.Success(new PagedResult<string>
+        {
+            Items = items,
+            TotalCount = all.Count,
+            Page = page,
+            PageSize = pageSize
+        }));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
