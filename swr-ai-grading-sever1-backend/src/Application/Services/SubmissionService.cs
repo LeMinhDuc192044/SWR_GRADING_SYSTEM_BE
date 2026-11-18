@@ -708,6 +708,29 @@ public sealed class SubmissionService : ISubmissionService
                         ExaminationId = s.ExaminationSession.Examination.ExaminationId,
                         Name = s.ExaminationSession.Examination.Name
                     },
+                GradingHistories = s.SubmissionGradingHistories
+                    .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                    .OrderByDescending(h => h.CreatedAt)
+                    .Select(h => new StudentSubmissionGradingHistoryDTO
+                    {
+                        HistoryId = h.HistoryId,
+                        EvaluationType = h.EvaluationType,
+                        GradingRound = h.GradingRound,
+                        TotalScore = h.TotalScore,
+                        GeneralFeedback = h.GeneralFeedback,
+                        CreatedAt = h.CreatedAt,
+                        Details = h.Details
+                            .OrderBy(d => d.DetailId)
+                            .Select(d => new StudentSubmissionItemDetailDTO
+                            {
+                                DetailId = d.DetailId,
+                                Score = d.Score,
+                                Comment = d.Comment,
+                                ParsedAnswerId = d.ParsedAnswerId
+                            })
+                            .ToList()
+                    })
+                    .ToList(),
                 CreatedDate = s.CreatedDate,
                 UpdatedDate = s.UpdatedDate
             })
