@@ -40,9 +40,8 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     public async Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default)
     {
-        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
-        if (!access.IsSuccess)
-            return Result<SubmissionGradingOverviewDTO>.Failure(access.Error!, access.ErrorCode);
+        if (!await SubmissionExistsAsync(submissionId, ct))
+            return Result<SubmissionGradingOverviewDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
 
         var allHistories = await HistoriesWithDetails().AsNoTracking()
             .Where(h => h.SubmissionId == submissionId)
@@ -50,10 +49,15 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             .ThenBy(h => h.CreatedAt)
             .ToListAsync(ct);
 
-        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
-        var visibleHistories = cycle.IsBlindRegrade
-            ? FilterHistoriesForCurrentCycle(allHistories, cycle)
-            : allHistories;
+        // Reading results is open to any signed-in user; the blind-regrade view only applies
+        // to the monitor assigned to the current round.
+        var visibleHistories = allHistories;
+        if (await FindAssignmentAsync(submissionId, currentUserId, ct) is { } assignment)
+        {
+            var cycle = await ResolveCycleContextAsync(submissionId, assignment, allHistories, ct);
+            if (cycle.IsBlindRegrade)
+                visibleHistories = FilterHistoriesForCurrentCycle(allHistories, cycle);
+        }
 
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
@@ -67,9 +71,8 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     public async Task<Result<SubmissionGradingOverviewDTO>> GetOfficialHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default)
     {
-        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
-        if (!access.IsSuccess)
-            return Result<SubmissionGradingOverviewDTO>.Failure(access.Error!, access.ErrorCode);
+        if (!await SubmissionExistsAsync(submissionId, ct))
+            return Result<SubmissionGradingOverviewDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
 
         var officialHistories = await HistoriesWithDetails().AsNoTracking()
             .Where(h => h.SubmissionId == submissionId
@@ -547,13 +550,20 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         }).ToList();
     }
 
-    private async Task<Result<Assignment>> GetAssignmentAsync(Guid submissionId, Guid staffId, CancellationToken ct)
-    {
-        var assignment = await _db.Assignments
+    private Task<bool> SubmissionExistsAsync(Guid submissionId, CancellationToken ct)
+        => _db.StudentSubmissions.AsNoTracking().AnyAsync(s => s.SubmissionId == submissionId, ct);
+
+    private Task<Assignment?> FindAssignmentAsync(Guid submissionId, Guid staffId, CancellationToken ct)
+        => _db.Assignments
             .Include(a => a.GradingSession)
             .Where(a => a.SubmissionId == submissionId && a.StaffId == staffId)
             .OrderByDescending(a => a.AssignedDate)
             .FirstOrDefaultAsync(ct);
+
+    // Grading actions still require the caller to be the monitor assigned to this submission.
+    private async Task<Result<Assignment>> GetAssignmentAsync(Guid submissionId, Guid staffId, CancellationToken ct)
+    {
+        var assignment = await FindAssignmentAsync(submissionId, staffId, ct);
 
         return assignment is null
             ? Result<Assignment>.Failure("You are not assigned to grade this submission.", "FORBIDDEN")
