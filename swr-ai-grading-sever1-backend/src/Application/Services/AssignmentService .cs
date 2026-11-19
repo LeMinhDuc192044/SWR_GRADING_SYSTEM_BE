@@ -6,6 +6,7 @@ using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Application.Services;
 
@@ -13,13 +14,19 @@ public sealed class AssignmentService : IAssignmentService
 {
     private readonly IApplicationDbContext _db;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<AssignmentService> _logger;
 
     public AssignmentService(
         IApplicationDbContext db,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IEmailService emailService,
+        ILogger<AssignmentService> logger)
     {
         _db = db;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     // =========================================================
@@ -229,7 +236,29 @@ public sealed class AssignmentService : IAssignmentService
         }
 
         _db.Assignments.AddRange(created);
+
+        // An assigned submission is now waiting to be graded.
+        var assignedSubmissionIds = created
+            .Select(a => a.SubmissionId)
+            .Distinct()
+            .ToList();
+
+        var assignedSubmissions = await _db.StudentSubmissions
+            .Where(s => assignedSubmissionIds.Contains(s.SubmissionId))
+            .ToListAsync(ct);
+
+        foreach (var submission in assignedSubmissions)
+        {
+            if (submission.Status >= SubmissionStatus.Grading)
+                continue;
+
+            submission.Status = SubmissionStatus.Grading;
+            submission.UpdatedDate = now;
+        }
+
         await _unitOfWork.SaveChangesAsync(ct);
+
+        await SendAssignmentEmailsAsync(gradingSession, created, ct);
 
         return Result<IReadOnlyList<AssignmentDTO>>.Success(
             created.Select(Map).ToList());
@@ -450,7 +479,9 @@ public sealed class AssignmentService : IAssignmentService
         Guid currentGradingSessionId,
         CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(VietnamTime.Now);
+        // Vietnam local date: VietnamTime.Now is UTC, so using it here would keep
+        // a monitor busy on the day after the deadline until 07:00 local time.
+        var today = VietnamTime.Today;
 
         var busy = await _db.Assignments
             .AsNoTracking()
@@ -491,6 +522,153 @@ public sealed class AssignmentService : IAssignmentService
         return assignment.Status is
             AssignmentStatus.COMPLETED or
             AssignmentStatus.GRADED;
+    }
+
+    // =========================================================
+    // SEND ASSIGNMENT NOTIFICATION EMAILS
+    // Each monitor receives an email with the number of assigned
+    // submissions and the student codes they have to grade.
+    // A failing SMTP call must never fail the assignment request.
+    // =========================================================
+
+    private async Task SendAssignmentEmailsAsync(
+        GradingSession gradingSession,
+        IReadOnlyList<Assignment> created,
+        CancellationToken ct)
+    {
+        if (created.Count == 0)
+            return;
+
+        var monitorIds = created
+            .Select(a => a.StaffId)
+            .Distinct()
+            .ToList();
+
+        var monitors = await _db.Staff
+            .AsNoTracking()
+            .Where(s => monitorIds.Contains(s.Id))
+            .Select(s => new
+            {
+                s.Id,
+                s.StaffCode,
+                s.FullName,
+                s.Email
+            })
+            .ToListAsync(ct);
+
+        if (monitors.Count == 0)
+            return;
+
+        var submissionIds = created
+            .Select(a => a.SubmissionId)
+            .Distinct()
+            .ToList();
+
+        var studentCodes = await _db.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => submissionIds.Contains(s.SubmissionId))
+            .Select(s => new
+            {
+                s.SubmissionId,
+                s.Student.StudentCode
+            })
+            .ToDictionaryAsync(s => s.SubmissionId, s => s.StudentCode, ct);
+
+        var examinationSession = await _db.ExaminationSessions
+            .AsNoTracking()
+            .Where(e => e.ExaminationSessionId == gradingSession.ExaminationSessionId)
+            .Select(e => new
+            {
+                e.ExaminationCode,
+                ExaminationName = e.Examination.Name,
+                SemesterName = e.Examination.Semester.Name,
+                SemesterCode = e.Examination.Semester.SemesterCode
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var deadlineText = gradingSession.Deadline is { } deadline
+            ? deadline.ToString("dd/MM/yyyy")
+            : "Không có";
+
+        foreach (var monitor in monitors)
+        {
+            var codes = created
+                .Where(a => a.StaffId == monitor.Id)
+                .Select(a => studentCodes.TryGetValue(a.SubmissionId, out var code) ? code : null)
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Select(code => code!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (codes.Count == 0)
+                continue;
+
+            var body = BuildAssignmentEmail(
+                monitor.FullName,
+                gradingSession.Title,
+                examinationSession?.ExaminationName ?? string.Empty,
+                examinationSession?.ExaminationCode ?? string.Empty,
+                examinationSession?.SemesterName ?? string.Empty,
+                deadlineText,
+                codes);
+
+            try
+            {
+                await _emailService.SendEmailAsync(
+                    monitor.Email,
+                    $"[SWR Grading System] Phân công chấm bài - {gradingSession.Title}",
+                    body,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Lỗi khi gửi email phân công chấm bài cho monitor {Email}",
+                    monitor.Email);
+            }
+        }
+    }
+
+    private static string BuildAssignmentEmail(
+        string monitorName,
+        string gradingSessionTitle,
+        string examinationName,
+        string examinationCode,
+        string semesterName,
+        string deadline,
+        IReadOnlyList<string> studentCodes)
+    {
+        var studentList = string.Join(
+            Environment.NewLine,
+            studentCodes.Select(code =>
+                $"<li style=\"margin: 4px 0;\"><code style=\"background: #edf2f7; padding: 2px 6px; border-radius: 4px;\">{code}</code></li>"));
+
+        return $@"
+        <div style=""font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e1e4e8; border-radius: 8px; overflow: hidden;"">
+            <div style=""background-color: #2b6cb0; padding: 20px; text-align: center; color: white;"">
+                <h2 style=""margin: 0;"">Hệ Thống Chấm Điểm Tự Động SWR</h2>
+            </div>
+            <div style=""padding: 24px;"">
+                <p>Xin chào <strong>{monitorName}</strong>,</p>
+                <p>Bạn đã được phân công chấm bài cho phiên chấm điểm <strong>{gradingSessionTitle}</strong>. Dưới đây là thông tin chi tiết:</p>
+                <div style=""background-color: #f7fafc; border-left: 4px solid #2b6cb0; padding: 15px; margin: 20px 0;"">
+                    <p style=""margin: 5px 0;""><strong>Bài thi:</strong> {examinationName} ({examinationCode})</p>
+                    <p style=""margin: 5px 0;""><strong>Học kỳ:</strong> {semesterName}</p>
+                    <p style=""margin: 5px 0;""><strong>Hạn chấm bài:</strong> {deadline}</p>
+                    <p style=""margin: 5px 0;""><strong>Số bài phải chấm:</strong> {studentCodes.Count}</p>
+                </div>
+                <p><strong>Danh sách mã sinh viên cần chấm:</strong></p>
+                <ul style=""margin: 10px 0; padding-left: 20px;"">{studentList}</ul>
+                <p>Vui lòng đăng nhập vào hệ thống và hoàn thành việc chấm bài trước thời hạn.</p>
+                <br/>
+                <p>Trân trọng,<br/><strong>Ban Quản Trị Hệ Thống SWR</strong></p>
+            </div>
+            <div style=""background-color: #edf2f7; padding: 12px; text-align: center; font-size: 12px; color: #718096;"">
+                Đây là email tự động. Vui lòng không trả lời trực tiếp email này.
+            </div>
+        </div>";
     }
 
     // =========================================================

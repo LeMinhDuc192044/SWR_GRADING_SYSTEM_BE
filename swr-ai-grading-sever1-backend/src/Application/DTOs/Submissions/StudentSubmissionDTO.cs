@@ -22,7 +22,7 @@ public sealed class StudentSubmissionDTO
     public StudentSubmissionSemesterDTO? Semester { get; set; }
     public StudentSubmissionExaminationDTO? Examination { get; set; }
 
-    /// <summary>Only OFFICIAL grading histories, each with its item details.</summary>
+    /// <summary>All grading histories of any status, each with its item details.</summary>
     public IReadOnlyList<StudentSubmissionGradingHistoryDTO> GradingHistories { get; set; } = [];
 
     public DateTime CreatedDate { get; set; }
@@ -32,6 +32,8 @@ public sealed class StudentSubmissionDTO
 public sealed class StudentSubmissionGradingHistoryDTO
 {
     public Guid HistoryId { get; set; }
+    public SubmissionGradingHistoryStatus Status { get; set; }
+    public string StatusName => Status.ToString();
     public EvaluationType EvaluationType { get; set; }
     public string EvaluationTypeName => EvaluationType.ToString();
     public int GradingRound { get; set; }

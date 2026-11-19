@@ -185,6 +185,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         };
 
         _db.SubmissionGradingHistories.Add(history);
+        await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.AI_Graded, ct);
         await _unitOfWork.SaveChangesAsync(ct);
         return await ReloadAsync(history.HistoryId, ct);
     }
@@ -437,6 +438,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         };
 
         _db.SubmissionGradingHistories.Add(history);
+        await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Lecturer_Reviewed, ct);
         await _unitOfWork.SaveChangesAsync(ct);
         return await ReloadAsync(history.HistoryId, ct);
     }
@@ -475,6 +477,9 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var assignment = access.Data!;
         assignment.Status = AssignmentStatus.GRADED;
         assignment.UpdatedDate = VietnamTime.Now;
+
+        // The official grade closes the grading of this submission.
+        await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Final, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
         return await ReloadAsync(history.HistoryId, ct);
@@ -548,6 +553,19 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             ExtractedImageUrl = _imageUrls.BuildParsedAnswerImageUrl(p.ParsedAnswerId, p.ExtractedImageUrl),
             CreatedAt = p.CreatedAt
         }).ToList();
+    }
+
+    // The submission status only moves forward, so a later grading step cannot undo an earlier one.
+    private async Task AdvanceSubmissionStatusAsync(Guid submissionId, SubmissionStatus status, CancellationToken ct)
+    {
+        var submission = await _db.StudentSubmissions
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
+
+        if (submission is null || submission.Status >= status)
+            return;
+
+        submission.Status = status;
+        submission.UpdatedDate = VietnamTime.Now;
     }
 
     private Task<bool> SubmissionExistsAsync(Guid submissionId, CancellationToken ct)

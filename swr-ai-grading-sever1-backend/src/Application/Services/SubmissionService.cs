@@ -709,11 +709,11 @@ public sealed class SubmissionService : ISubmissionService
                         Name = s.ExaminationSession.Examination.Name
                     },
                 GradingHistories = s.SubmissionGradingHistories
-                    .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
                     .OrderByDescending(h => h.CreatedAt)
                     .Select(h => new StudentSubmissionGradingHistoryDTO
                     {
                         HistoryId = h.HistoryId,
+                        Status = h.Status,
                         EvaluationType = h.EvaluationType,
                         GradingRound = h.GradingRound,
                         TotalScore = h.TotalScore,
