@@ -6,6 +6,8 @@ using Application.UnitTests.Helpers;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace Application.UnitTests;
 
@@ -183,7 +185,11 @@ public class AssignmentServiceTests
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (_, regradeSessionId, _, monitor2Id, monitor3Id, sub1Id, sub2Id) = await SeedScenarioAsync(db);
-        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
+        var service = new AssignmentService(
+            db,
+            new TestDbUnitOfWork(db),
+            new Mock<IEmailService>().Object,
+            NullLogger<AssignmentService>.Instance);
 
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
         {
@@ -205,7 +211,11 @@ public class AssignmentServiceTests
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
-        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
+        var service = new AssignmentService(
+            db,
+            new TestDbUnitOfWork(db),
+            new Mock<IEmailService>().Object,
+            NullLogger<AssignmentService>.Instance);
 
         // 2 monitors x 2 submissions requested, but only 2 submissions exist.
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
@@ -226,7 +236,11 @@ public class AssignmentServiceTests
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (_, regradeSessionId, monitor1Id, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
-        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
+        var service = new AssignmentService(
+            db,
+            new TestDbUnitOfWork(db),
+            new Mock<IEmailService>().Object,
+            NullLogger<AssignmentService>.Instance);
 
         // 3 monitors but only 2 submissions: at least one monitor would get nothing.
         var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
@@ -244,7 +258,11 @@ public class AssignmentServiceTests
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
         var (_, regradeSessionId, monitor1Id, monitor2Id, monitor3Id, sub1Id, _) = await SeedScenarioAsync(db);
-        var service = new AssignmentService(db, new TestDbUnitOfWork(db));
+        var service = new AssignmentService(
+            db,
+            new TestDbUnitOfWork(db),
+            new Mock<IEmailService>().Object,
+            NullLogger<AssignmentService>.Instance);
 
         // Assign Sub1 cho Monitor 2 ở đợt phúc khảo
         var created = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
