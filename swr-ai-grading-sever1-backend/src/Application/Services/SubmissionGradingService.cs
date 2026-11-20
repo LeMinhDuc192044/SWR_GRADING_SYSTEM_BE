@@ -599,12 +599,25 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         IReadOnlyList<SubmissionGradingHistory> allHistories,
         CancellationToken ct)
     {
+        // Blind grading belongs to a regrade round only. A monitor who is handed the same
+        // submission again inside the same grading session (reassignment / hand-over) must still
+        // see that session's histories, otherwise the grading screen shows an empty list.
+        var currentGradingSession = currentAssignment.GradingSession;
+        var isRegradeSession = currentGradingSession?.Type == GradingSessionType.ReGrade
+            || IsRegradeSessionTitle(currentGradingSession?.Title);
+
+        if (!isRegradeSession)
+            return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
+
+        // Assignments from the same session are hand-overs, not a previous grading round.
         var otherAssignments = await _db.Assignments.AsNoTracking()
             .Include(a => a.GradingSession)
-            .Where(a => a.SubmissionId == submissionId && a.AssignmentId != currentAssignment.AssignmentId)
+            .Where(a => a.SubmissionId == submissionId
+                        && a.AssignmentId != currentAssignment.AssignmentId
+                        && a.GradingSessionId != currentAssignment.GradingSessionId)
             .ToListAsync(ct);
 
-        var isRegradeByTitle = IsRegradeSessionTitle(currentAssignment.GradingSession?.Title);
+        var isRegradeByTitle = isRegradeSession;
         var currentSessionCreated = currentAssignment.GradingSession?.CreatedDate;
         var hasPriorAssignment = otherAssignments.Any(a =>
             a.AssignedDate < currentAssignment.AssignedDate
