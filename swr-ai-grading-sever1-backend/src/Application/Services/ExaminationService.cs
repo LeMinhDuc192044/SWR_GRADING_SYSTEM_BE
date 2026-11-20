@@ -76,18 +76,13 @@ public class ExaminationService : IExaminationService
 
     public async Task<Result<ExaminationDTO>> CreateAsync(CreateExaminationRequest request, CancellationToken ct = default)
     {
-        var validation = Validate(request.Name, request.ExaminationType, request.DurationMinutes, request.BeforeTimeMinutes);
+        var validation = Validate(request.Name, request.ExaminationType);
         if (validation is not null)
             return Result<ExaminationDTO>.Failure(validation, "INVALID_EXAMINATION");
 
         var semester = await _semesterRepository.GetByIdAsync(request.SemesterId, ct);
         if (semester is null)
             return Result<ExaminationDTO>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
-
-        if (request.StartDate < semester.StartDate || request.StartDate > semester.EndDate)
-            return Result<ExaminationDTO>.Failure(
-                "Examination start date must be within the semester dates.",
-                "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
         var requestedPaperSetIds = GetRequestedPaperSetIds(request.PaperSetIds, null);
 
@@ -104,8 +99,6 @@ public class ExaminationService : IExaminationService
         var endDate = request.EndDate == default ? request.StartDate : request.EndDate;
         if (endDate < request.StartDate)
             return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
-        if (endDate < semester.StartDate || endDate > semester.EndDate)
-            return Result<ExaminationDTO>.Failure("Examination end date must be within the semester dates.", "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
         var now = VietnamTime.Now;
         var examination = new Examination
@@ -152,11 +145,6 @@ public class ExaminationService : IExaminationService
         var endDate = request.EndDate ?? (examination.EndDate == default ? startDate : examination.EndDate);
         if (endDate < startDate)
             return Result<ExaminationDTO>.Failure("Examination end date must be on or after start date.", "INVALID_EXAMINATION");
-        if (startDate < semester.StartDate || startDate > semester.EndDate ||
-            endDate < semester.StartDate || endDate > semester.EndDate)
-            return Result<ExaminationDTO>.Failure(
-                "Examination dates must be within the semester dates.",
-                "EXAMINATION_DATE_OUT_OF_SEMESTER");
 
         var linkedMaterials = await _paperSetRepository.FindAsync(
             material => material.ExaminationId == examination.ExaminationId && !material.IsDeleted,
@@ -279,16 +267,12 @@ public class ExaminationService : IExaminationService
         } while (true);
     }
 
-    private static string? Validate(string name, ExaminationType type, int duration, int beforeTime)
+    private static string? Validate(string name, ExaminationType type)
     {
         if (string.IsNullOrWhiteSpace(name))
             return "Examination name is required.";
         if (!Enum.IsDefined(type))
             return "Invalid examination type.";
-        if (duration <= 0)
-            return "Duration must be greater than 0.";
-        if (beforeTime < 0)
-            return "Before-time minutes cannot be negative.";
         return null;
     }
 
