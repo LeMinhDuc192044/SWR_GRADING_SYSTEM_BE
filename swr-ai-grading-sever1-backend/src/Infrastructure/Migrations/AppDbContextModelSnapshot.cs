@@ -705,8 +705,14 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("HistoryId");
 
-                    b.HasIndex("SubmissionId", "EvaluationType")
-                        .IsUnique();
+                    b.HasIndex("SubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submission_grading_histories_one_official")
+                        .HasFilter("\"Status\" = 1");
+
+                    b.HasIndex("SubmissionId", "GradingRound")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submission_grading_histories_submission_round");
 
                     b.ToTable("submission_grading_histories");
                 });
