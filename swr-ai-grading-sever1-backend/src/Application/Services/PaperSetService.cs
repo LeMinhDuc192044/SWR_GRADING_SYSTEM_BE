@@ -196,7 +196,8 @@ public sealed class PaperSetService : IPaperSetService
         {
             var questionResult = ParseQuestionDocument(material.Questions, material.Files);
             if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
-            if (!ValidateQuestions(questionResult.Data!).IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+            var batchValidation = ValidateQuestions(questionResult.Data!);
+            if (!batchValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(batchValidation.Error!, batchValidation.ErrorCode);
             parsedMaterials.Add((material, questionResult.Data!));
         }
         var created = new List<PaperSet>();
@@ -403,6 +404,11 @@ public sealed class PaperSetService : IPaperSetService
                 Rubric = matchedRubric
             };
 
+            if (q.Title.Trim().Length > MaxQuestionTitleLength)
+            {
+                result.Errors.Add($"Tiêu đề câu {qNum} dài {q.Title.Trim().Length} ký tự, vượt quá {MaxQuestionTitleLength} ký tự cho phép.");
+            }
+
             if (matchedRubric is null)
             {
                 if (rubrics.Count > 0)
@@ -589,14 +595,23 @@ public sealed class PaperSetService : IPaperSetService
     }
 
     private async Task<PaperSet?> FindAsync(Guid id, CancellationToken ct) { var material = await _repository.GetByIdAsync(id, ct); return material is null || material.IsDeleted ? null : material; }
+    // Matches the length of questions.title in the database.
+    internal const int MaxQuestionTitleLength = 255;
+
     private static Result ValidateQuestions(IReadOnlyList<CreateQuestionInput> questions)
     {
-        return questions.Count > 0 && questions.All(question =>
-            !string.IsNullOrWhiteSpace(question.Title) &&
-            !string.IsNullOrWhiteSpace(question.Content) &&
-            question.Point >= 0)
+        if (questions.Count == 0 || !questions.All(question =>
+                !string.IsNullOrWhiteSpace(question.Title) &&
+                !string.IsNullOrWhiteSpace(question.Content) &&
+                question.Point >= 0))
+            return Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+
+        var tooLong = questions.FirstOrDefault(question => question.Title.Trim().Length > MaxQuestionTitleLength);
+        return tooLong is null
             ? Result.Success()
-            : Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+            : Result.Failure(
+                $"Question title must not exceed {MaxQuestionTitleLength} characters: '{tooLong.Title.Trim()[..50]}...'.",
+                "QUESTION_TITLE_TOO_LONG");
     }
 
     private static Result ValidateFiles(IEnumerable<MaterialFileUpload> files)
