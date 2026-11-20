@@ -288,4 +288,94 @@ public class AssignmentServiceTests
         Assert.True(validReassign.IsSuccess);
         Assert.Equal(monitor3Id, validReassign.Data!.StaffId);
     }
+    private static AssignmentService CreateService(TestDbContext db) => new(
+        db,
+        new TestDbUnitOfWork(db),
+        new Mock<IEmailService>().Object,
+        NullLogger<AssignmentService>.Instance);
+
+    private static async Task LinkMonitorToStudentOfAsync(TestDbContext db, Guid submissionId, Guid monitorId)
+    {
+        var submission = await db.StudentSubmissions.Include(s => s.ExaminationSession).SingleAsync(s => s.SubmissionId == submissionId);
+        db.StudentSemesters.Add(new StudentSemester
+        {
+            StudentId = submission.StudentId,
+            SemesterId = submission.ExaminationSession!.SemesterId,
+            StaffId = monitorId
+        });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateAsync_Round1MonitorInRegrade_OnlyGetsSubmissionsTheyHaveNotGraded()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, _, _, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+
+        // Monitor 1 graded Sub 1 in round 1, so only Sub 2 may go to them in the regrade.
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor1Id],
+            SubmissionPerMonitor = 2
+        });
+
+        Assert.True(result.IsSuccess);
+        var assignment = Assert.Single(result.Data!);
+        Assert.Equal(sub2Id, assignment.SubmissionId);
+        Assert.DoesNotContain(result.Data!, a => a.SubmissionId == sub1Id);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SkipsStudentsLinkedToTheMonitor()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor2Id);
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 2
+        });
+
+        Assert.True(result.IsSuccess);
+        var assignment = Assert.Single(result.Data!);
+        Assert.Equal(sub1Id, assignment.SubmissionId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_MonitorWithNoEligibleSubmission_ReturnsSpecificFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, _, _, _, sub2Id) = await SeedScenarioAsync(db);
+        // Sub 1 was graded by Monitor 1 in round 1 and Sub 2's student is linked to Monitor 1.
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor1Id);
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor1Id],
+            SubmissionPerMonitor = 1
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_NO_ELIGIBLE_SUBMISSION", result.ErrorCode);
+        Assert.Empty(db.Assignments.Where(a => a.GradingSessionId == regradeSessionId));
+    }
+
+    [Fact]
+    public async Task CreateAsync_SpreadsWorkloadEvenly()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id, monitor3Id],
+            SubmissionPerMonitor = 5
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!, a => a.StaffId == monitor2Id);
+        Assert.Single(result.Data!, a => a.StaffId == monitor3Id);
+    }
 }

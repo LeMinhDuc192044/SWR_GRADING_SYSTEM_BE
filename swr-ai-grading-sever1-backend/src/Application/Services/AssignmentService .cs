@@ -171,6 +171,7 @@ public sealed class AssignmentService : IAssignmentService
         }
 
         var examinationSessionId = gradingSession.ExaminationSessionId;
+        var semesterId = gradingSession.ExaminationSession.SemesterId;
 
         // Submissions that already have a monitor in this grading session are ignored.
         var assignedIds = await _db.Assignments
@@ -179,61 +180,103 @@ public sealed class AssignmentService : IAssignmentService
             .Select(a => a.SubmissionId)
             .ToListAsync(ct);
 
-        var required = monitorIds.Count * request.SubmissionPerMonitor;
-
-        var candidateIds = await _db.StudentSubmissions
+        var candidates = await _db.StudentSubmissions
             .AsNoTracking()
             .Where(s => s.ExaminationSessionId == examinationSessionId
                         && !assignedIds.Contains(s.SubmissionId))
             .OrderBy(s => s.CreatedDate)
-            .Select(s => s.SubmissionId)
-            .Take(required)
+            .Select(s => new { s.SubmissionId, s.StudentId })
             .ToListAsync(ct);
 
-        // Fewer submissions than requested is fine as long as every monitor still gets at
-        // least one; the workload is then spread as evenly as possible between them.
-        if (candidateIds.Count < monitorIds.Count)
+        var candidateStudentIds = candidates.Select(c => c.StudentId).Distinct().ToList();
+        var candidateSubmissionIds = candidates.Select(c => c.SubmissionId).ToList();
+
+        // Same rules as a manual reassignment (UpdateAsync): a monitor never grades a
+        // student they are linked to in this semester, nor a submission they already
+        // graded in another grading session (e.g. round 1 before a regrade).
+        var linkedPairs = (await _db.StudentSemesters
+                .AsNoTracking()
+                .Where(ss => ss.SemesterId == semesterId
+                             && candidateStudentIds.Contains(ss.StudentId)
+                             && monitorIds.Contains(ss.StaffId))
+                .Select(ss => new { ss.StudentId, ss.StaffId })
+                .ToListAsync(ct))
+            .Select(x => (x.StudentId, x.StaffId))
+            .ToHashSet();
+
+        var previousPairs = (await _db.Assignments
+                .AsNoTracking()
+                .Where(a => candidateSubmissionIds.Contains(a.SubmissionId)
+                            && a.GradingSessionId != gradingSessionId
+                            && monitorIds.Contains(a.StaffId))
+                .Select(a => new { a.SubmissionId, a.StaffId })
+                .ToListAsync(ct))
+            .Select(x => (x.SubmissionId, x.StaffId))
+            .ToHashSet();
+
+        bool IsEligible(Guid monitorId, Guid submissionId, Guid studentId)
+            => !linkedPairs.Contains((studentId, monitorId))
+               && !previousPairs.Contains((submissionId, monitorId));
+
+        // Round-robin: each monitor in turn takes the oldest submission it may grade,
+        // so workloads differ by at most one unless the rules above leave no choice.
+        var allocation = monitorIds.ToDictionary(id => id, _ => new List<Guid>());
+        var taken = new HashSet<Guid>();
+        var progressed = true;
+
+        while (progressed)
         {
-            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
-                $"Not enough unassigned submissions in this grading session: " +
-                $"{monitorIds.Count} monitor(s) need at least one submission each, " +
-                $"{candidateIds.Count} available.",
-                "INSUFFICIENT_SUBMISSIONS");
-        }
+            progressed = false;
 
-        var baseCount = candidateIds.Count / monitorIds.Count;
-        var extra = candidateIds.Count % monitorIds.Count;
-
-        var now = VietnamTime.Now;
-        var created = new List<Assignment>();
-        var offset = 0;
-
-        for (var index = 0; index < monitorIds.Count; index++)
-        {
-            var monitorId = monitorIds[index];
-
-            // The first monitors take one extra submission, so counts differ by at most one.
-            var count = baseCount + (index < extra ? 1 : 0);
-
-            var submissionsForMonitor = candidateIds
-                .Skip(offset)
-                .Take(count);
-
-            offset += count;
-
-            foreach (var submissionId in submissionsForMonitor)
+            foreach (var monitorId in monitorIds)
             {
-                created.Add(new Assignment
-                {
-                    GradingSessionId = gradingSessionId,
-                    SubmissionId = submissionId,
-                    StaffId = monitorId,
-                    Status = AssignmentStatus.IN_PROGRESS,
-                    AssignedDate = now,
-                    UpdatedDate = now
-                });
+                if (allocation[monitorId].Count >= request.SubmissionPerMonitor)
+                    continue;
+
+                var next = candidates.FirstOrDefault(c =>
+                    !taken.Contains(c.SubmissionId)
+                    && IsEligible(monitorId, c.SubmissionId, c.StudentId));
+
+                if (next is null)
+                    continue;
+
+                allocation[monitorId].Add(next.SubmissionId);
+                taken.Add(next.SubmissionId);
+                progressed = true;
             }
         }
+
+        // Fewer submissions than requested is fine as long as every monitor still gets at
+        // least one.
+        var emptyMonitorId = monitorIds.FirstOrDefault(id => allocation[id].Count == 0);
+        if (emptyMonitorId != Guid.Empty)
+        {
+            var hasEligible = candidates.Any(c => IsEligible(emptyMonitorId, c.SubmissionId, c.StudentId));
+
+            return hasEligible || candidates.Count < monitorIds.Count
+                ? Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    $"Not enough unassigned submissions in this grading session: " +
+                    $"{monitorIds.Count} monitor(s) need at least one submission each, " +
+                    $"{candidates.Count} available.",
+                    "INSUFFICIENT_SUBMISSIONS")
+                : Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    "This monitor is linked to every remaining student or already graded " +
+                    "these submissions in another grading session.",
+                    "MONITOR_NO_ELIGIBLE_SUBMISSION");
+        }
+
+        var now = VietnamTime.Now;
+        var created = monitorIds
+            .SelectMany(monitorId => allocation[monitorId].Select(submissionId => new Assignment
+            {
+                GradingSessionId = gradingSessionId,
+                SubmissionId = submissionId,
+                StaffId = monitorId,
+                Status = AssignmentStatus.IN_PROGRESS,
+                AssignedDate = now,
+                UpdatedDate = now
+            }))
+            .ToList();
 
         _db.Assignments.AddRange(created);
 
