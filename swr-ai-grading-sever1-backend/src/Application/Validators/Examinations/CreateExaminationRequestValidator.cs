@@ -23,14 +23,6 @@ public sealed class CreateExaminationRequestValidator : AbstractValidator<Create
             .Must((request, endDate) => endDate == default || endDate >= request.StartDate)
             .WithMessage("Examination end date must be on or after start date.");
 
-        RuleFor(request => request.DurationMinutes)
-            .GreaterThan(0)
-            .WithMessage("Duration must be greater than 0.");
-
-        RuleFor(request => request.BeforeTimeMinutes)
-            .GreaterThanOrEqualTo(0)
-            .WithMessage("Before-time minutes cannot be negative.");
-
         RuleFor(request => request.Status)
             .IsInEnum()
             .WithMessage("Invalid examination status.");

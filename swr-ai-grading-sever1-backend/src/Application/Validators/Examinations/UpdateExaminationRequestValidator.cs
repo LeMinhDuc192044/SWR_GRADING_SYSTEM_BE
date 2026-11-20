@@ -24,16 +24,6 @@ public sealed class UpdateExaminationRequestValidator : AbstractValidator<Update
             .Must((request, endDate) => endDate is null || endDate.Value != default)
             .WithMessage("Examination end date is required.");
 
-        RuleFor(request => request.DurationMinutes)
-            .GreaterThan(0)
-            .When(request => request.DurationMinutes.HasValue)
-            .WithMessage("Duration must be greater than 0.");
-
-        RuleFor(request => request.BeforeTimeMinutes)
-            .GreaterThanOrEqualTo(0)
-            .When(request => request.BeforeTimeMinutes.HasValue)
-            .WithMessage("Before-time minutes cannot be negative.");
-
         RuleFor(request => request.Status)
             .IsInEnum()
             .When(request => request.Status.HasValue)
