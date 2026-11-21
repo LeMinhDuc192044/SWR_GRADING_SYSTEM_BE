@@ -12,22 +12,26 @@ using WebApi.Common;
 namespace WebApi.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/submissions")]
-// [Authorize(Roles = "Examiner,Admin")]
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
+    private readonly ISubmissionGradingService _gradingService;
 
-    public SubmissionsController(ISubmissionService submissionService)
+    public SubmissionsController(
+        ISubmissionService submissionService,
+        ISubmissionGradingService gradingService)
     {
         _submissionService = submissionService;
+        _gradingService = gradingService;
     }
 
     /// <summary>
     /// FLOW 1: Upload bài làm Word (.docx), RAR (.rar) hoặc ZIP (.zip) đơn lẻ hay gói cả phòng thi.
     /// </summary>
     [HttpPost("upload")]
-    [Authorize(Roles = "Examiner")]
+    [Authorize(Roles = "Examiner,Admin")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(524_288_000)]
     public async Task<IActionResult> Upload(
@@ -82,6 +86,7 @@ public sealed class SubmissionsController : ControllerBase
     /// Lấy danh sách toàn bộ bài nộp (hỗ trợ phân trang chuẩn PagedRequest).
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Examiner,Admin,Monitor")]
     public async Task<IActionResult> GetList(
         [FromQuery] PagedRequest request,
         [FromQuery] Guid? examinationSessionId,
@@ -105,9 +110,14 @@ public sealed class SubmissionsController : ControllerBase
     /// Lấy toàn bộ bài nộp của một sinh viên kèm học kỳ (tên, mã) và tên kỳ thi.
     /// </summary>
     [HttpGet("student/{studentId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetByStudent(Guid studentId, CancellationToken ct)
     {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+
+        if (!IsElevatedRole() && userId != studentId)
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, "Bạn không có quyền xem bài thi của sinh viên khác.", "FORBIDDEN"));
+
         var result = await _submissionService.GetByStudentAsync(studentId, ct);
 
         if (result.IsSuccess)
@@ -145,23 +155,29 @@ public sealed class SubmissionsController : ControllerBase
     /// FLOW 2: Kích hoạt AI chấm điểm tự động dựa trên câu trả lời bóc tách và rubric.
     /// </summary>
     [HttpPost("{id:guid}/ai-grade")]
+    [Authorize(Roles = "Examiner,Admin,Monitor")]
     public async Task<IActionResult> AiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
-        var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
+        var gradeResult = await _gradingService.GradeWithAiAsync(id, userId, ct);
+        if (!gradeResult.IsSuccess)
+        {
+            if (gradeResult.ErrorCode == "SUBMISSION_NOT_FOUND")
+                return NotFound(ApiResponse.Failure(404, gradeResult.Error!, gradeResult.ErrorCode));
 
+            if (gradeResult.ErrorCode == "FORBIDDEN")
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, gradeResult.Error!, gradeResult.ErrorCode));
+
+            return BadRequest(ApiResponse.Failure(400, gradeResult.Error!, gradeResult.ErrorCode));
+        }
+
+        var result = await _submissionService.GetByIdAsync(id, userId, IsElevatedRole(), ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+        return Ok(ApiResponse.Success(gradeResult.Data));
     }
 
     /// <summary>
@@ -200,10 +216,20 @@ public sealed class SubmissionsController : ControllerBase
     private bool IsElevatedRole()
     {
         var discriminator = User.FindFirstValue("discriminator");
-        if (string.Equals(discriminator, "Admin", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(discriminator, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Examiner", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Manager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Monitor", StringComparison.OrdinalIgnoreCase))
             return true;
 
         var roleStr = User.FindFirstValue(ClaimTypes.Role);
-        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
+        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Examiner), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Manager), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Monitor), StringComparison.OrdinalIgnoreCase)
+            || User.IsInRole("Admin")
+            || User.IsInRole("Examiner")
+            || User.IsInRole("Manager")
+            || User.IsInRole("Monitor");
     }
 }

@@ -17,17 +17,20 @@ public sealed class SubmissionService : ISubmissionService
     private readonly ISupabaseStorage _storage;
     private readonly IGeminiAIService _gemini;
     private readonly IImageUrlProvider _imageUrls;
+    private readonly ISubmissionGradingService? _gradingService;
 
     public SubmissionService(
         IApplicationDbContext db,
         ISupabaseStorage storage,
         IGeminiAIService gemini,
-        IImageUrlProvider imageUrls)
+        IImageUrlProvider imageUrls,
+        ISubmissionGradingService? gradingService = null)
     {
         _db = db;
         _storage = storage;
         _gemini = gemini;
         _imageUrls = imageUrls;
+        _gradingService = gradingService;
     }
 
     public async Task<Result<UploadSubmissionsResultDTO>> UploadSubmissionsAsync(
@@ -636,6 +639,9 @@ public sealed class SubmissionService : ISubmissionService
         request ??= new PagedRequest();
         var query = _db.StudentSubmissions.AsNoTracking();
 
+        if (!isElevatedRole)
+            query = query.Where(s => s.StudentId == currentUserId);
+
         if (examinationSessionId.HasValue)
             query = query.Where(s => s.ExaminationSessionId == examinationSessionId.Value);
 
@@ -644,6 +650,7 @@ public sealed class SubmissionService : ISubmissionService
         var submissions = await query
             .Include(item => item.ParsedAnswers).ThenInclude(answer => answer.Question)
             .Include(item => item.SubmissionGradingHistories)
+            .Include(item => item.Student)
             .OrderByDescending(item => item.CreatedDate)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
@@ -662,9 +669,14 @@ public sealed class SubmissionService : ISubmissionService
 
     public async Task<Result<IReadOnlyList<SubmissionDetailDTO>>> GetListAsync(Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
     {
-        var submissions = await _db.StudentSubmissions.AsNoTracking()
+        var query = _db.StudentSubmissions.AsNoTracking();
+        if (!isElevatedRole)
+            query = query.Where(s => s.StudentId == currentUserId);
+
+        var submissions = await query
             .Include(item => item.ParsedAnswers).ThenInclude(answer => answer.Question)
             .Include(item => item.SubmissionGradingHistories)
+            .Include(item => item.Student)
             .OrderByDescending(item => item.CreatedDate)
             .ToListAsync(ct);
         return Result<IReadOnlyList<SubmissionDetailDTO>>.Success(submissions.Select(ToDetail).ToList());
@@ -709,6 +721,7 @@ public sealed class SubmissionService : ISubmissionService
                         Name = s.ExaminationSession.Examination.Name
                     },
                 GradingHistories = s.SubmissionGradingHistories
+                    .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
                     .OrderByDescending(h => h.CreatedAt)
                     .Select(h => new StudentSubmissionGradingHistoryDTO
                     {
@@ -744,14 +757,37 @@ public sealed class SubmissionService : ISubmissionService
         var submission = await _db.StudentSubmissions.AsNoTracking()
             .Include(item => item.ParsedAnswers).ThenInclude(answer => answer.Question)
             .Include(item => item.SubmissionGradingHistories)
+            .Include(item => item.Student)
             .FirstOrDefaultAsync(item => item.SubmissionId == submissionId, ct);
-        return submission is null
-            ? Result<SubmissionDetailDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND")
-            : Result<SubmissionDetailDTO>.Success(ToDetail(submission));
+
+        if (submission is null)
+            return Result<SubmissionDetailDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
+
+        if (!isElevatedRole && submission.StudentId != currentUserId)
+            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền xem bài làm này.", "FORBIDDEN");
+
+        return Result<SubmissionDetailDTO>.Success(ToDetail(submission));
     }
 
-    public Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
-        => GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
+    public async Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var submission = await _db.StudentSubmissions.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
+        if (submission is null)
+            return Result<SubmissionDetailDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
+
+        if (!isElevatedRole && submission.StudentId != currentUserId)
+            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền thực hiện chấm AI cho bài thi này.", "FORBIDDEN");
+
+        if (_gradingService is not null)
+        {
+            var gradeResult = await _gradingService.GradeWithAiAsync(submissionId, currentUserId, ct);
+            if (!gradeResult.IsSuccess)
+                return Result<SubmissionDetailDTO>.Failure(gradeResult.Error!, gradeResult.ErrorCode!);
+        }
+
+        return await GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
+    }
     public Task<Result<SubmissionDetailDTO>> ReviewAsync(Guid submissionId, ReviewSubmissionRequest request, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
         => GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
     public Task<Result<SubmissionDetailDTO>> ReviewAsync(Guid submissionId, decimal lecturerScore, string? comment, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
@@ -767,13 +803,48 @@ public sealed class SubmissionService : ISubmissionService
     {
         var submission = await _db.StudentSubmissions.AsNoTracking()
             .Include(item => item.SubmissionGradingHistories)
+            .Include(item => item.Application)
             .FirstOrDefaultAsync(item => item.SubmissionId == submissionId, ct);
         if (submission is null)
             return Result<SubmissionHistoryDto>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
+
+        if (!isElevatedRole && submission.StudentId != currentUserId)
+            return Result<SubmissionHistoryDto>.Failure("Bạn không có quyền xem lịch sử bài nộp này.", "FORBIDDEN");
+
         var timeline = new List<SubmissionHistoryTimelineEventDto>
         {
-            new() { Stage = "Submitted", Title = "Student submission uploaded", Timestamp = submission.CreatedDate, IsCompleted = true }
+            new() { Stage = "Submitted", Title = "Bài thi đã được nộp / tải lên hệ thống", Timestamp = submission.CreatedDate, IsCompleted = true }
         };
+
+        foreach (var history in submission.SubmissionGradingHistories.OrderBy(h => h.CreatedAt))
+        {
+            var isOfficial = history.Status == SubmissionGradingHistoryStatus.OFFICIAL;
+            if (!isElevatedRole && !isOfficial)
+                continue;
+
+            var isAi = history.EvaluationType == EvaluationType.AI;
+            timeline.Add(new SubmissionHistoryTimelineEventDto
+            {
+                Stage = isAi ? "AIGrading" : (history.GradingRound == 1 ? "LecturerGrading" : "Regrading"),
+                Title = isAi
+                    ? $"AI chấm điểm vòng {history.GradingRound} (Điểm: {history.TotalScore?.ToString("G29", CultureInfo.InvariantCulture)})"
+                    : $"Giảng viên chấm vòng {history.GradingRound} ({(isOfficial ? "Chính thức" : "Nháp")}, Điểm: {history.TotalScore?.ToString("G29", CultureInfo.InvariantCulture)})",
+                Timestamp = history.CreatedAt,
+                IsCompleted = true
+            });
+        }
+
+        if (submission.Application is not null)
+        {
+            timeline.Add(new SubmissionHistoryTimelineEventDto
+            {
+                Stage = "Appeal",
+                Title = $"Đơn phúc khảo: Trạng thái {submission.Application.Status} (Lý do: {submission.Application.reason})",
+                Timestamp = submission.Application.CreatedDay,
+                IsCompleted = submission.Application.Status == ApplicationStatus.COMPLETED
+            });
+        }
+
         return Result<SubmissionHistoryDto>.Success(new SubmissionHistoryDto
         {
             SubmissionId = submissionId,
@@ -850,7 +921,9 @@ public sealed class SubmissionService : ISubmissionService
             SubmissionFile = Path.GetFileName(submission.FileSubmissions),
             FilePath = submission.FileSubmissions,
             StudentId = submission.StudentId,
-            StudentExaminationId = Guid.Empty,
+            StudentExaminationId = submission.ExaminationSessionId ?? Guid.Empty,
+            StudentCode = submission.Student?.StudentCode ?? string.Empty,
+            StudentName = submission.Student?.FullName ?? string.Empty,
             Status = submission.Status,
             StudentAnswers = submission.ParsedAnswers.OrderBy(answer => answer.CreatedAt).Select(answer => new StudentAnswerDto
             {

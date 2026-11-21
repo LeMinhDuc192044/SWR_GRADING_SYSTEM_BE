@@ -47,10 +47,27 @@ public sealed class ApplicationService : IApplicationService
             return Result<ApplicationDTO>.Failure("Bài thi chưa được công bố điểm chính thức, không thể nộp đơn phúc khảo.", "NOT_OFFICIALLY_GRADED");
 
         var existingApp = await _db.Applications
-            .FirstOrDefaultAsync(a => a.SubmissionId == submission.SubmissionId && a.Status != ApplicationStatus.REJECTED, ct);
+            .FirstOrDefaultAsync(a => a.SubmissionId == submission.SubmissionId, ct);
 
         if (existingApp is not null)
-            return Result<ApplicationDTO>.Failure("Bài thi này đã có đơn phúc khảo đang được xử lý hoặc đã được duyệt.", "APPLICATION_ALREADY_EXISTS");
+        {
+            if (existingApp.Status == ApplicationStatus.REJECTED)
+            {
+                existingApp.reason = request.Reason.Trim();
+                existingApp.Status = ApplicationStatus.PENDING;
+                existingApp.ApprovedAt = null;
+                existingApp.UpdatedDay = DateTime.UtcNow;
+
+                // Status is a concurrency token: the UPDATE only applies while the stored status is
+                // still REJECTED, so an approval saved in between is not overwritten.
+                if (!await TrySaveAsync(ct))
+                    return StatusConflict();
+
+                return Result<ApplicationDTO>.Success(ToDto(existingApp, student, submission, officialGrading?.TotalScore));
+            }
+
+            return Result<ApplicationDTO>.Failure("Bài thi này đã có đơn phúc khảo, không thể nộp thêm đơn mới.", "APPLICATION_ALREADY_EXISTS");
+        }
 
         var now = DateTime.UtcNow;
         var application = new Domain.Entities.Application
@@ -196,15 +213,53 @@ public sealed class ApplicationService : IApplicationService
         if (application is null)
             return Result<ApplicationDTO>.Failure("Không tìm thấy đơn phúc khảo.", "APPLICATION_NOT_FOUND");
 
+        if (!Enum.IsDefined(typeof(ApplicationStatus), request.Status))
+            return Result<ApplicationDTO>.Failure("Trạng thái đơn phúc khảo không hợp lệ.", "INVALID_STATUS");
+
+        if (application.Status != request.Status)
+        {
+            var isValidTransition = (application.Status, request.Status) switch
+            {
+                (ApplicationStatus.PENDING, ApplicationStatus.APPROVED) => true,
+                (ApplicationStatus.PENDING, ApplicationStatus.REJECTED) => true,
+                (ApplicationStatus.APPROVED, ApplicationStatus.IN_PROGRESS) => true,
+                (ApplicationStatus.APPROVED, ApplicationStatus.COMPLETED) => true,
+                (ApplicationStatus.IN_PROGRESS, ApplicationStatus.COMPLETED) => true,
+                _ => false
+            };
+
+            if (!isValidTransition)
+            {
+                return Result<ApplicationDTO>.Failure(
+                    $"Không thể chuyển trạng thái đơn phúc khảo từ {application.Status} sang {request.Status}.",
+                    "INVALID_STATUS_TRANSITION");
+            }
+        }
+
+        // Completing an appeal while its regrade is still open would close the regrade cycle and
+        // leave the reopened assignment stuck (ALREADY_FINALIZED). Finalizing the regrade completes
+        // the appeal automatically; a manual completion is only accepted once that has happened.
+        if (request.Status == ApplicationStatus.COMPLETED && application.Status != ApplicationStatus.COMPLETED)
+        {
+            var cycleStart = application.ApprovedAt ?? application.UpdatedDay;
+            var regradeFinalized = application.StudentSubmission.SubmissionGradingHistories
+                .Any(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL && h.CreatedAt > cycleStart);
+            if (!regradeFinalized)
+                return Result<ApplicationDTO>.Failure(
+                    "Chỉ có thể hoàn tất đơn phúc khảo sau khi bài đã được chấm lại và chốt điểm.",
+                    "REGRADE_NOT_FINALIZED");
+        }
+
         var wasApproved = application.Status == ApplicationStatus.APPROVED;
         application.Status = request.Status;
         application.UpdatedDay = DateTime.UtcNow;
 
         // Only on the transition to APPROVED, so approving twice can't wipe a re-grade.
+        // We KEEP the existing official score visible until the regrade round is finalized.
         if (request.Status == ApplicationStatus.APPROVED && !wasApproved)
         {
-            foreach (var history in application.StudentSubmission.SubmissionGradingHistories)
-                history.Status = SubmissionGradingHistoryStatus.DRAFT;
+            // Start of the regrade cycle; grading drafts created before this point stay out of it.
+            application.ApprovedAt = application.UpdatedDay;
 
             // The monitor's assignment was GRADED: reopen it so the submission can be re-graded and finalized again.
             var assignments = await _db.Assignments
@@ -218,13 +273,33 @@ public sealed class ApplicationService : IApplicationService
             }
         }
 
-        await _db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(ct))
+            return StatusConflict();
         
         var officialScore = application.StudentSubmission.SubmissionGradingHistories
             .FirstOrDefault(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)?.TotalScore;
 
         return Result<ApplicationDTO>.Success(ToDto(application, application.Student, application.StudentSubmission, officialScore));
     }
+
+    // Saves and reports a lost race on the Status concurrency token instead of throwing.
+    private async Task<bool> TrySaveAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
+    private static Result<ApplicationDTO> StatusConflict()
+        => Result<ApplicationDTO>.Failure(
+            "Trạng thái đơn phúc khảo vừa được thay đổi bởi thao tác khác, vui lòng tải lại và thử lại.",
+            "APPLICATION_STATUS_CONFLICT");
 
     private static ApplicationDTO ToDto(
         Domain.Entities.Application app,

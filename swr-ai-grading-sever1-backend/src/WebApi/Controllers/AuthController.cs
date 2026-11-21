@@ -1,5 +1,7 @@
 using Application.DTOs.AuthDTOs;
 using Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using WebApi.Common;
 
@@ -10,10 +12,12 @@ namespace WebApi.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IWebHostEnvironment _env;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, IWebHostEnvironment env)
     {
         _authService = authService;
+        _env = env;
     }
 
     [HttpPost("login")]
@@ -26,11 +30,18 @@ public sealed class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
+        if (!_env.IsDevelopment() && !User.IsInRole("Admin"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse.Failure(StatusCodes.Status403Forbidden, "Chỉ quản trị viên mới có quyền tạo tài khoản.", "FORBIDDEN"));
+        }
+
         var result = await _authService.RegisterAsync(request, ct);
         return result.ToActionResult(this, StatusCodes.Status201Created, "Registration successful.");
     }
 
     [HttpGet("monitors")]
+    [Authorize(Roles = "Admin,Examiner,Manager")]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
         var result = await _authService.GetAllAsync(ct);

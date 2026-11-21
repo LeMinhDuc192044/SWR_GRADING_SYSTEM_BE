@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/semesters")]
-// [Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Admin,Examiner")]
 public class SemestersController : ControllerBase
 {
     private readonly ISemesterService _service;
@@ -32,7 +32,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpPost]
-    // [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Create(
         [FromBody] CreateSemesterRequest request,
         CancellationToken ct)
@@ -47,7 +47,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateSemesterRequest request,
@@ -64,7 +64,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(id, ct);
@@ -78,7 +78,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> UpdateStatus(
         Guid id,
         [FromBody] UpdateSemesterStatusRequest request,
@@ -93,6 +93,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/students")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> AddStudents(
         Guid id,
         [FromBody] List<AddStudentToSemesterRequest> requests,
@@ -117,6 +118,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/students/import-excel")]
+    [Authorize(Roles = "Admin,Examiner")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> ImportStudents(Guid id, IFormFile? file, CancellationToken ct)
     {

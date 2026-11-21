@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Application.Common;
 using Application.DTOs.Examinations;
 using Application.Interfaces;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace WebApi.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/examinations/{examinationId:guid}/sessions")]
 public sealed class ExaminationSessionsController : ControllerBase
 {
@@ -18,6 +20,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> GetAll(Guid examinationId, CancellationToken ct)
     {
         var result = await _service.GetByExaminationAsync(examinationId, ct);
@@ -25,6 +28,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpGet("{sessionId:guid}")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> GetById(Guid examinationId, Guid sessionId, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(examinationId, sessionId, ct);
@@ -42,7 +46,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpGet("~/api/examination-sessions")]
-    [Authorize]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> GetAllSessions([FromQuery] PagedRequest request, CancellationToken ct)
     {
         var result = await _service.GetPagedAsync(request, ct);
@@ -53,6 +57,14 @@ public sealed class ExaminationSessionsController : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetStudentSessions(Guid studentId, [FromQuery] PagedRequest request, CancellationToken ct)
     {
+        var isElevated = User.IsInRole("Admin") || User.IsInRole("Examiner") || User.IsInRole("Manager") || User.IsInRole("Monitor");
+        var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!isElevated && (!Guid.TryParse(currentUserId, out var uid) || uid != studentId))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse.Failure(403, "Bạn không có quyền xem lịch thi của sinh viên khác.", "FORBIDDEN"));
+        }
+
         var result = await _service.GetPagedByStudentAsync(studentId, request, ct);
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
@@ -71,7 +83,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpGet("~/api/examination-sessions/{examinationSessionId:guid}/results")]
-    [Authorize]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> GetResults(Guid examinationSessionId, CancellationToken ct)
     {
         var result = await _service.GetResultsAsync(examinationSessionId, ct);
@@ -99,6 +111,7 @@ public sealed class ExaminationSessionsController : ControllerBase
     }
 
     [HttpPost("import")]
+    [Authorize(Roles = "Admin,Examiner")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateFromExcel(
         Guid examinationId, [FromForm] CreateExaminationSessionFromExcelForm form, CancellationToken ct)
