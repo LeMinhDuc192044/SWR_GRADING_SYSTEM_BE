@@ -28,4 +28,5 @@ public interface IApplicationDbContext
     DbSet<Domain.Entities.Application> Applications { get; }
     DbSet<AiModel> AiModels { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

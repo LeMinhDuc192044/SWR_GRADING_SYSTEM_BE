@@ -70,11 +70,16 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("application_id");
 
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
                     b.Property<DateTime>("CreatedDay")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_day");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<Guid>("StudentId")
@@ -488,8 +493,8 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedDay")
@@ -705,8 +710,14 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("HistoryId");
 
-                    b.HasIndex("SubmissionId", "EvaluationType")
-                        .IsUnique();
+                    b.HasIndex("SubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submission_grading_histories_one_official")
+                        .HasFilter("\"Status\" = 1");
+
+                    b.HasIndex("SubmissionId", "GradingRound")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submission_grading_histories_submission_round");
 
                     b.ToTable("submission_grading_histories");
                 });

@@ -34,6 +34,10 @@ builder.Services.AddDatabase();
 // Daily status updates (semester/examination closed, examination session ended)
 builder.Services.AddHostedService<WebApi.BackgroundServices.StatusUpdateBackgroundService>();
 
+// Background Email Queue + Processor
+builder.Services.AddSingleton<Application.Common.Interfaces.IEmailBackgroundQueue, Infrastructure.Services.EmailBackgroundQueue>();
+builder.Services.AddHostedService<WebApi.BackgroundServices.EmailBackgroundService>();
+
 // Unit of Work + Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();

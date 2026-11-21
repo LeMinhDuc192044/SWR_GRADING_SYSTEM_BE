@@ -12,7 +12,7 @@ namespace WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/ai-models")]
-[Authorize(Roles = "Admin,Manager")]
+[Authorize(Roles = "Admin")]
 public sealed class AiModelsController : ControllerBase
 {
     private readonly IAiModelService _service;

@@ -12,9 +12,9 @@ namespace Application.UnitTests;
 public class ApplicationServiceTests
 {
     private static async Task<(TestDbContext Db, Student Student, Student OtherStudent, StudentSubmission Submission, Staff Examiner)>
-        SeedAsync()
+        SeedAsync(string? dbName = null)
     {
-        var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var db = TestDbContextFactory.Create(dbName ?? Guid.NewGuid().ToString());
 
         var student = new Student
         {
@@ -260,5 +260,226 @@ public class ApplicationServiceTests
         Assert.Equal(1, pagedApps.Data!.TotalCount);
         Assert.Single(pagedApps.Data!.Items);
         Assert.Equal("Nguyen Van A", pagedApps.Data!.Items[0].StudentName);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_InvalidEnumStatus_ReturnsInvalidStatus()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        var result = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = (ApplicationStatus)99
+        }, examiner.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("INVALID_STATUS", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_InvalidTransitionRejectedToPending_ReturnsError()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        // Reject first
+        var rejectResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.REJECTED
+        }, examiner.Id);
+        Assert.True(rejectResult.IsSuccess);
+
+        // Try to revert to PENDING
+        var revertResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.PENDING
+        }, examiner.Id);
+
+        Assert.False(revertResult.IsSuccess);
+        Assert.Equal("INVALID_STATUS_TRANSITION", revertResult.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_ApprovalKeepsOfficialScoreVisible()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        var approveResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.APPROVED
+        }, examiner.Id);
+
+        Assert.True(approveResult.IsSuccess);
+        Assert.NotNull(approveResult.Data!.OfficialScore);
+        Assert.Equal(6.5m, approveResult.Data.OfficialScore);
+
+        // Official history in DB must still be OFFICIAL
+        var officialHistory = await db.SubmissionGradingHistories
+            .FirstOrDefaultAsync(h => h.SubmissionId == submission.SubmissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL);
+        Assert.NotNull(officialHistory);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AfterRejection_AllowsResubmissionAndResetsToPending()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        // 1. Submit appeal
+        var firstCreate = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Lý do ban đầu chưa rõ ràng"
+        }, student.Id);
+        Assert.True(firstCreate.IsSuccess);
+
+        // 2. Reject appeal
+        var rejectResult = await service.UpdateStatusAsync(firstCreate.Data!.Id, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.REJECTED
+        }, examiner.Id);
+        Assert.True(rejectResult.IsSuccess);
+
+        // 3. Resubmit appeal with new reason
+        var secondCreate = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Bổ sung bằng chứng và lý do cụ thể"
+        }, student.Id);
+
+        Assert.True(secondCreate.IsSuccess);
+        Assert.Equal(firstCreate.Data.Id, secondCreate.Data!.Id); // Reused record
+        Assert.Equal(ApplicationStatus.PENDING, secondCreate.Data.Status);
+        Assert.Equal("Bổ sung bằng chứng và lý do cụ thể", secondCreate.Data.Reason);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Approve_SetsApprovedAtThatLaterTransitionsKeep()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var approved = await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.APPROVED }, examiner.Id);
+        Assert.True(approved.IsSuccess);
+        var approvedAt = (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id)).ApprovedAt;
+        Assert.NotNull(approvedAt);
+
+        await Task.Delay(20);
+        var inProgress = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.IN_PROGRESS }, examiner.Id);
+        Assert.True(inProgress.IsSuccess);
+
+        var stored = await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id);
+        Assert.Equal(approvedAt, stored.ApprovedAt);       // the regrade cycle start does not move
+        Assert.True(stored.UpdatedDay > stored.ApprovedAt!.Value);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ResubmissionRacingAnApproval_ReturnsConflictAndKeepsApproval()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (db, student, _, submission, examiner) = await SeedAsync(dbName);
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Lý do ban đầu"
+        }, student.Id);
+        await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.REJECTED }, examiner.Id);
+
+        // Another request (separate DbContext) changes the stored status while this context
+        // still holds the application as REJECTED.
+        using (var other = TestDbContextFactory.Create(dbName))
+        {
+            var app = await other.Applications.SingleAsync(a => a.Id == created.Data.Id);
+            app.Status = ApplicationStatus.APPROVED;
+            await other.SaveChangesAsync();
+        }
+
+        var resubmit = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Nộp lại"
+        }, student.Id);
+
+        Assert.False(resubmit.IsSuccess);
+        Assert.Equal("APPLICATION_STATUS_CONFLICT", resubmit.ErrorCode);
+        using var check = TestDbContextFactory.Create(dbName);
+        Assert.Equal(ApplicationStatus.APPROVED, (await check.Applications.SingleAsync(a => a.Id == created.Data.Id)).Status);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_CompleteBeforeRegradeFinalized_IsRejectedUntilNewOfficialGrade()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+        await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.APPROVED }, examiner.Id);
+
+        var tooEarly = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.COMPLETED }, examiner.Id);
+        Assert.False(tooEarly.IsSuccess);
+        Assert.Equal("REGRADE_NOT_FINALIZED", tooEarly.ErrorCode);
+        Assert.Equal(ApplicationStatus.APPROVED,
+            (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id)).Status);
+
+        // The regrade is finalized: the old official grade is demoted and a newer one is official.
+        var oldOfficial = await db.SubmissionGradingHistories
+            .SingleAsync(h => h.SubmissionId == submission.SubmissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL);
+        oldOfficial.Status = SubmissionGradingHistoryStatus.DRAFT;
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            HistoryId = Guid.NewGuid(),
+            SubmissionId = submission.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            GradingRound = 2,
+            TotalScore = 7.5m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow.AddSeconds(1)
+        });
+        await db.SaveChangesAsync();
+
+        var completed = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.COMPLETED }, examiner.Id);
+        Assert.True(completed.IsSuccess);
+        Assert.Equal(ApplicationStatus.COMPLETED, completed.Data!.Status);
     }
 }

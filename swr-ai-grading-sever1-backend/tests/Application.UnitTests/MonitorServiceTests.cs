@@ -1,3 +1,4 @@
+using Application.Common;
 using Application.DTOs.Monitors;
 using Application.Interfaces;
 using Application.Services;
@@ -97,6 +98,14 @@ public class MonitorServiceTests
 
         db.Staff.AddRange(m1, m2, inactiveMonitor, deletedMonitor, examiner, admin);
 
+        var activeSession = new GradingSession
+        {
+            GradingSessionId = Guid.NewGuid(),
+            Title = "Active Session",
+            Deadline = VietnamTime.Today.AddDays(7)
+        };
+        db.GradingSessions.Add(activeSession);
+
         // Gán 2 assignment cho m1
         db.Assignments.AddRange(
             new Assignment
@@ -104,7 +113,8 @@ public class MonitorServiceTests
                 AssignmentId = Guid.NewGuid(),
                 StaffId = m1.Id,
                 SubmissionId = Guid.NewGuid(),
-                GradingSessionId = Guid.NewGuid(),
+                GradingSessionId = activeSession.GradingSessionId,
+                GradingSession = activeSession,
                 Status = AssignmentStatus.IN_PROGRESS
             },
             new Assignment
@@ -112,7 +122,8 @@ public class MonitorServiceTests
                 AssignmentId = Guid.NewGuid(),
                 StaffId = m1.Id,
                 SubmissionId = Guid.NewGuid(),
-                GradingSessionId = Guid.NewGuid(),
+                GradingSessionId = activeSession.GradingSessionId,
+                GradingSession = activeSession,
                 Status = AssignmentStatus.COMPLETED
             }
         );
@@ -314,5 +325,64 @@ public class MonitorServiceTests
         Assert.Equal(0, dto.InProgressCount);
         Assert.Equal(2, dto.CompletedCount);
         Assert.Equal(2, dto.AssignedCount);
+    }
+
+    [Fact]
+    public async Task GetPagedMonitorsAsync_MonitorWithOnlyPastDeadlineInProgressAssignment_ReadsAvailable()
+    {
+        var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var pastSession = new GradingSession
+        {
+            GradingSessionId = Guid.NewGuid(),
+            Title = "Past Session",
+            Deadline = VietnamTime.Today.AddDays(-1)
+        };
+        db.GradingSessions.Add(pastSession);
+
+        var monitor = new Staff
+        {
+            Id = Guid.NewGuid(),
+            StaffCode = "MON_PAST",
+            FullName = "Past Monitor",
+            Email = "mon_past@fpt.edu.vn",
+            Role = UserRole.Monitor,
+            IsActive = true,
+            IsDeleted = false,
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+        db.Staff.Add(monitor);
+
+        db.Assignments.Add(new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            StaffId = monitor.Id,
+            SubmissionId = Guid.NewGuid(),
+            GradingSessionId = pastSession.GradingSessionId,
+            GradingSession = pastSession,
+            Status = AssignmentStatus.IN_PROGRESS
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        // 1. Unfiltered request
+        var result = await service.GetPagedMonitorsAsync(new MonitorFilterRequest());
+        Assert.True(result.IsSuccess);
+        var dto = Assert.Single(result.Data!.Items);
+        Assert.Equal(monitor.Id, dto.Id);
+        Assert.False(dto.IsBusy);
+        Assert.Equal("AVAILABLE", dto.WorkingStatus);
+        Assert.Equal(1, dto.InProgressCount);
+
+        // 2. Filter IsBusy = false
+        var availableResult = await service.GetPagedMonitorsAsync(new MonitorFilterRequest { IsBusy = false });
+        Assert.True(availableResult.IsSuccess);
+        Assert.Single(availableResult.Data!.Items);
+
+        // 3. Filter IsBusy = true
+        var busyResult = await service.GetPagedMonitorsAsync(new MonitorFilterRequest { IsBusy = true });
+        Assert.True(busyResult.IsSuccess);
+        Assert.Empty(busyResult.Data!.Items);
     }
 }

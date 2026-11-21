@@ -28,7 +28,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
     public async Task<IActionResult> GetBySubmission(Guid submissionId, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.GetBySubmissionIdAsync(submissionId, userId, IsAdmin(), ct);
+        var result = await _service.GetBySubmissionIdAsync(submissionId, userId, IsElevatedRole(), ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
@@ -36,7 +36,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.GetByIdAsync(id, userId, IsAdmin(), ct);
+        var result = await _service.GetByIdAsync(id, userId, IsElevatedRole(), ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
@@ -54,7 +54,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         CancellationToken ct)
     {
         var hasValidSignature = expires.HasValue && _imageUrls.IsValidSignature(id, expires.Value, signature);
-        var isPrivileged = User.Identity?.IsAuthenticated == true && (IsAdmin() || User.IsInRole("Examiner"));
+        var isPrivileged = User.Identity?.IsAuthenticated == true && (IsElevatedRole() || User.IsInRole("Monitor"));
 
         if (!hasValidSignature && !isPrivileged)
             return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
@@ -62,7 +62,8 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         if (!TryGetCurrentUserId(out var userId) && !hasValidSignature)
             return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
 
-        var result = await _service.GetImageAsync(id, userId, hasValidSignature || IsAdmin(), ct);
+        var isElevatedRole = hasValidSignature || IsElevatedRole();
+        var result = await _service.GetImageAsync(id, userId, isElevatedRole, ct);
         if (!result.IsSuccess) return Failure(result.ErrorCode, result.Error);
 
         var image = result.Data!;
@@ -73,7 +74,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
     public async Task<IActionResult> Create([FromBody] SaveSubmissionParsedAnswerRequest request, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.CreateAsync(request, userId, IsAdmin(), ct);
+        var result = await _service.CreateAsync(request, userId, IsElevatedRole(), ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
@@ -81,7 +82,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
     public async Task<IActionResult> Update(Guid id, [FromBody] SaveSubmissionParsedAnswerRequest request, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.UpdateAsync(id, request, userId, IsAdmin(), ct);
+        var result = await _service.UpdateAsync(id, request, userId, IsElevatedRole(), ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
@@ -89,7 +90,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
-        var result = await _service.DeleteAsync(id, userId, IsAdmin(), ct);
+        var result = await _service.DeleteAsync(id, userId, IsElevatedRole(), ct);
         return result.IsSuccess ? Ok(ApiResponse.Success(true)) : Failure(result.ErrorCode, result.Error);
     }
 
@@ -109,5 +110,13 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         return Guid.TryParse(id, out userId);
     }
 
-    private bool IsAdmin() => User.IsInRole("Admin") || User.FindFirstValue("discriminator") == "Admin";
+    private bool IsElevatedRole()
+    {
+        var discriminator = User.FindFirstValue("discriminator");
+        if (string.Equals(discriminator, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Examiner", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return User.IsInRole("Admin") || User.IsInRole("Examiner");
+    }
 }

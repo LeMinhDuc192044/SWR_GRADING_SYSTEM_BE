@@ -59,7 +59,7 @@ public sealed class StatusUpdateBackgroundService : BackgroundService
 
     private static TimeSpan DelayUntilNextRun()
     {
-        var now = VietnamTime.Now;
+        var now = VietnamTime.LocalNow;
         var next = now.Date.Add(RunAt);
         if (next <= now)
             next = next.AddDays(1);
@@ -72,8 +72,9 @@ public sealed class StatusUpdateBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
-        var now = VietnamTime.Now;
-        var today = DateOnly.FromDateTime(now);
+        var localNow = VietnamTime.LocalNow;
+        var today = VietnamTime.Today;
+        var utcNow = VietnamTime.Now;
         var changed = 0;
 
         var semesters = await db.Semesters
@@ -83,7 +84,7 @@ public sealed class StatusUpdateBackgroundService : BackgroundService
         foreach (var semester in semesters)
         {
             semester.Status = SemesterStatus.Closed;
-            semester.UpdatedDay = now;
+            semester.UpdatedDay = utcNow;
             changed++;
         }
 
@@ -97,7 +98,7 @@ public sealed class StatusUpdateBackgroundService : BackgroundService
         foreach (var examination in examinations)
         {
             examination.Status = ExaminationStatus.Closed;
-            examination.UpdatedDay = now;
+            examination.UpdatedDay = utcNow;
             changed++;
         }
 
@@ -110,7 +111,7 @@ public sealed class StatusUpdateBackgroundService : BackgroundService
         foreach (var session in sessions)
         {
             session.Status = ExaminationSessionStatus.ENDED;
-            session.UpdatedDay = now;
+            session.UpdatedDay = utcNow;
             changed++;
         }
 

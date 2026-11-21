@@ -177,9 +177,22 @@ public sealed class PaperSetService : IPaperSetService
 
         var materialResult = await CreateMaterialAsync(description, normalizedExaminationId, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
-        await _repository.AddAsync(materialResult.Data!, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
+        var (material, uploadedPaths) = materialResult.Data!;
+        try
+        {
+            await _repository.AddAsync(material, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            foreach (var path in uploadedPaths)
+            {
+                try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { }
+            }
+            throw;
+        }
+
+        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(material) });
     }
 
     public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(
@@ -191,48 +204,61 @@ public sealed class PaperSetService : IPaperSetService
         if (materials.Any(material => material.Files.Count == 0)) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each paper set must contain at least one file.", "FILES_REQUIRED");
         var fileValidation = ValidateFiles(materials.SelectMany(material => material.Files));
         if (!fileValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(fileValidation.Error!, fileValidation.ErrorCode);
-        var parsedMaterials = new List<(CreatePaperSetInput Input, IReadOnlyList<CreateQuestionInput> Questions)>();
+
+        var parsedMaterials = new List<(CreatePaperSetInput Input, IReadOnlyList<CreateQuestionInput> Questions, Guid? NormalizedExamId)>();
         foreach (var material in materials)
         {
             var questionResult = ParseQuestionDocument(material.Questions, material.Files);
             if (!questionResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(questionResult.Error!, questionResult.ErrorCode);
-            if (!ValidateQuestions(questionResult.Data!).IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
-            parsedMaterials.Add((material, questionResult.Data!));
+            var batchValidation = ValidateQuestions(questionResult.Data!);
+            if (!batchValidation.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(batchValidation.Error!, batchValidation.ErrorCode);
+
+            var normalizedExaminationId = NormalizeOptionalId(material.ExaminationId);
+            var examinationValidation = await ValidateExaminationAsync(normalizedExaminationId, ct);
+            if (!examinationValidation.IsSuccess)
+                return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(examinationValidation.Error!, examinationValidation.ErrorCode);
+
+            parsedMaterials.Add((material, questionResult.Data!, normalizedExaminationId));
         }
+
         var created = new List<PaperSet>();
+        var allUploadedPaths = new List<string>();
+
+        async Task CleanupUploadedPathsAsync()
+        {
+            foreach (var path in allUploadedPaths)
+            {
+                try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { }
+            }
+        }
+
         try
         {
-            foreach (var parsedMaterial in parsedMaterials)
+            foreach (var (input, questions, examId) in parsedMaterials)
             {
-                var normalizedExaminationId = NormalizeOptionalId(parsedMaterial.Input.ExaminationId);
-                var examinationValidation = await ValidateExaminationAsync(normalizedExaminationId, ct);
-                if (!examinationValidation.IsSuccess)
-                    return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(examinationValidation.Error!, examinationValidation.ErrorCode);
-
-                var materialResult = await CreateMaterialAsync(parsedMaterial.Input.Description, normalizedExaminationId, parsedMaterial.Questions, parsedMaterial.Input.Files, createdById, ct);
+                var materialResult = await CreateMaterialAsync(input.Description, examId, questions, input.Files, createdById, ct);
                 if (!materialResult.IsSuccess)
+                {
+                    await CleanupUploadedPathsAsync();
                     return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
+                }
 
-                created.Add(materialResult.Data!);
-                await _repository.AddAsync(materialResult.Data!, ct);
+                var (paperSet, uploadedPaths) = materialResult.Data!;
+                allUploadedPaths.AddRange(uploadedPaths);
+                created.Add(paperSet);
+                await _repository.AddAsync(paperSet, ct);
             }
 
             await _unitOfWork.SaveChangesAsync(ct);
-            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(
-                await Task.WhenAll(created.Select(ToMetadataAsync)));
         }
         catch
         {
-            foreach (var material in created)
-            {
-                foreach (var path in GetPaths(material).Values)
-                {
-                    try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { }
-                }
-            }
-
+            await CleanupUploadedPathsAsync();
             throw;
         }
+
+        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(
+            await Task.WhenAll(created.Select(ToMetadataAsync)));
     }
 
     private static Result<IReadOnlyList<CreateQuestionInput>> ParseQuestionDocument(
@@ -253,7 +279,7 @@ public sealed class PaperSetService : IPaperSetService
                 : PaperSetQuestionDocumentParser.ParseOcr(questionFile);
     }
 
-    private async Task<Result<PaperSet>> CreateMaterialAsync(
+    private async Task<Result<(PaperSet Material, List<string> UploadedPaths)>> CreateMaterialAsync(
         string description,
         Guid? examinationId,
         IReadOnlyList<CreateQuestionInput> questions,
@@ -353,8 +379,8 @@ public sealed class PaperSetService : IPaperSetService
         material.Questions = questionEntities;
 
         var uploadResult = await UploadFilesAsync(material, files, ct);
-        if (!uploadResult.IsSuccess) return Result<PaperSet>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
-        return Result<PaperSet>.Success(material);
+        if (!uploadResult.IsSuccess) return Result<(PaperSet Material, List<string> UploadedPaths)>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
+        return Result<(PaperSet Material, List<string> UploadedPaths)>.Success((material, uploadResult.Data!));
     }
 
     private static PaperSetPreviewResultDTO BuildPreviewResult(
@@ -402,6 +428,11 @@ public sealed class PaperSetService : IPaperSetService
                 DiagramId = diagramId,
                 Rubric = matchedRubric
             };
+
+            if (q.Title.Trim().Length > MaxQuestionTitleLength)
+            {
+                result.Errors.Add($"Tiêu đề câu {qNum} dài {q.Title.Trim().Length} ký tự, vượt quá {MaxQuestionTitleLength} ký tự cho phép.");
+            }
 
             if (matchedRubric is null)
             {
@@ -472,9 +503,20 @@ public sealed class PaperSetService : IPaperSetService
         if (files.Count == 0) return Result<PaperSetMetadataDTO>.Failure("At least one file is required.", "FILES_REQUIRED");
         var uploadResult = await UploadFilesAsync(material, files, ct);
         if (!uploadResult.IsSuccess) return Result<PaperSetMetadataDTO>.Failure(uploadResult.Error!, uploadResult.ErrorCode);
-        material.UpdatedDate = VietnamTime.Now;
-        _repository.Update(material);
-        await _unitOfWork.SaveChangesAsync(ct);
+        try
+        {
+            material.UpdatedDate = VietnamTime.Now;
+            _repository.Update(material);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            foreach (var path in uploadResult.Data!)
+            {
+                try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { }
+            }
+            throw;
+        }
         return Result<PaperSetMetadataDTO>.Success(await ToMetadataAsync(material));
     }
 
@@ -554,7 +596,7 @@ public sealed class PaperSetService : IPaperSetService
         });
     }
 
-    private async Task<Result> UploadFilesAsync(PaperSet material, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct)
+    private async Task<Result<List<string>>> UploadFilesAsync(PaperSet material, IReadOnlyList<MaterialFileUpload> files, CancellationToken ct)
     {
         // Validate every file BEFORE uploading any of them. Doing this inline inside
         // the upload loop (as before) meant a later file failing validation would
@@ -563,7 +605,7 @@ public sealed class PaperSetService : IPaperSetService
         foreach (var file in files)
         {
             var validation = ValidateFile(file);
-            if (!validation.IsSuccess) return validation;
+            if (!validation.IsSuccess) return Result<List<string>>.Failure(validation.Error!, validation.ErrorCode);
         }
 
         var uploaded = new List<string>();
@@ -583,20 +625,29 @@ public sealed class PaperSetService : IPaperSetService
                 uploaded.Add(path);
                 SetPath(material, file.FileType, path);
             }
-            return Result.Success();
+            return Result<List<string>>.Success(uploaded);
         }
         catch { foreach (var path in uploaded) { try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { } } throw; }
     }
 
     private async Task<PaperSet?> FindAsync(Guid id, CancellationToken ct) { var material = await _repository.GetByIdAsync(id, ct); return material is null || material.IsDeleted ? null : material; }
+    // Matches the length of questions.title in the database.
+    internal const int MaxQuestionTitleLength = 255;
+
     private static Result ValidateQuestions(IReadOnlyList<CreateQuestionInput> questions)
     {
-        return questions.Count > 0 && questions.All(question =>
-            !string.IsNullOrWhiteSpace(question.Title) &&
-            !string.IsNullOrWhiteSpace(question.Content) &&
-            question.Point >= 0)
+        if (questions.Count == 0 || !questions.All(question =>
+                !string.IsNullOrWhiteSpace(question.Title) &&
+                !string.IsNullOrWhiteSpace(question.Content) &&
+                question.Point >= 0))
+            return Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+
+        var tooLong = questions.FirstOrDefault(question => question.Title.Trim().Length > MaxQuestionTitleLength);
+        return tooLong is null
             ? Result.Success()
-            : Result.Failure("Each question must have a title, content, and non-negative point.", "INVALID_QUESTION");
+            : Result.Failure(
+                $"Question title must not exceed {MaxQuestionTitleLength} characters: '{tooLong.Title.Trim()[..50]}...'.",
+                "QUESTION_TITLE_TOO_LONG");
     }
 
     private static Result ValidateFiles(IEnumerable<MaterialFileUpload> files)

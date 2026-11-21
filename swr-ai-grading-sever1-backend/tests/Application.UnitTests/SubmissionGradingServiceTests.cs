@@ -6,6 +6,7 @@ using Application.Services;
 using Application.UnitTests.Helpers;
 using Domain.Entities;
 using Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 
 namespace Application.UnitTests;
@@ -359,5 +360,89 @@ public class SubmissionGradingServiceTests
         Assert.Contains(overview.Data.Histories, h => h.GradingRound == 1);
         Assert.Contains(overview.Data.Histories, h => h.GradingRound == 4);
     }
-}
 
+    [Fact]
+    public async Task ReopenedAssignment_RegradeDraftStaysInCycleAfterAppealMovesToInProgress()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (subId, monitor1Id, _, pa1Id, pa2Id, _) = await SeedRound1FinalizedAsync(db);
+        var service = CreateService(db);
+
+        // Appeal approved a minute ago; approval reopened monitor 1's assignment in the normal session.
+        var submission = await db.StudentSubmissions.SingleAsync(s => s.SubmissionId == subId);
+        var approvedAt = DateTime.UtcNow.AddMinutes(-1);
+        var appeal = new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            SubmissionId = subId,
+            StudentId = submission.StudentId,
+            reason = "Phúc khảo",
+            Status = ApplicationStatus.APPROVED,
+            CreatedDay = approvedAt.AddMinutes(-5),
+            UpdatedDay = approvedAt,
+            ApprovedAt = approvedAt
+        };
+        db.Applications.Add(appeal);
+        var assignment = await db.Assignments.FirstAsync(a => a.SubmissionId == subId && a.StaffId == monitor1Id);
+        assignment.Status = AssignmentStatus.IN_PROGRESS;
+        await db.SaveChangesAsync();
+
+        var draft = await service.ReviewAsync(subId, new ReviewGradingRequest
+        {
+            Items =
+            [
+                new ReviewItemRequest { ParsedAnswerId = pa1Id, Score = 4m },
+                new ReviewItemRequest { ParsedAnswerId = pa2Id, Score = 4m }
+            ]
+        }, monitor1Id);
+        Assert.True(draft.IsSuccess);
+
+        // The manager then moves the appeal to IN_PROGRESS: UpdatedDay moves past the draft.
+        appeal.Status = ApplicationStatus.IN_PROGRESS;
+        appeal.UpdatedDay = DateTime.UtcNow.AddMinutes(5);
+        await db.SaveChangesAsync();
+
+        var overview = await service.GetHistoriesAsync(subId, monitor1Id);
+        Assert.True(overview.IsSuccess);
+        Assert.Contains(overview.Data!.Histories, h => h.HistoryId == draft.Data!.HistoryId);
+
+        var finalized = await service.FinalizeAsync(subId, draft.Data!.HistoryId, monitor1Id);
+        Assert.True(finalized.IsSuccess);
+        Assert.Equal(8m, finalized.Data!.TotalScore);
+
+        // Persisted side effects: the regrade is the only official grade, the appeal is completed
+        // and the reopened assignment is graded again.
+        var officials = await db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == subId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            .ToListAsync();
+        Assert.Single(officials);
+        Assert.Equal(draft.Data.HistoryId, officials[0].HistoryId);
+        Assert.Equal(ApplicationStatus.COMPLETED,
+            (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == appeal.Id)).Status);
+        Assert.Equal(AssignmentStatus.GRADED,
+            (await db.Assignments.AsNoTracking().SingleAsync(a => a.AssignmentId == assignment.AssignmentId)).Status);
+    }
+
+    [Fact]
+    public async Task UpdateItemDetailAsync_BlindRegradeRejectsDetailOfPriorRound()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (subId, _, monitor2Id, _, _, _) = await SeedRound1FinalizedAsync(db);
+        var service = CreateService(db);
+
+        // A DRAFT detail from round 1 (AI) belongs to the previous cycle for the regrade monitor.
+        var priorDetail = await db.SubmissionItemDetails.AsNoTracking()
+            .Include(d => d.SubmissionGradingHistory)
+            .FirstAsync(d => d.SubmissionGradingHistory.SubmissionId == subId
+                             && d.SubmissionGradingHistory.EvaluationType == EvaluationType.AI);
+
+        var result = await service.UpdateItemDetailAsync(priorDetail.DetailId,
+            new UpdateGradingItemRequest { Score = 1m, Comment = "edited" }, monitor2Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("FORBIDDEN", result.ErrorCode);
+        var stored = await db.SubmissionItemDetails.AsNoTracking().SingleAsync(d => d.DetailId == priorDetail.DetailId);
+        Assert.Equal(priorDetail.Score, stored.Score);
+        Assert.Equal(priorDetail.Comment, stored.Comment);
+    }
+}

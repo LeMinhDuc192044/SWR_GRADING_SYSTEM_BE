@@ -52,6 +52,9 @@ public class TestDbContext : DbContext, IApplicationDbContext
 
         base.OnModelCreating(builder);
     }
+
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?>(null);
 }
 
 public static class TestDbContextFactory

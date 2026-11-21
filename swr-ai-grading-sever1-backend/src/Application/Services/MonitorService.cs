@@ -258,6 +258,8 @@ public sealed class MonitorService : IMonitorService
         MonitorFilterRequest request, CancellationToken ct = default)
     {
         request ??= new MonitorFilterRequest();
+        var today = VietnamTime.Today;
+        var isBusyAssignment = MonitorAvailability.IsBusyAssignment(today);
 
         var query = _db.Staff.AsNoTracking()
             .Where(s => !s.IsDeleted && s.Role == UserRole.Monitor);
@@ -271,11 +273,11 @@ public sealed class MonitorService : IMonitorService
         {
             if (request.IsBusy.Value)
             {
-                query = query.Where(s => s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS));
+                query = query.Where(s => s.Assignments.AsQueryable().Any(isBusyAssignment));
             }
             else
             {
-                query = query.Where(s => !s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS));
+                query = query.Where(s => !s.Assignments.AsQueryable().Any(isBusyAssignment));
             }
         }
 
@@ -308,8 +310,8 @@ public sealed class MonitorService : IMonitorService
                 InProgressCount = s.Assignments.Count(a => a.Status == AssignmentStatus.IN_PROGRESS),
                 CompletedCount = s.Assignments.Count(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED),
                 AssignedCount = s.Assignments.Count,
-                IsBusy = s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS),
-                WorkingStatus = s.Assignments.Any(a => a.Status == AssignmentStatus.IN_PROGRESS) ? "BUSY" : "AVAILABLE"
+                IsBusy = s.Assignments.AsQueryable().Any(isBusyAssignment),
+                WorkingStatus = s.Assignments.AsQueryable().Any(isBusyAssignment) ? "BUSY" : "AVAILABLE"
             })
             .ToListAsync(ct);
 

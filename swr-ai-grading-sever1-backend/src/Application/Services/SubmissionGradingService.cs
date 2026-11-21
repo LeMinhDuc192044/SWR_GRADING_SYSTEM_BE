@@ -15,6 +15,7 @@ namespace Application.Services;
 public sealed class SubmissionGradingService : ISubmissionGradingService
 {
     private const decimal MaxTotalScore = 10m;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> _submissionLocks = new();
 
     private readonly IApplicationDbContext _db;
     private readonly IUnitOfWork _unitOfWork;
@@ -310,6 +311,17 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
         if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
 
+        // Same membership rule as ReviewAsync / FinalizeAsync: during a blind regrade a detail of an
+        // earlier round must not be edited (nor returned) through its detail id.
+        var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        if (cycle.IsBlindRegrade && !IsInCurrentCycle(history, cycle))
+            return Fail("Blind grading does not allow editing a grading result from a prior round.", "FORBIDDEN");
+
         if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
             return Fail("An official grading result cannot be edited.", "GRADING_HISTORY_FINALIZED");
 
@@ -438,42 +450,90 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     public async Task<Result<GradingHistoryDTO>> FinalizeAsync(
         Guid submissionId, Guid historyId, Guid currentUserId, CancellationToken ct = default)
     {
-        var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
-        if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
+        var submissionLock = _submissionLocks.GetOrAdd(submissionId, _ => new SemaphoreSlim(1, 1));
+        await submissionLock.WaitAsync(ct);
+        try
+        {
+            var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
+            if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
 
-        var history = await _db.SubmissionGradingHistories
-            .FirstOrDefaultAsync(h => h.HistoryId == historyId && h.SubmissionId == submissionId, ct);
-        if (history is null)
-            return Fail("Grading result not found.", "GRADING_HISTORY_NOT_FOUND");
+            var history = await _db.SubmissionGradingHistories
+                .FirstOrDefaultAsync(h => h.HistoryId == historyId && h.SubmissionId == submissionId, ct);
+            if (history is null)
+                return Fail("Grading result not found.", "GRADING_HISTORY_NOT_FOUND");
 
-        var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
-            .Where(h => h.SubmissionId == submissionId)
-            .OrderBy(h => h.GradingRound)
-            .ThenBy(h => h.CreatedAt)
-            .ToListAsync(ct);
+            var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
+                .Where(h => h.SubmissionId == submissionId)
+                .OrderBy(h => h.GradingRound)
+                .ThenBy(h => h.CreatedAt)
+                .ToListAsync(ct);
 
-        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
-        if (cycle.IsBlindRegrade && !IsInCurrentCycle(history, cycle))
-            return Fail("Blind grading does not allow finalizing a grading result from a prior round.", "FORBIDDEN");
+            var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+            if (cycle.IsBlindRegrade && !IsInCurrentCycle(history, cycle))
+                return Fail("Blind grading does not allow finalizing a grading result from a prior round.", "FORBIDDEN");
 
-        if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
-            return Fail("This grading result is already official.", "ALREADY_FINALIZED");
-        if (HasOfficialForCycle(allHistories, cycle))
-            return Fail("Another grading result is already official for this grading assignment.", "ALREADY_FINALIZED");
-        if (history.TotalScore is null or > MaxTotalScore)
-            return Fail($"Total score must be set and at most {MaxTotalScore}.", "INVALID_TOTAL_SCORE");
+            if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                return Fail("This grading result is already official.", "ALREADY_FINALIZED");
+            if (HasOfficialForCycle(allHistories, cycle))
+                return Fail("Another grading result is already official for this grading assignment.", "ALREADY_FINALIZED");
+            if (history.TotalScore is null or > MaxTotalScore)
+                return Fail($"Total score must be set and at most {MaxTotalScore}.", "INVALID_TOTAL_SCORE");
 
-        history.Status = SubmissionGradingHistoryStatus.OFFICIAL;
+            await using var tx = await _db.BeginTransactionAsync(ct);
+            try
+            {
+                // Demote any existing official history for this submission to DRAFT
+                var previousOfficials = await _db.SubmissionGradingHistories
+                    .Where(h => h.SubmissionId == submissionId && h.HistoryId != historyId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                    .ToListAsync(ct);
+                foreach (var prev in previousOfficials)
+                {
+                    prev.Status = SubmissionGradingHistoryStatus.DRAFT;
+                }
 
-        var assignment = access.Data!;
-        assignment.Status = AssignmentStatus.GRADED;
-        assignment.UpdatedDate = VietnamTime.Now;
+                // Save demotions first so database unique constraints (e.g. only one official status)
+                // are not violated when updating the new official history.
+                if (previousOfficials.Count > 0)
+                {
+                    await _unitOfWork.SaveChangesAsync(ct);
+                }
 
-        // The official grade closes the grading of this submission.
-        await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Final, ct);
+                history.Status = SubmissionGradingHistoryStatus.OFFICIAL;
 
-        await _unitOfWork.SaveChangesAsync(ct);
-        return await ReloadAsync(history.HistoryId, ct);
+                var assignment = access.Data!;
+                assignment.Status = AssignmentStatus.GRADED;
+                assignment.UpdatedDate = VietnamTime.Now;
+
+                // The official grade closes the grading of this submission.
+                await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Final, ct);
+
+                // If there is an active application for this submission, complete it
+                var application = await _db.Applications
+                    .FirstOrDefaultAsync(a => a.SubmissionId == submissionId &&
+                        (a.Status == ApplicationStatus.APPROVED || a.Status == ApplicationStatus.IN_PROGRESS), ct);
+                if (application is not null)
+                {
+                    application.Status = ApplicationStatus.COMPLETED;
+                    application.UpdatedDay = DateTime.UtcNow;
+                }
+
+                await _unitOfWork.SaveChangesAsync(ct);
+                if (tx is not null)
+                    await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                if (tx is not null)
+                    await tx.RollbackAsync(ct);
+                throw;
+            }
+
+            return await ReloadAsync(history.HistoryId, ct);
+        }
+        finally
+        {
+            submissionLock.Release();
+        }
     }
 
     // ---------------------------------------------------------------- update status (ONLY OFFICIAL)
@@ -495,18 +555,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         if (history is null)
             return Fail("Grading result not found.", "GRADING_HISTORY_NOT_FOUND");
 
-        var submissionId = history.SubmissionId;
-
-        // A submission may only have one official grading result.
-        var alreadyOfficial = await _db.SubmissionGradingHistories
-            .AsNoTracking()
-            .AnyAsync(h => h.SubmissionId == submissionId
-                           && h.Status == SubmissionGradingHistoryStatus.OFFICIAL, ct);
-
-        if (alreadyOfficial)
-            return Fail("This submission already has an official grading result.", "ALREADY_FINALIZED");
-
-        return await FinalizeAsync(submissionId, historyId, currentUserId, ct);
+        return await FinalizeAsync(history.SubmissionId, historyId, currentUserId, ct);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -582,7 +631,8 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private sealed record GradingCycleContext(
         Assignment Assignment,
         bool IsBlindRegrade,
-        int? BaselineRound);
+        int? BaselineRound,
+        DateTime? AppealCutoff = null);
 
     private async Task<GradingCycleContext> ResolveCycleContextAsync(
         Guid submissionId,
@@ -597,7 +647,12 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var isRegradeSession = currentGradingSession?.Type == GradingSessionType.ReGrade
             || IsRegradeSessionTitle(currentGradingSession?.Title);
 
-        if (!isRegradeSession)
+        var activeAppeal = await _db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.SubmissionId == submissionId &&
+                           (a.Status == ApplicationStatus.APPROVED || a.Status == ApplicationStatus.IN_PROGRESS), ct);
+        var hasActiveAppeal = activeAppeal is not null;
+
+        if (!isRegradeSession && !hasActiveAppeal)
             return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
 
         // Assignments from the same session are hand-overs, not a previous grading round.
@@ -618,9 +673,21 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
                         && a.GradingSession is not null
                         && a.GradingSession.CreatedDate < currentSessionCreated.Value))));
 
-        var isBlindRegrade = isRegradeByTitle || hasPriorAssignment;
+        var isBlindRegrade = isRegradeByTitle || hasPriorAssignment || hasActiveAppeal;
         if (!isBlindRegrade)
             return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
+
+        if (hasActiveAppeal && activeAppeal is not null)
+        {
+            // ApprovedAt is fixed at approval time; UpdatedDay moves on every later status change
+            // (e.g. APPROVED -> IN_PROGRESS) and would push regrade drafts out of the cycle.
+            var cutoff = activeAppeal.ApprovedAt ?? activeAppeal.UpdatedDay;
+            var priorHistories = allHistories
+                .Where(h => h.CreatedAt <= cutoff)
+                .ToList();
+            var maxPriorRound = priorHistories.Count > 0 ? priorHistories.Max(h => h.GradingRound) : (int?)null;
+            return new GradingCycleContext(currentAssignment, IsBlindRegrade: true, BaselineRound: maxPriorRound, AppealCutoff: cutoff);
+        }
 
         var officials = allHistories
             .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
@@ -673,6 +740,9 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     {
         if (!cycle.IsBlindRegrade)
             return true;
+
+        if (cycle.AppealCutoff.HasValue)
+            return history.CreatedAt > cycle.AppealCutoff.Value;
 
         if (cycle.BaselineRound.HasValue)
             return history.GradingRound > cycle.BaselineRound.Value;
