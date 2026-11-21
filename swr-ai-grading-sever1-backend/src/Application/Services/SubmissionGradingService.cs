@@ -677,7 +677,9 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
 
         if (hasActiveAppeal && activeAppeal is not null)
         {
-            var cutoff = activeAppeal.UpdatedDay;
+            // ApprovedAt is fixed at approval time; UpdatedDay moves on every later status change
+            // (e.g. APPROVED -> IN_PROGRESS) and would push regrade drafts out of the cycle.
+            var cutoff = activeAppeal.ApprovedAt ?? activeAppeal.UpdatedDay;
             var priorHistories = allHistories
                 .Where(h => h.CreatedAt <= cutoff)
                 .ToList();

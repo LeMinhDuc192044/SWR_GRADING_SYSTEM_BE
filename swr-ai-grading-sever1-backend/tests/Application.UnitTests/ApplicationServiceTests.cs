@@ -12,9 +12,9 @@ namespace Application.UnitTests;
 public class ApplicationServiceTests
 {
     private static async Task<(TestDbContext Db, Student Student, Student OtherStudent, StudentSubmission Submission, Staff Examiner)>
-        SeedAsync()
+        SeedAsync(string? dbName = null)
     {
-        var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var db = TestDbContextFactory.Create(dbName ?? Guid.NewGuid().ToString());
 
         var student = new Student
         {
@@ -377,5 +377,67 @@ public class ApplicationServiceTests
         Assert.Equal(firstCreate.Data.Id, secondCreate.Data!.Id); // Reused record
         Assert.Equal(ApplicationStatus.PENDING, secondCreate.Data.Status);
         Assert.Equal("Bổ sung bằng chứng và lý do cụ thể", secondCreate.Data.Reason);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_Approve_SetsApprovedAtThatLaterTransitionsKeep()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var approved = await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.APPROVED }, examiner.Id);
+        Assert.True(approved.IsSuccess);
+        var approvedAt = (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id)).ApprovedAt;
+        Assert.NotNull(approvedAt);
+
+        await Task.Delay(20);
+        var inProgress = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.IN_PROGRESS }, examiner.Id);
+        Assert.True(inProgress.IsSuccess);
+
+        var stored = await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id);
+        Assert.Equal(approvedAt, stored.ApprovedAt);       // the regrade cycle start does not move
+        Assert.True(stored.UpdatedDay > stored.ApprovedAt!.Value);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ResubmissionRacingAnApproval_ReturnsConflictAndKeepsApproval()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (db, student, _, submission, examiner) = await SeedAsync(dbName);
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Lý do ban đầu"
+        }, student.Id);
+        await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.REJECTED }, examiner.Id);
+
+        // Another request (separate DbContext) changes the stored status while this context
+        // still holds the application as REJECTED.
+        using (var other = TestDbContextFactory.Create(dbName))
+        {
+            var app = await other.Applications.SingleAsync(a => a.Id == created.Data.Id);
+            app.Status = ApplicationStatus.APPROVED;
+            await other.SaveChangesAsync();
+        }
+
+        var resubmit = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Nộp lại"
+        }, student.Id);
+
+        Assert.False(resubmit.IsSuccess);
+        Assert.Equal("APPLICATION_STATUS_CONFLICT", resubmit.ErrorCode);
+        using var check = TestDbContextFactory.Create(dbName);
+        Assert.Equal(ApplicationStatus.APPROVED, (await check.Applications.SingleAsync(a => a.Id == created.Data.Id)).Status);
     }
 }

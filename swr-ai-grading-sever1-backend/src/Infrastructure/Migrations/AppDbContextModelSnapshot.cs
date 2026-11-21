@@ -70,11 +70,16 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("application_id");
 
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
                     b.Property<DateTime>("CreatedDay")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_day");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<Guid>("StudentId")

@@ -53,19 +53,16 @@ public sealed class ApplicationService : IApplicationService
         {
             if (existingApp.Status == ApplicationStatus.REJECTED)
             {
-                // Verify that the stored status in database is still REJECTED to prevent stale overwrites
-                var isStillRejected = await _db.Applications.AsNoTracking()
-                    .AnyAsync(a => a.Id == existingApp.Id && a.Status == ApplicationStatus.REJECTED, ct);
-
-                if (!isStillRejected)
-                {
-                    return Result<ApplicationDTO>.Failure("Trạng thái đơn phúc khảo đã thay đổi, không thể nộp lại lúc này.", "APPLICATION_STATUS_CONFLICT");
-                }
-
                 existingApp.reason = request.Reason.Trim();
                 existingApp.Status = ApplicationStatus.PENDING;
+                existingApp.ApprovedAt = null;
                 existingApp.UpdatedDay = DateTime.UtcNow;
-                await _db.SaveChangesAsync(ct);
+
+                // Status is a concurrency token: the UPDATE only applies while the stored status is
+                // still REJECTED, so an approval saved in between is not overwritten.
+                if (!await TrySaveAsync(ct))
+                    return StatusConflict();
+
                 return Result<ApplicationDTO>.Success(ToDto(existingApp, student, submission, officialGrading?.TotalScore));
             }
 
@@ -247,6 +244,9 @@ public sealed class ApplicationService : IApplicationService
         // We KEEP the existing official score visible until the regrade round is finalized.
         if (request.Status == ApplicationStatus.APPROVED && !wasApproved)
         {
+            // Start of the regrade cycle; grading drafts created before this point stay out of it.
+            application.ApprovedAt = application.UpdatedDay;
+
             // The monitor's assignment was GRADED: reopen it so the submission can be re-graded and finalized again.
             var assignments = await _db.Assignments
                 .Where(a => a.SubmissionId == application.SubmissionId
@@ -259,13 +259,33 @@ public sealed class ApplicationService : IApplicationService
             }
         }
 
-        await _db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(ct))
+            return StatusConflict();
         
         var officialScore = application.StudentSubmission.SubmissionGradingHistories
             .FirstOrDefault(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)?.TotalScore;
 
         return Result<ApplicationDTO>.Success(ToDto(application, application.Student, application.StudentSubmission, officialScore));
     }
+
+    // Saves and reports a lost race on the Status concurrency token instead of throwing.
+    private async Task<bool> TrySaveAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+
+    private static Result<ApplicationDTO> StatusConflict()
+        => Result<ApplicationDTO>.Failure(
+            "Trạng thái đơn phúc khảo vừa được thay đổi bởi thao tác khác, vui lòng tải lại và thử lại.",
+            "APPLICATION_STATUS_CONFLICT");
 
     private static ApplicationDTO ToDto(
         Domain.Entities.Application app,

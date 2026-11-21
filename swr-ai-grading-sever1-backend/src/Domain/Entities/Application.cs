@@ -16,8 +16,16 @@ public class Application
     [Column("reason")]
     public string reason { get; set; } = string.Empty;
 
+    // Concurrency token: a status change saved by another request makes this save fail
+    // instead of silently overwriting it (e.g. a resubmission racing an approval).
     [Required]
+    [ConcurrencyCheck]
     public ApplicationStatus Status { get; set; } = ApplicationStatus.PENDING;
+
+    // Set once when the appeal is approved. The regrade cycle starts here, so later
+    // status changes (IN_PROGRESS, COMPLETED) do not move the start of that cycle.
+    [Column("approved_at")]
+    public DateTime? ApprovedAt { get; set; }
 
     [Required]
     [Column("created_day")]
