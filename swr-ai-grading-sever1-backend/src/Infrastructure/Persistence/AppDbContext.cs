@@ -97,10 +97,6 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(e => e.SubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.Entity<SubmissionGradingHistory>()
-            .HasIndex(e => new { e.SubmissionId, e.EvaluationType })
-            .IsUnique();
-
         builder.Entity<SubmissionItemDetail>()
             .HasOne(d => d.SubmissionGradingHistory)
             .WithMany(e => e.Details)
