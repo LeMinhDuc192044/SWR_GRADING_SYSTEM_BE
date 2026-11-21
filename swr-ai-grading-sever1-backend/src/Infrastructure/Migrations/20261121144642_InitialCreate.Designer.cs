@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261121090834_AddApplicationApprovedAt")]
-    partial class AddApplicationApprovedAt
+    [Migration("20261121144642_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -713,14 +713,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("HistoryId");
 
-                    b.HasIndex("SubmissionId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_submission_grading_histories_one_official")
-                        .HasFilter("\"Status\" = 1");
-
-                    b.HasIndex("SubmissionId", "GradingRound")
-                        .IsUnique()
-                        .HasDatabaseName("ux_submission_grading_histories_submission_round");
+                    b.HasIndex("SubmissionId");
 
                     b.ToTable("submission_grading_histories");
                 });
