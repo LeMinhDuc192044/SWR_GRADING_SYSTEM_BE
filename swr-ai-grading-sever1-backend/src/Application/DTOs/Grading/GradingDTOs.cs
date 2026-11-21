@@ -12,6 +12,8 @@ public sealed class GradingHistoryDTO
     public string? GeneralFeedback { get; set; }
     public SubmissionGradingHistoryStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
+    // Monitor who created this grading history, resolved from the submission's assignment.
+    public string? GraderName { get; set; }
     public List<GradingItemDetailDTO> Details { get; set; } = [];
 }
 
