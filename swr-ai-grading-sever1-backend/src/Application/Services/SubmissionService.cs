@@ -17,17 +17,20 @@ public sealed class SubmissionService : ISubmissionService
     private readonly ISupabaseStorage _storage;
     private readonly IGeminiAIService _gemini;
     private readonly IImageUrlProvider _imageUrls;
+    private readonly ISubmissionGradingService? _gradingService;
 
     public SubmissionService(
         IApplicationDbContext db,
         ISupabaseStorage storage,
         IGeminiAIService gemini,
-        IImageUrlProvider imageUrls)
+        IImageUrlProvider imageUrls,
+        ISubmissionGradingService? gradingService = null)
     {
         _db = db;
         _storage = storage;
         _gemini = gemini;
         _imageUrls = imageUrls;
+        _gradingService = gradingService;
     }
 
     public async Task<Result<UploadSubmissionsResultDTO>> UploadSubmissionsAsync(
@@ -766,8 +769,25 @@ public sealed class SubmissionService : ISubmissionService
         return Result<SubmissionDetailDTO>.Success(ToDetail(submission));
     }
 
-    public Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
-        => GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
+    public async Task<Result<SubmissionDetailDTO>> TriggerAiGradingAsync(Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var submission = await _db.StudentSubmissions.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId, ct);
+        if (submission is null)
+            return Result<SubmissionDetailDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
+
+        if (!isElevatedRole && submission.StudentId != currentUserId)
+            return Result<SubmissionDetailDTO>.Failure("Bạn không có quyền thực hiện chấm AI cho bài thi này.", "FORBIDDEN");
+
+        if (_gradingService is not null)
+        {
+            var gradeResult = await _gradingService.GradeWithAiAsync(submissionId, currentUserId, ct);
+            if (!gradeResult.IsSuccess)
+                return Result<SubmissionDetailDTO>.Failure(gradeResult.Error!, gradeResult.ErrorCode!);
+        }
+
+        return await GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
+    }
     public Task<Result<SubmissionDetailDTO>> ReviewAsync(Guid submissionId, ReviewSubmissionRequest request, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
         => GetByIdAsync(submissionId, currentUserId, isElevatedRole, ct);
     public Task<Result<SubmissionDetailDTO>> ReviewAsync(Guid submissionId, decimal lecturerScore, string? comment, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
@@ -799,13 +819,16 @@ public sealed class SubmissionService : ISubmissionService
         foreach (var history in submission.SubmissionGradingHistories.OrderBy(h => h.CreatedAt))
         {
             var isOfficial = history.Status == SubmissionGradingHistoryStatus.OFFICIAL;
+            if (!isElevatedRole && !isOfficial)
+                continue;
+
             var isAi = history.EvaluationType == EvaluationType.AI;
             timeline.Add(new SubmissionHistoryTimelineEventDto
             {
                 Stage = isAi ? "AIGrading" : (history.GradingRound == 1 ? "LecturerGrading" : "Regrading"),
                 Title = isAi
-                    ? $"AI chấm điểm vòng {history.GradingRound} (Điểm: {history.TotalScore})"
-                    : $"Giảng viên chấm vòng {history.GradingRound} ({(isOfficial ? "Chính thức" : "Nháp")}, Điểm: {history.TotalScore})",
+                    ? $"AI chấm điểm vòng {history.GradingRound} (Điểm: {history.TotalScore?.ToString("G29", CultureInfo.InvariantCulture)})"
+                    : $"Giảng viên chấm vòng {history.GradingRound} ({(isOfficial ? "Chính thức" : "Nháp")}, Điểm: {history.TotalScore?.ToString("G29", CultureInfo.InvariantCulture)})",
                 Timestamp = history.CreatedAt,
                 IsCompleted = true
             });

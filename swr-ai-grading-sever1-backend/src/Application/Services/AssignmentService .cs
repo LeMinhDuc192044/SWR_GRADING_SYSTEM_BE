@@ -1,4 +1,4 @@
-﻿
+
 using Application.Common;
 using Application.Common.Interfaces;
 using Application.DTOs.Assignments;
@@ -221,12 +221,48 @@ public sealed class AssignmentService : IAssignmentService
             => !linkedPairs.Contains((studentId, monitorId))
                && !previousPairs.Contains((submissionId, monitorId));
 
-        // Round-robin: each monitor in turn takes the oldest submission it may grade,
-        // so workloads differ by at most one unless the rules above leave no choice.
+        // Phase 1: Feasible initial allocation using bipartite matching (augmenting paths).
+        // Ensure every monitor gets at least 1 submission if feasible, allowing reassignment of provisional choices.
+        var submissionToMonitor = new Dictionary<Guid, Guid>();
+        if (candidates.Count >= monitorIds.Count)
+        {
+            bool TryMatch(Guid mId, HashSet<Guid> visited)
+            {
+                foreach (var c in candidates)
+                {
+                    if (IsEligible(mId, c.SubmissionId, c.StudentId) && visited.Add(c.SubmissionId))
+                    {
+                        if (!submissionToMonitor.TryGetValue(c.SubmissionId, out var existingMonitor) ||
+                            TryMatch(existingMonitor, visited))
+                        {
+                            submissionToMonitor[c.SubmissionId] = mId;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            foreach (var monitorId in monitorIds)
+            {
+                TryMatch(monitorId, new HashSet<Guid>());
+            }
+        }
+
         var allocation = monitorIds.ToDictionary(id => id, _ => new List<Guid>());
         var taken = new HashSet<Guid>();
-        var progressed = true;
 
+        if (submissionToMonitor.Values.Distinct().Count() == monitorIds.Count)
+        {
+            foreach (var kvp in submissionToMonitor)
+            {
+                allocation[kvp.Value].Add(kvp.Key);
+                taken.Add(kvp.Key);
+            }
+        }
+
+        // Phase 2: Round-robin fill up to request.SubmissionPerMonitor
+        var progressed = true;
         while (progressed)
         {
             progressed = false;

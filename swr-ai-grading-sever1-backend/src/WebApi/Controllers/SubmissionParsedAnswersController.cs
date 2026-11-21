@@ -62,7 +62,8 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         if (!TryGetCurrentUserId(out var userId) && !hasValidSignature)
             return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
 
-        var result = await _service.GetImageAsync(id, userId, hasValidSignature || IsAdmin(), ct);
+        var isElevatedRole = hasValidSignature || IsAdmin() || User.IsInRole("Examiner");
+        var result = await _service.GetImageAsync(id, userId, isElevatedRole, ct);
         if (!result.IsSuccess) return Failure(result.ErrorCode, result.Error);
 
         var image = result.Data!;

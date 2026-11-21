@@ -378,4 +378,29 @@ public class AssignmentServiceTests
         Assert.Single(result.Data!, a => a.StaffId == monitor2Id);
         Assert.Single(result.Data!, a => a.StaffId == monitor3Id);
     }
+
+    [Fact]
+    public async Task CreateAsync_FeasibleAllocationWithReassignment_SucceedsInsteadOfDeadlock()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+
+        // Setup:
+        // monitor2 is eligible for both sub1 and sub2.
+        // monitor3 is linked to sub2's student (so monitor3 can ONLY grade sub1).
+        // If monitor2 greedily took sub1 first, monitor3 would have no eligible submissions!
+        // With bipartite matching reassignment, monitor2 gets sub2 and monitor3 gets sub1.
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor3Id);
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id, monitor3Id],
+            SubmissionPerMonitor = 1
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.Contains(result.Data, a => a.StaffId == monitor3Id && a.SubmissionId == sub1Id);
+        Assert.Contains(result.Data, a => a.StaffId == monitor2Id && a.SubmissionId == sub2Id);
+    }
 }

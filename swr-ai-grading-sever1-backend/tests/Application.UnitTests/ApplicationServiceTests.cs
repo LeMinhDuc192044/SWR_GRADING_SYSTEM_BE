@@ -344,4 +344,38 @@ public class ApplicationServiceTests
             .FirstOrDefaultAsync(h => h.SubmissionId == submission.SubmissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL);
         Assert.NotNull(officialHistory);
     }
+
+    [Fact]
+    public async Task CreateAsync_AfterRejection_AllowsResubmissionAndResetsToPending()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        // 1. Submit appeal
+        var firstCreate = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Lý do ban đầu chưa rõ ràng"
+        }, student.Id);
+        Assert.True(firstCreate.IsSuccess);
+
+        // 2. Reject appeal
+        var rejectResult = await service.UpdateStatusAsync(firstCreate.Data!.Id, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.REJECTED
+        }, examiner.Id);
+        Assert.True(rejectResult.IsSuccess);
+
+        // 3. Resubmit appeal with new reason
+        var secondCreate = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Bổ sung bằng chứng và lý do cụ thể"
+        }, student.Id);
+
+        Assert.True(secondCreate.IsSuccess);
+        Assert.Equal(firstCreate.Data.Id, secondCreate.Data!.Id); // Reused record
+        Assert.Equal(ApplicationStatus.PENDING, secondCreate.Data.Status);
+        Assert.Equal("Bổ sung bằng chứng và lý do cụ thể", secondCreate.Data.Reason);
+    }
 }

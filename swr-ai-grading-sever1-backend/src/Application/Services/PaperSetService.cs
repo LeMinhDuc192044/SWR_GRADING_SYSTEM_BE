@@ -181,7 +181,6 @@ public sealed class PaperSetService : IPaperSetService
         {
             await _repository.AddAsync(materialResult.Data!, ct);
             await _unitOfWork.SaveChangesAsync(ct);
-            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
         }
         catch
         {
@@ -191,6 +190,8 @@ public sealed class PaperSetService : IPaperSetService
             }
             throw;
         }
+
+        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
     }
 
     public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(
@@ -230,8 +231,6 @@ public sealed class PaperSetService : IPaperSetService
             }
 
             await _unitOfWork.SaveChangesAsync(ct);
-            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(
-                await Task.WhenAll(created.Select(ToMetadataAsync)));
         }
         catch
         {
@@ -245,6 +244,9 @@ public sealed class PaperSetService : IPaperSetService
 
             throw;
         }
+
+        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(
+            await Task.WhenAll(created.Select(ToMetadataAsync)));
     }
 
     private static Result<IReadOnlyList<CreateQuestionInput>> ParseQuestionDocument(

@@ -50,7 +50,18 @@ public sealed class ApplicationService : IApplicationService
             .FirstOrDefaultAsync(a => a.SubmissionId == submission.SubmissionId, ct);
 
         if (existingApp is not null)
+        {
+            if (existingApp.Status == ApplicationStatus.REJECTED)
+            {
+                existingApp.reason = request.Reason.Trim();
+                existingApp.Status = ApplicationStatus.PENDING;
+                existingApp.UpdatedDay = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return Result<ApplicationDTO>.Success(ToDto(existingApp, student, submission, officialGrading?.TotalScore));
+            }
+
             return Result<ApplicationDTO>.Failure("Bài thi này đã có đơn phúc khảo, không thể nộp thêm đơn mới.", "APPLICATION_ALREADY_EXISTS");
+        }
 
         var now = DateTime.UtcNow;
         var application = new Domain.Entities.Application

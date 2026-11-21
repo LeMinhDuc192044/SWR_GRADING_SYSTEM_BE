@@ -187,12 +187,20 @@ public class SubmissionServiceTests
         var (db, student, _, _, submission) = Seed();
         var service = CreateService(db);
 
+        // Student (non-elevated) sees submitted and official lecturer grade, but DRAFT AI score is excluded
         var result = await service.GetHistoryAsync(submission.SubmissionId, student.Id, isElevatedRole: false);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Data);
-        Assert.True(result.Data!.Timeline.Count >= 2);
+        Assert.Equal(2, result.Data!.Timeline.Count);
         Assert.Contains(result.Data.Timeline, t => t.Stage == "Submitted");
-        Assert.Contains(result.Data.Timeline, t => t.Stage == "LecturerGrading");
+        Assert.Contains(result.Data.Timeline, t => t.Stage == "LecturerGrading" && t.Title.Contains("8.5"));
+        Assert.DoesNotContain(result.Data.Timeline, t => t.Stage == "AIGrading");
+
+        // Elevated staff sees all timeline events including draft AI score
+        var elevatedResult = await service.GetHistoryAsync(submission.SubmissionId, Guid.NewGuid(), isElevatedRole: true);
+        Assert.True(elevatedResult.IsSuccess);
+        Assert.Equal(3, elevatedResult.Data!.Timeline.Count);
+        Assert.Contains(elevatedResult.Data.Timeline, t => t.Stage == "AIGrading" && t.Title.Contains("7"));
     }
 }

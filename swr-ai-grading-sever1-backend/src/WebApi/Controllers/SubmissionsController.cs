@@ -17,10 +17,14 @@ namespace WebApi.Controllers;
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
+    private readonly ISubmissionGradingService _gradingService;
 
-    public SubmissionsController(ISubmissionService submissionService)
+    public SubmissionsController(
+        ISubmissionService submissionService,
+        ISubmissionGradingService gradingService)
     {
         _submissionService = submissionService;
+        _gradingService = gradingService;
     }
 
     /// <summary>
@@ -157,18 +161,23 @@ public sealed class SubmissionsController : ControllerBase
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
 
-        var result = await _submissionService.TriggerAiGradingAsync(id, userId, IsElevatedRole(), ct);
+        var gradeResult = await _gradingService.GradeWithAiAsync(id, userId, ct);
+        if (!gradeResult.IsSuccess)
+        {
+            if (gradeResult.ErrorCode == "SUBMISSION_NOT_FOUND")
+                return NotFound(ApiResponse.Failure(404, gradeResult.Error!, gradeResult.ErrorCode));
 
+            if (gradeResult.ErrorCode == "FORBIDDEN")
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, gradeResult.Error!, gradeResult.ErrorCode));
+
+            return BadRequest(ApiResponse.Failure(400, gradeResult.Error!, gradeResult.ErrorCode));
+        }
+
+        var result = await _submissionService.GetByIdAsync(id, userId, IsElevatedRole(), ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 
-        if (result.ErrorCode == "SUBMISSION_NOT_FOUND")
-            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
-
-        if (result.ErrorCode == "FORBIDDEN")
-            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, result.Error!, result.ErrorCode));
-
-        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+        return Ok(ApiResponse.Success(gradeResult.Data));
     }
 
     /// <summary>
@@ -207,10 +216,20 @@ public sealed class SubmissionsController : ControllerBase
     private bool IsElevatedRole()
     {
         var discriminator = User.FindFirstValue("discriminator");
-        if (string.Equals(discriminator, "Admin", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(discriminator, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Examiner", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Manager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(discriminator, "Monitor", StringComparison.OrdinalIgnoreCase))
             return true;
 
         var roleStr = User.FindFirstValue(ClaimTypes.Role);
-        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase) || User.IsInRole("Admin");
+        return string.Equals(roleStr, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Examiner), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Manager), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleStr, nameof(UserRole.Monitor), StringComparison.OrdinalIgnoreCase)
+            || User.IsInRole("Admin")
+            || User.IsInRole("Examiner")
+            || User.IsInRole("Manager")
+            || User.IsInRole("Monitor");
     }
 }

@@ -174,13 +174,22 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         Guid submissionId, Guid currentUserId, bool isElevatedRole, CancellationToken ct)
     {
         var submission = await _db.StudentSubmissions
-            // .Include(item => item.GradingDiary)
             .FirstOrDefaultAsync(item => item.SubmissionId == submissionId, ct);
         if (submission is null)
             return Result<StudentSubmission>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
-        // if (!isElevatedRole && submission.GradingDiary.CreateById != currentUserId)
-        //     return Result<StudentSubmission>.Failure("You are not allowed to access this submission.", "FORBIDDEN");
-        return Result<StudentSubmission>.Success(submission);
+
+        if (isElevatedRole)
+            return Result<StudentSubmission>.Success(submission);
+
+        if (submission.StudentId == currentUserId)
+            return Result<StudentSubmission>.Success(submission);
+
+        var isAssigned = await _db.Assignments
+            .AnyAsync(a => a.SubmissionId == submissionId && a.StaffId == currentUserId, ct);
+        if (isAssigned)
+            return Result<StudentSubmission>.Success(submission);
+
+        return Result<StudentSubmission>.Failure("You are not allowed to access this submission.", "FORBIDDEN");
     }
 
     private SubmissionParsedAnswerDTO ToDto(SubmissionParsedAnswer answer) => new()
