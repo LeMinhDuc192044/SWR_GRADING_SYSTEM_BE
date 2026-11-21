@@ -440,4 +440,46 @@ public class ApplicationServiceTests
         using var check = TestDbContextFactory.Create(dbName);
         Assert.Equal(ApplicationStatus.APPROVED, (await check.Applications.SingleAsync(a => a.Id == created.Data.Id)).Status);
     }
+
+    [Fact]
+    public async Task UpdateStatusAsync_CompleteBeforeRegradeFinalized_IsRejectedUntilNewOfficialGrade()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+        var created = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+        await service.UpdateStatusAsync(created.Data!.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.APPROVED }, examiner.Id);
+
+        var tooEarly = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.COMPLETED }, examiner.Id);
+        Assert.False(tooEarly.IsSuccess);
+        Assert.Equal("REGRADE_NOT_FINALIZED", tooEarly.ErrorCode);
+        Assert.Equal(ApplicationStatus.APPROVED,
+            (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == created.Data.Id)).Status);
+
+        // The regrade is finalized: the old official grade is demoted and a newer one is official.
+        var oldOfficial = await db.SubmissionGradingHistories
+            .SingleAsync(h => h.SubmissionId == submission.SubmissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL);
+        oldOfficial.Status = SubmissionGradingHistoryStatus.DRAFT;
+        db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+        {
+            HistoryId = Guid.NewGuid(),
+            SubmissionId = submission.SubmissionId,
+            EvaluationType = EvaluationType.Lecturer,
+            GradingRound = 2,
+            TotalScore = 7.5m,
+            Status = SubmissionGradingHistoryStatus.OFFICIAL,
+            CreatedAt = DateTime.UtcNow.AddSeconds(1)
+        });
+        await db.SaveChangesAsync();
+
+        var completed = await service.UpdateStatusAsync(created.Data.Id,
+            new UpdateApplicationStatusRequest { Status = ApplicationStatus.COMPLETED }, examiner.Id);
+        Assert.True(completed.IsSuccess);
+        Assert.Equal(ApplicationStatus.COMPLETED, completed.Data!.Status);
+    }
 }

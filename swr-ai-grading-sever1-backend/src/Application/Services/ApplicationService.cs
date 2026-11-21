@@ -236,6 +236,20 @@ public sealed class ApplicationService : IApplicationService
             }
         }
 
+        // Completing an appeal while its regrade is still open would close the regrade cycle and
+        // leave the reopened assignment stuck (ALREADY_FINALIZED). Finalizing the regrade completes
+        // the appeal automatically; a manual completion is only accepted once that has happened.
+        if (request.Status == ApplicationStatus.COMPLETED && application.Status != ApplicationStatus.COMPLETED)
+        {
+            var cycleStart = application.ApprovedAt ?? application.UpdatedDay;
+            var regradeFinalized = application.StudentSubmission.SubmissionGradingHistories
+                .Any(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL && h.CreatedAt > cycleStart);
+            if (!regradeFinalized)
+                return Result<ApplicationDTO>.Failure(
+                    "Chỉ có thể hoàn tất đơn phúc khảo sau khi bài đã được chấm lại và chốt điểm.",
+                    "REGRADE_NOT_FINALIZED");
+        }
+
         var wasApproved = application.Status == ApplicationStatus.APPROVED;
         application.Status = request.Status;
         application.UpdatedDay = DateTime.UtcNow;
