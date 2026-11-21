@@ -97,20 +97,6 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(e => e.SubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Each grading attempt is a new history row with the next round number,
-        // so a submission can hold many AI/lecturer rows but only one per round.
-        builder.Entity<SubmissionGradingHistory>()
-            .HasIndex(e => new { e.SubmissionId, e.GradingRound })
-            .IsUnique()
-            .HasDatabaseName("ux_submission_grading_histories_submission_round");
-
-        // At most one OFFICIAL result per submission (Status = 1 = OFFICIAL).
-        builder.Entity<SubmissionGradingHistory>()
-            .HasIndex(e => e.SubmissionId)
-            .IsUnique()
-            .HasFilter("\"Status\" = 1")
-            .HasDatabaseName("ux_submission_grading_histories_one_official");
-
         builder.Entity<SubmissionItemDetail>()
             .HasOne(d => d.SubmissionGradingHistory)
             .WithMany(e => e.Details)
