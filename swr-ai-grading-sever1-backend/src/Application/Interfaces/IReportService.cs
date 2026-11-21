@@ -42,8 +42,9 @@ public interface IReportService
         Guid? examinationId, Guid? semesterId, string? search, PagedRequest request, CancellationToken ct = default);
 
     /// <summary>
-    /// Danh sách toàn bộ bài nộp đã có lịch sử chấm điểm OFFICIAL (điểm chính thức) kèm chi tiết từng câu, có phân trang.
+    /// Danh sách bài nộp đã có lịch sử chấm điểm OFFICIAL (điểm chính thức) kèm chi tiết từng câu, có phân trang
+    /// và lọc theo Kỳ thi / Học kỳ.
     /// </summary>
     Task<Result<PagedResult<OfficialSubmissionListItemDto>>> GetOfficialSubmissionsAsync(
-        PagedRequest request, CancellationToken ct = default);
+        Guid? examinationId, Guid? semesterId, PagedRequest request, CancellationToken ct = default);
 }

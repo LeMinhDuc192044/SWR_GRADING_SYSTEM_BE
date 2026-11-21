@@ -50,11 +50,13 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             .ThenBy(h => h.CreatedAt)
             .ToListAsync(ct);
 
+        var assignments = await LoadAssignmentsAsync(submissionId, ct);
+
         // Reading histories is open to any signed-in monitor: no blind-regrade filtering here.
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
             SubmissionId = submissionId,
-            Histories = histories.Select(Map).ToList(),
+            Histories = histories.Select(h => Map(h, ResolveGraderName(assignments, h.CreatedAt))).ToList(),
             ParsedAnswers = await LoadParsedAnswersAsync(submissionId, ct)
         });
     }
@@ -73,10 +75,12 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
             .ThenBy(h => h.CreatedAt)
             .ToListAsync(ct);
 
+        var assignments = await LoadAssignmentsAsync(submissionId, ct);
+
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
             SubmissionId = submissionId,
-            Histories = officialHistories.Select(Map).ToList(),
+            Histories = officialHistories.Select(h => Map(h, ResolveGraderName(assignments, h.CreatedAt))).ToList(),
             ParsedAnswers = await LoadParsedAnswersAsync(submissionId, ct)
         });
     }
@@ -778,7 +782,26 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private async Task<Result<GradingHistoryDTO>> ReloadAsync(Guid historyId, CancellationToken ct)
     {
         var saved = await HistoriesWithDetails().AsNoTracking().FirstAsync(h => h.HistoryId == historyId, ct);
-        return Result<GradingHistoryDTO>.Success(Map(saved));
+        var assignments = await LoadAssignmentsAsync(saved.SubmissionId, ct);
+        return Result<GradingHistoryDTO>.Success(Map(saved, ResolveGraderName(assignments, saved.CreatedAt)));
+    }
+
+    // A grading history does not store who created it, so the monitor comes from the submission's
+    // assignment list: the latest assignment that existed when the history was created.
+    private async Task<List<Assignment>> LoadAssignmentsAsync(Guid submissionId, CancellationToken ct)
+        => await _db.Assignments.AsNoTracking()
+            .Include(a => a.Staff)
+            .Where(a => a.SubmissionId == submissionId)
+            .OrderBy(a => a.AssignedDate)
+            .ToListAsync(ct);
+
+    private static string? ResolveGraderName(IReadOnlyList<Assignment> assignments, DateTime createdAt)
+    {
+        if (assignments.Count == 0)
+            return null;
+
+        var active = assignments.LastOrDefault(a => a.AssignedDate <= createdAt);
+        return (active ?? assignments[0]).Staff?.FullName;
     }
 
     private static string BuildRubric(IEnumerable<SubmissionParsedAnswer> answers, IReadOnlyList<QuestionCriteria> criteria)
@@ -844,7 +867,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private static Result<GradingHistoryDTO> Fail(string? error, string? code)
         => Result<GradingHistoryDTO>.Failure(error ?? "Request failed.", code);
 
-    private static GradingHistoryDTO Map(SubmissionGradingHistory h) => new()
+    private static GradingHistoryDTO Map(SubmissionGradingHistory h, string? graderName = null) => new()
     {
         HistoryId = h.HistoryId,
         SubmissionId = h.SubmissionId,
@@ -854,6 +877,7 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         GeneralFeedback = h.GeneralFeedback,
         Status = h.Status,
         CreatedAt = h.CreatedAt,
+        GraderName = graderName,
         Details = h.Details
             .OrderBy(d => d.ParsedAnswer.Question.Title)
             .Select(d => new GradingItemDetailDTO
