@@ -68,14 +68,16 @@ public sealed class ManagerReportsController : ControllerBase
     /// GET /api/manager/reports/official-submissions
     /// Danh sách bài nộp đã có điểm chính thức (SubmissionGradingHistoryStatus.OFFICIAL).
     /// Mỗi dòng gồm: sinh viên, kỳ thi, bộ đề, học kỳ, điểm chính thức, người chấm và chi tiết điểm từng câu của lần chấm OFFICIAL.
-    /// Không cần tham số lọc; chỉ hỗ trợ phân trang (page, pageSize).
+    /// Không bắt buộc tham số lọc; hỗ trợ phân trang (page, pageSize) và lọc theo Kỳ thi (examinationId) / Học kỳ (semesterId).
     /// </summary>
     [HttpGet("official-submissions")]
     public async Task<IActionResult> GetOfficialSubmissions(
         [FromQuery] PagedRequest request,
+        [FromQuery] Guid? examinationId,
+        [FromQuery] Guid? semesterId,
         CancellationToken ct)
     {
-        var result = await _reportService.GetOfficialSubmissionsAsync(request, ct);
+        var result = await _reportService.GetOfficialSubmissionsAsync(examinationId, semesterId, request, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 

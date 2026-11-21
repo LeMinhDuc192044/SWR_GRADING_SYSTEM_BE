@@ -879,11 +879,11 @@ public sealed class ReportService : IReportService
     }
 
     public async Task<Result<PagedResult<OfficialSubmissionListItemDto>>> GetOfficialSubmissionsAsync(
-        PagedRequest request, CancellationToken ct = default)
+        Guid? examinationId, Guid? semesterId, PagedRequest request, CancellationToken ct = default)
     {
         request ??= new PagedRequest();
 
-        var submissions = await _db.StudentSubmissions.AsNoTracking()
+        var query = _db.StudentSubmissions.AsNoTracking()
             .Include(s => s.Student)
             .Include(s => s.ExaminationSession).ThenInclude(es => es!.Examination)
             .Include(s => s.ExaminationSession).ThenInclude(es => es!.Semester)
@@ -892,7 +892,21 @@ public sealed class ReportService : IReportService
                 .ThenInclude(d => d.ParsedAnswer).ThenInclude(a => a.Question)
             .Include(s => s.Assignments).ThenInclude(a => a.Staff)
             .Where(s => s.SubmissionGradingHistories.Any(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL))
-            .ToListAsync(ct);
+            .AsQueryable();
+
+        if (examinationId.HasValue)
+        {
+            query = query.Where(s => s.ExaminationSession != null
+                                     && s.ExaminationSession.ExaminationId == examinationId.Value);
+        }
+
+        if (semesterId.HasValue)
+        {
+            query = query.Where(s => s.ExaminationSession != null
+                                     && s.ExaminationSession.SemesterId == semesterId.Value);
+        }
+
+        var submissions = await query.ToListAsync(ct);
 
         var items = submissions
             .Select(MapOfficialSubmission)
