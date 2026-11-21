@@ -53,6 +53,15 @@ public sealed class ApplicationService : IApplicationService
         {
             if (existingApp.Status == ApplicationStatus.REJECTED)
             {
+                // Verify that the stored status in database is still REJECTED to prevent stale overwrites
+                var isStillRejected = await _db.Applications.AsNoTracking()
+                    .AnyAsync(a => a.Id == existingApp.Id && a.Status == ApplicationStatus.REJECTED, ct);
+
+                if (!isStillRejected)
+                {
+                    return Result<ApplicationDTO>.Failure("Trạng thái đơn phúc khảo đã thay đổi, không thể nộp lại lúc này.", "APPLICATION_STATUS_CONFLICT");
+                }
+
                 existingApp.reason = request.Reason.Trim();
                 existingApp.Status = ApplicationStatus.PENDING;
                 existingApp.UpdatedDay = DateTime.UtcNow;
