@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -66,6 +66,48 @@ namespace Infrastructure.Migrations
             migrationBuilder.DropIndex(
                 name: "ux_submission_grading_histories_submission_round",
                 table: "submission_grading_histories");
+
+            // Reconcile histories from repeated grading attempts before restoring the old constraint:
+            // Archive any duplicate (submission_id, evaluation_type) rows to preserve grading history rather than silently deleting.
+            migrationBuilder.Sql(@"
+                CREATE TABLE IF NOT EXISTS submission_grading_histories_archive AS 
+                SELECT * FROM submission_grading_histories WHERE 1=0;
+
+                WITH ranked AS (
+                    SELECT history_id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY submission_id, evaluation_type 
+                               ORDER BY (""Status"" = 1) DESC, created_at DESC
+                           ) as rn
+                    FROM submission_grading_histories
+                )
+                INSERT INTO submission_grading_histories_archive
+                SELECT h.* FROM submission_grading_histories h
+                JOIN ranked r ON h.history_id = r.history_id
+                WHERE r.rn > 1;
+
+                WITH ranked AS (
+                    SELECT history_id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY submission_id, evaluation_type 
+                               ORDER BY (""Status"" = 1) DESC, created_at DESC
+                           ) as rn
+                    FROM submission_grading_histories
+                )
+                DELETE FROM submission_item_details
+                WHERE history_id IN (SELECT history_id FROM ranked WHERE rn > 1);
+
+                WITH ranked AS (
+                    SELECT history_id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY submission_id, evaluation_type 
+                               ORDER BY (""Status"" = 1) DESC, created_at DESC
+                           ) as rn
+                    FROM submission_grading_histories
+                )
+                DELETE FROM submission_grading_histories
+                WHERE history_id IN (SELECT history_id FROM ranked WHERE rn > 1);
+            ");
 
             migrationBuilder.CreateIndex(
                 name: "IX_submission_grading_histories_submission_id_evaluation_type",
