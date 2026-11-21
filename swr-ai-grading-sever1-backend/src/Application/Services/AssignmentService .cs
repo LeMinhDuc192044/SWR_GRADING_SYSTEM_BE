@@ -15,18 +15,21 @@ public sealed class AssignmentService : IAssignmentService
     private readonly IApplicationDbContext _db;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmailService _emailService;
+    private readonly IEmailBackgroundQueue? _emailQueue;
     private readonly ILogger<AssignmentService> _logger;
 
     public AssignmentService(
         IApplicationDbContext db,
         IUnitOfWork unitOfWork,
         IEmailService emailService,
-        ILogger<AssignmentService> logger)
+        ILogger<AssignmentService> logger,
+        IEmailBackgroundQueue? emailQueue = null)
     {
         _db = db;
         _unitOfWork = unitOfWork;
         _emailService = emailService;
         _logger = logger;
+        _emailQueue = emailQueue;
     }
 
     // =========================================================
@@ -531,6 +534,7 @@ public sealed class AssignmentService : IAssignmentService
             .Where(a =>
                 a.StaffId == staffId &&
                 a.GradingSessionId != currentGradingSessionId &&
+                a.Status == AssignmentStatus.IN_PROGRESS &&
                 (a.GradingSession.Deadline == null ||
                  a.GradingSession.Deadline >= today))
             .OrderBy(a => a.GradingSession.Deadline)
@@ -656,20 +660,30 @@ public sealed class AssignmentService : IAssignmentService
                 deadlineText,
                 codes);
 
-            try
+            if (_emailQueue is not null)
             {
-                await _emailService.SendEmailAsync(
+                _emailQueue.QueueEmail(new EmailMessage(
                     monitor.Email,
                     $"[SWR Grading System] Phân công chấm bài - {gradingSession.Title}",
-                    body,
-                    ct);
+                    body));
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(
-                    ex,
-                    "Lỗi khi gửi email phân công chấm bài cho monitor {Email}",
-                    monitor.Email);
+                try
+                {
+                    await _emailService.SendEmailAsync(
+                        monitor.Email,
+                        $"[SWR Grading System] Phân công chấm bài - {gradingSession.Title}",
+                        body,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Lỗi khi gửi email phân công chấm bài cho monitor {Email}",
+                        monitor.Email);
+                }
             }
         }
     }

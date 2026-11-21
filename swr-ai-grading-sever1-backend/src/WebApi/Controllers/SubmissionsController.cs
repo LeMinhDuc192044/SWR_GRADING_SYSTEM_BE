@@ -12,8 +12,8 @@ using WebApi.Common;
 namespace WebApi.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/submissions")]
-// [Authorize(Roles = "Examiner,Admin")]
 public sealed class SubmissionsController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
@@ -27,7 +27,7 @@ public sealed class SubmissionsController : ControllerBase
     /// FLOW 1: Upload bài làm Word (.docx), RAR (.rar) hoặc ZIP (.zip) đơn lẻ hay gói cả phòng thi.
     /// </summary>
     [HttpPost("upload")]
-    [Authorize(Roles = "Examiner")]
+    [Authorize(Roles = "Examiner,Admin")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(524_288_000)]
     public async Task<IActionResult> Upload(
@@ -82,6 +82,7 @@ public sealed class SubmissionsController : ControllerBase
     /// Lấy danh sách toàn bộ bài nộp (hỗ trợ phân trang chuẩn PagedRequest).
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Examiner,Admin,Monitor")]
     public async Task<IActionResult> GetList(
         [FromQuery] PagedRequest request,
         [FromQuery] Guid? examinationSessionId,
@@ -105,9 +106,14 @@ public sealed class SubmissionsController : ControllerBase
     /// Lấy toàn bộ bài nộp của một sinh viên kèm học kỳ (tên, mã) và tên kỳ thi.
     /// </summary>
     [HttpGet("student/{studentId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetByStudent(Guid studentId, CancellationToken ct)
     {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized(ApiResponse.Failure(401, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+
+        if (!IsElevatedRole() && userId != studentId)
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Failure(403, "Bạn không có quyền xem bài thi của sinh viên khác.", "FORBIDDEN"));
+
         var result = await _submissionService.GetByStudentAsync(studentId, ct);
 
         if (result.IsSuccess)
@@ -145,6 +151,7 @@ public sealed class SubmissionsController : ControllerBase
     /// FLOW 2: Kích hoạt AI chấm điểm tự động dựa trên câu trả lời bóc tách và rubric.
     /// </summary>
     [HttpPost("{id:guid}/ai-grade")]
+    [Authorize(Roles = "Examiner,Admin,Monitor")]
     public async Task<IActionResult> AiGrade(Guid id, CancellationToken ct)
     {
         if (!TryGetCurrentUserId(out var userId))

@@ -47,10 +47,10 @@ public sealed class ApplicationService : IApplicationService
             return Result<ApplicationDTO>.Failure("Bài thi chưa được công bố điểm chính thức, không thể nộp đơn phúc khảo.", "NOT_OFFICIALLY_GRADED");
 
         var existingApp = await _db.Applications
-            .FirstOrDefaultAsync(a => a.SubmissionId == submission.SubmissionId && a.Status != ApplicationStatus.REJECTED, ct);
+            .FirstOrDefaultAsync(a => a.SubmissionId == submission.SubmissionId, ct);
 
         if (existingApp is not null)
-            return Result<ApplicationDTO>.Failure("Bài thi này đã có đơn phúc khảo đang được xử lý hoặc đã được duyệt.", "APPLICATION_ALREADY_EXISTS");
+            return Result<ApplicationDTO>.Failure("Bài thi này đã có đơn phúc khảo, không thể nộp thêm đơn mới.", "APPLICATION_ALREADY_EXISTS");
 
         var now = DateTime.UtcNow;
         var application = new Domain.Entities.Application
@@ -196,16 +196,37 @@ public sealed class ApplicationService : IApplicationService
         if (application is null)
             return Result<ApplicationDTO>.Failure("Không tìm thấy đơn phúc khảo.", "APPLICATION_NOT_FOUND");
 
+        if (!Enum.IsDefined(typeof(ApplicationStatus), request.Status))
+            return Result<ApplicationDTO>.Failure("Trạng thái đơn phúc khảo không hợp lệ.", "INVALID_STATUS");
+
+        if (application.Status != request.Status)
+        {
+            var isValidTransition = (application.Status, request.Status) switch
+            {
+                (ApplicationStatus.PENDING, ApplicationStatus.APPROVED) => true,
+                (ApplicationStatus.PENDING, ApplicationStatus.REJECTED) => true,
+                (ApplicationStatus.APPROVED, ApplicationStatus.IN_PROGRESS) => true,
+                (ApplicationStatus.APPROVED, ApplicationStatus.COMPLETED) => true,
+                (ApplicationStatus.IN_PROGRESS, ApplicationStatus.COMPLETED) => true,
+                _ => false
+            };
+
+            if (!isValidTransition)
+            {
+                return Result<ApplicationDTO>.Failure(
+                    $"Không thể chuyển trạng thái đơn phúc khảo từ {application.Status} sang {request.Status}.",
+                    "INVALID_STATUS_TRANSITION");
+            }
+        }
+
         var wasApproved = application.Status == ApplicationStatus.APPROVED;
         application.Status = request.Status;
         application.UpdatedDay = DateTime.UtcNow;
 
         // Only on the transition to APPROVED, so approving twice can't wipe a re-grade.
+        // We KEEP the existing official score visible until the regrade round is finalized.
         if (request.Status == ApplicationStatus.APPROVED && !wasApproved)
         {
-            foreach (var history in application.StudentSubmission.SubmissionGradingHistories)
-                history.Status = SubmissionGradingHistoryStatus.DRAFT;
-
             // The monitor's assignment was GRADED: reopen it so the submission can be re-graded and finalized again.
             var assignments = await _db.Assignments
                 .Where(a => a.SubmissionId == application.SubmissionId

@@ -187,4 +187,11 @@ public class AppDbContext : DbContext, IApplicationDbContext
 
         base.OnModelCreating(builder);
     }
+
+    public async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        if (Database.ProviderName?.EndsWith("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+            return null;
+        return await Database.BeginTransactionAsync(cancellationToken);
+    }
 }

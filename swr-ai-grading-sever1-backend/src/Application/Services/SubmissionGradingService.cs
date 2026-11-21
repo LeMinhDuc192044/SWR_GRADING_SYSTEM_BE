@@ -472,16 +472,48 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         if (history.TotalScore is null or > MaxTotalScore)
             return Fail($"Total score must be set and at most {MaxTotalScore}.", "INVALID_TOTAL_SCORE");
 
-        history.Status = SubmissionGradingHistoryStatus.OFFICIAL;
+        await using var tx = await _db.BeginTransactionAsync(ct);
+        try
+        {
+            // Demote any existing official history for this submission to DRAFT
+            var previousOfficials = await _db.SubmissionGradingHistories
+                .Where(h => h.SubmissionId == submissionId && h.HistoryId != historyId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+                .ToListAsync(ct);
+            foreach (var prev in previousOfficials)
+            {
+                prev.Status = SubmissionGradingHistoryStatus.DRAFT;
+            }
 
-        var assignment = access.Data!;
-        assignment.Status = AssignmentStatus.GRADED;
-        assignment.UpdatedDate = VietnamTime.Now;
+            history.Status = SubmissionGradingHistoryStatus.OFFICIAL;
 
-        // The official grade closes the grading of this submission.
-        await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Final, ct);
+            var assignment = access.Data!;
+            assignment.Status = AssignmentStatus.GRADED;
+            assignment.UpdatedDate = VietnamTime.Now;
 
-        await _unitOfWork.SaveChangesAsync(ct);
+            // The official grade closes the grading of this submission.
+            await AdvanceSubmissionStatusAsync(submissionId, SubmissionStatus.Final, ct);
+
+            // If there is an active application for this submission, complete it
+            var application = await _db.Applications
+                .FirstOrDefaultAsync(a => a.SubmissionId == submissionId &&
+                    (a.Status == ApplicationStatus.APPROVED || a.Status == ApplicationStatus.IN_PROGRESS), ct);
+            if (application is not null)
+            {
+                application.Status = ApplicationStatus.COMPLETED;
+                application.UpdatedDay = DateTime.UtcNow;
+            }
+
+            await _unitOfWork.SaveChangesAsync(ct);
+            if (tx is not null)
+                await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            if (tx is not null)
+                await tx.RollbackAsync(ct);
+            throw;
+        }
+
         return await ReloadAsync(history.HistoryId, ct);
     }
 

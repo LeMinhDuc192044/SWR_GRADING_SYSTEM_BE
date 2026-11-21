@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace WebApi.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Examiner,Monitor")]
 [Route("api/grading-sessions/{gradingSessionId:guid}/assignments")]
 public class AssignmentController : ControllerBase
 {
@@ -32,6 +32,7 @@ public class AssignmentController : ControllerBase
         => ToResponse(await _assignments.CreateAsync(gradingSessionId, request, ct));
 
     [HttpPut("{assignmentId:guid}")]
+    [Authorize(Roles = "Admin,Manager,Examiner")]
     public async Task<IActionResult> Update(Guid gradingSessionId, Guid assignmentId, [FromBody] UpdateAssignmentRequest request, CancellationToken ct)
         => ToResponse(await _assignments.UpdateAsync(gradingSessionId, assignmentId, request, ct));
 

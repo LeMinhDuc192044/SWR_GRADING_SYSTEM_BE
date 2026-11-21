@@ -177,9 +177,20 @@ public sealed class PaperSetService : IPaperSetService
 
         var materialResult = await CreateMaterialAsync(description, normalizedExaminationId, questionResult.Data!, files, createdById, ct);
         if (!materialResult.IsSuccess) return Result<IReadOnlyList<PaperSetMetadataDTO>>.Failure(materialResult.Error!, materialResult.ErrorCode);
-        await _repository.AddAsync(materialResult.Data!, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-        return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
+        try
+        {
+            await _repository.AddAsync(materialResult.Data!, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            return Result<IReadOnlyList<PaperSetMetadataDTO>>.Success(new[] { await ToMetadataAsync(materialResult.Data!) });
+        }
+        catch
+        {
+            foreach (var path in GetPaths(materialResult.Data!).Values)
+            {
+                try { await _storage.DeleteAsync(path, CancellationToken.None); } catch { }
+            }
+            throw;
+        }
     }
 
     public async Task<Result<IReadOnlyList<PaperSetMetadataDTO>>> CreateManyAsync(

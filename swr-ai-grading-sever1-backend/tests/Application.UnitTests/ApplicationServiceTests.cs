@@ -261,4 +261,87 @@ public class ApplicationServiceTests
         Assert.Single(pagedApps.Data!.Items);
         Assert.Equal("Nguyen Van A", pagedApps.Data!.Items[0].StudentName);
     }
+
+    [Fact]
+    public async Task UpdateStatusAsync_InvalidEnumStatus_ReturnsInvalidStatus()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        var result = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = (ApplicationStatus)99
+        }, examiner.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("INVALID_STATUS", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_InvalidTransitionRejectedToPending_ReturnsError()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        // Reject first
+        var rejectResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.REJECTED
+        }, examiner.Id);
+        Assert.True(rejectResult.IsSuccess);
+
+        // Try to revert to PENDING
+        var revertResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.PENDING
+        }, examiner.Id);
+
+        Assert.False(revertResult.IsSuccess);
+        Assert.Equal("INVALID_STATUS_TRANSITION", revertResult.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_ApprovalKeepsOfficialScoreVisible()
+    {
+        var (db, student, _, submission, examiner) = await SeedAsync();
+        var service = new ApplicationService(db);
+
+        var createResult = await service.CreateAsync(new CreateApplicationRequest
+        {
+            SubmissionId = submission.SubmissionId,
+            Reason = "Cần phúc khảo"
+        }, student.Id);
+
+        var appId = createResult.Data!.Id;
+
+        var approveResult = await service.UpdateStatusAsync(appId, new UpdateApplicationStatusRequest
+        {
+            Status = ApplicationStatus.APPROVED
+        }, examiner.Id);
+
+        Assert.True(approveResult.IsSuccess);
+        Assert.NotNull(approveResult.Data!.OfficialScore);
+        Assert.Equal(6.5m, approveResult.Data.OfficialScore);
+
+        // Official history in DB must still be OFFICIAL
+        var officialHistory = await db.SubmissionGradingHistories
+            .FirstOrDefaultAsync(h => h.SubmissionId == submission.SubmissionId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL);
+        Assert.NotNull(officialHistory);
+    }
 }

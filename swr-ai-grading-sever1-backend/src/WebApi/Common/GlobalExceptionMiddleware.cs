@@ -111,27 +111,33 @@ public sealed class GlobalExceptionMiddleware
                         case "22001": // string data right truncation (value too long)
                             statusCode = StatusCodes.Status400BadRequest;
                             errorCode = "DATA_TOO_LONG";
-                            message = string.IsNullOrWhiteSpace(pgEx.ColumnName)
-                                ? "Dữ liệu nhập vào vượt quá độ dài tối đa cho phép của cơ sở dữ liệu."
-                                : $"Trường '{pgEx.ColumnName}' vượt quá độ dài tối đa cho phép của cơ sở dữ liệu: {pgEx.MessageText}";
+                            var colName = !string.IsNullOrWhiteSpace(pgEx.ColumnName) ? pgEx.ColumnName : pgEx.ConstraintName;
+                            var tableName = !string.IsNullOrWhiteSpace(pgEx.TableName) ? $"bảng '{pgEx.TableName}'" : "cơ sở dữ liệu";
+                            message = !string.IsNullOrWhiteSpace(colName)
+                                ? $"Trường '{colName}' trong {tableName} vượt quá độ dài tối đa cho phép: {pgEx.MessageText}"
+                                : $"Dữ liệu nhập vào vượt quá độ dài tối đa cho phép trong {tableName}: {pgEx.MessageText}";
                             break;
 
                         case "23505": // unique_violation
                             statusCode = StatusCodes.Status409Conflict;
                             errorCode = "DUPLICATE_ENTRY";
-                            message = "Dữ liệu đã tồn tại trong hệ thống (vi phạm ràng buộc trùng lặp dữ liệu duy nhất).";
+                            var uniqTbl = !string.IsNullOrWhiteSpace(pgEx.TableName) ? $" trong bảng '{pgEx.TableName}'" : "";
+                            var uniqConstraint = !string.IsNullOrWhiteSpace(pgEx.ConstraintName) ? $" (ràng buộc: {pgEx.ConstraintName})" : "";
+                            message = $"Dữ liệu đã tồn tại{uniqTbl}{uniqConstraint} (vi phạm ràng buộc trùng lặp dữ liệu duy nhất).";
                             break;
 
                         case "23503": // foreign_key_violation
                             statusCode = StatusCodes.Status400BadRequest;
                             errorCode = "FOREIGN_KEY_VIOLATION";
-                            message = "Dữ liệu liên kết (khóa ngoại) không tồn tại trong hệ thống.";
+                            var fkTbl = !string.IsNullOrWhiteSpace(pgEx.TableName) ? $" trong bảng '{pgEx.TableName}'" : "";
+                            message = $"Dữ liệu liên kết (khóa ngoại){fkTbl} không tồn tại trong hệ thống.";
                             break;
 
                         default:
                             statusCode = StatusCodes.Status400BadRequest;
                             errorCode = "DATABASE_ERROR";
-                            message = $"Lỗi thao tác cơ sở dữ liệu ({pgEx.SqlState}): {pgEx.MessageText}";
+                            var tblInfo = !string.IsNullOrWhiteSpace(pgEx.TableName) ? $" trên bảng '{pgEx.TableName}'" : "";
+                            message = $"Lỗi thao tác cơ sở dữ liệu ({pgEx.SqlState}){tblInfo}: {pgEx.MessageText}";
                             break;
                     }
                 }
@@ -153,12 +159,6 @@ public sealed class GlobalExceptionMiddleware
                 statusCode = StatusCodes.Status400BadRequest;
                 errorCode = "BAD_REQUEST";
                 message = argEx.Message;
-                break;
-
-            case InvalidOperationException opEx:
-                statusCode = StatusCodes.Status400BadRequest;
-                errorCode = "INVALID_OPERATION";
-                message = opEx.Message;
                 break;
 
             default:

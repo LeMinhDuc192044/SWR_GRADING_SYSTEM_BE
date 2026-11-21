@@ -54,7 +54,7 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         CancellationToken ct)
     {
         var hasValidSignature = expires.HasValue && _imageUrls.IsValidSignature(id, expires.Value, signature);
-        var isPrivileged = User.Identity?.IsAuthenticated == true && (IsAdmin() || User.IsInRole("Examiner"));
+        var isPrivileged = User.Identity?.IsAuthenticated == true && (IsAdmin() || User.IsInRole("Examiner") || User.IsInRole("Monitor"));
 
         if (!hasValidSignature && !isPrivileged)
             return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
