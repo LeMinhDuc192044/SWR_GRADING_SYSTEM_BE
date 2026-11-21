@@ -67,46 +67,42 @@ namespace Infrastructure.Migrations
                 name: "ux_submission_grading_histories_submission_round",
                 table: "submission_grading_histories");
 
-            // Reconcile histories from repeated grading attempts before restoring the old constraint:
-            // Archive any duplicate (submission_id, evaluation_type) rows to preserve grading history rather than silently deleting.
+            // Reconcile histories from repeated grading attempts before restoring the old constraint.
+            // Retention policy: per (submission_id, evaluation_type) keep the OFFICIAL row, otherwise the
+            // newest row. Every other row is copied, together with its per-question details
+            // (submission_item_details.evaluation_id -> history_id), into
+            // *_archive tables before it is removed, so no grading data is lost by rolling back.
             migrationBuilder.Sql(@"
-                CREATE TABLE IF NOT EXISTS submission_grading_histories_archive AS 
+                CREATE TEMP TABLE sgh_rollback_removed ON COMMIT DROP AS
+                SELECT history_id FROM (
+                    SELECT history_id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY submission_id, evaluation_type
+                               ORDER BY (""Status"" = 1) DESC, created_at DESC
+                           ) AS rn
+                    FROM submission_grading_histories
+                ) ranked
+                WHERE rn > 1;
+
+                CREATE TABLE IF NOT EXISTS submission_grading_histories_archive AS
                 SELECT * FROM submission_grading_histories WHERE 1=0;
 
-                WITH ranked AS (
-                    SELECT history_id,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY submission_id, evaluation_type 
-                               ORDER BY (""Status"" = 1) DESC, created_at DESC
-                           ) as rn
-                    FROM submission_grading_histories
-                )
+                CREATE TABLE IF NOT EXISTS submission_item_details_archive AS
+                SELECT * FROM submission_item_details WHERE 1=0;
+
                 INSERT INTO submission_grading_histories_archive
                 SELECT h.* FROM submission_grading_histories h
-                JOIN ranked r ON h.history_id = r.history_id
-                WHERE r.rn > 1;
+                WHERE h.history_id IN (SELECT history_id FROM sgh_rollback_removed);
 
-                WITH ranked AS (
-                    SELECT history_id,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY submission_id, evaluation_type 
-                               ORDER BY (""Status"" = 1) DESC, created_at DESC
-                           ) as rn
-                    FROM submission_grading_histories
-                )
+                INSERT INTO submission_item_details_archive
+                SELECT d.* FROM submission_item_details d
+                WHERE d.evaluation_id IN (SELECT history_id FROM sgh_rollback_removed);
+
                 DELETE FROM submission_item_details
-                WHERE history_id IN (SELECT history_id FROM ranked WHERE rn > 1);
+                WHERE evaluation_id IN (SELECT history_id FROM sgh_rollback_removed);
 
-                WITH ranked AS (
-                    SELECT history_id,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY submission_id, evaluation_type 
-                               ORDER BY (""Status"" = 1) DESC, created_at DESC
-                           ) as rn
-                    FROM submission_grading_histories
-                )
                 DELETE FROM submission_grading_histories
-                WHERE history_id IN (SELECT history_id FROM ranked WHERE rn > 1);
+                WHERE history_id IN (SELECT history_id FROM sgh_rollback_removed);
             ");
 
             migrationBuilder.CreateIndex(
