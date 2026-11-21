@@ -878,6 +878,87 @@ public sealed class ReportService : IReportService
         return Result<MonitorPerformanceReportDto>.Success(report);
     }
 
+    public async Task<Result<PagedResult<OfficialSubmissionListItemDto>>> GetOfficialSubmissionsAsync(
+        PagedRequest request, CancellationToken ct = default)
+    {
+        request ??= new PagedRequest();
+
+        var submissions = await _db.StudentSubmissions.AsNoTracking()
+            .Include(s => s.Student)
+            .Include(s => s.ExaminationSession).ThenInclude(es => es!.Examination)
+            .Include(s => s.ExaminationSession).ThenInclude(es => es!.Semester)
+            .Include(s => s.ExaminationSession).ThenInclude(es => es!.PaperSet)
+            .Include(s => s.SubmissionGradingHistories).ThenInclude(h => h.Details)
+                .ThenInclude(d => d.ParsedAnswer).ThenInclude(a => a.Question)
+            .Include(s => s.Assignments).ThenInclude(a => a.Staff)
+            .Where(s => s.SubmissionGradingHistories.Any(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL))
+            .ToListAsync(ct);
+
+        var items = submissions
+            .Select(MapOfficialSubmission)
+            .OrderBy(item => item.StudentCode)
+            .ThenBy(item => item.ExaminationCode)
+            .ToList();
+
+        var paged = new PagedResult<OfficialSubmissionListItemDto>
+        {
+            Items = items.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToList(),
+            TotalCount = items.Count,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
+
+        return Result<PagedResult<OfficialSubmissionListItemDto>>.Success(paged);
+    }
+
+    private static OfficialSubmissionListItemDto MapOfficialSubmission(StudentSubmission submission)
+    {
+        var officialHistory = submission.SubmissionGradingHistories
+            .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            .OrderByDescending(h => h.EvaluationType == EvaluationType.Lecturer)
+            .ThenByDescending(h => h.GradingRound)
+            .ThenByDescending(h => h.CreatedAt)
+            .First();
+
+        var assignment = submission.Assignments
+            .OrderByDescending(a => a.Status == AssignmentStatus.GRADED || a.Status == AssignmentStatus.COMPLETED)
+            .ThenByDescending(a => a.AssignedDate)
+            .FirstOrDefault();
+
+        var session = submission.ExaminationSession;
+
+        return new OfficialSubmissionListItemDto
+        {
+            SubmissionId = submission.SubmissionId,
+            StudentId = submission.StudentId,
+            StudentCode = submission.Student?.StudentCode ?? string.Empty,
+            StudentName = submission.Student?.FullName ?? string.Empty,
+            ExaminationName = session?.Examination?.Name ?? string.Empty,
+            ExaminationCode = session?.ExaminationCode ?? string.Empty,
+            PaperSetCode = session?.PaperSet?.PaperSetCode ?? string.Empty,
+            SemesterName = session?.Semester?.Name ?? string.Empty,
+            SemesterCode = session?.Semester?.SemesterCode ?? string.Empty,
+            OfficialScore = officialHistory.TotalScore ?? officialHistory.Details.Sum(d => d.Score),
+            GradedBy = assignment?.Staff?.FullName ?? string.Empty,
+            GradedById = assignment?.StaffId,
+            HistoryId = officialHistory.HistoryId,
+            GradedAt = officialHistory.CreatedAt,
+            Details = officialHistory.Details
+                .OrderBy(d => d.ParsedAnswer.Question.Title)
+                .Select(d => new OfficialSubmissionDetailDto
+                {
+                    DetailId = d.DetailId,
+                    ParsedAnswerId = d.ParsedAnswerId,
+                    QuestionId = d.ParsedAnswer.QuestionId,
+                    QuestionTitle = d.ParsedAnswer.Question.Title,
+                    MaxScore = d.ParsedAnswer.Question.Point,
+                    Score = d.Score,
+                    Comment = d.Comment
+                })
+                .ToList()
+        };
+    }
+
     private async Task<ReportFilterContextDto> ResolveFilterContextAsync(
         Guid? examinationId, Guid? semesterId, CancellationToken ct)
     {

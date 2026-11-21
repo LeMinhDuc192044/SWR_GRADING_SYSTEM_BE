@@ -64,6 +64,24 @@ public sealed class ManagerReportsController : ControllerBase
     /// Hỗ trợ phân trang chuẩn PagedRequest (page, pageSize) và tìm kiếm (search).
     /// Hỗ trợ lọc theo Kỳ thi (examinationId) hoặc Học kỳ (semesterId).
     /// </summary>
+    /// <summary>
+    /// GET /api/manager/reports/official-submissions
+    /// Danh sách bài nộp đã có điểm chính thức (SubmissionGradingHistoryStatus.OFFICIAL).
+    /// Mỗi dòng gồm: sinh viên, kỳ thi, bộ đề, học kỳ, điểm chính thức, người chấm và chi tiết điểm từng câu của lần chấm OFFICIAL.
+    /// Không cần tham số lọc; chỉ hỗ trợ phân trang (page, pageSize).
+    /// </summary>
+    [HttpGet("official-submissions")]
+    public async Task<IActionResult> GetOfficialSubmissions(
+        [FromQuery] PagedRequest request,
+        CancellationToken ct)
+    {
+        var result = await _reportService.GetOfficialSubmissionsAsync(request, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+    }
+
     [HttpGet("monitor-performance")]
     public async Task<IActionResult> GetMonitorPerformance(
         [FromQuery] PagedRequest request,

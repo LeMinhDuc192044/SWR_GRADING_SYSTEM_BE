@@ -40,4 +40,10 @@ public interface IReportService
     /// </summary>
     Task<Result<MonitorPerformanceReportDto>> GetMonitorPerformanceAsync(
         Guid? examinationId, Guid? semesterId, string? search, PagedRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Danh sách toàn bộ bài nộp đã có lịch sử chấm điểm OFFICIAL (điểm chính thức) kèm chi tiết từng câu, có phân trang.
+    /// </summary>
+    Task<Result<PagedResult<OfficialSubmissionListItemDto>>> GetOfficialSubmissionsAsync(
+        PagedRequest request, CancellationToken ct = default);
 }

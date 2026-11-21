@@ -6,7 +6,7 @@ namespace Application.Interfaces;
 public interface ISubmissionGradingService
 {
     Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
-        Guid submissionId, Guid currentUserId, CancellationToken ct = default);
+        Guid submissionId, CancellationToken ct = default);
 
     Task<Result<SubmissionGradingOverviewDTO>> GetOfficialHistoriesAsync(
         Guid submissionId, Guid currentUserId, CancellationToken ct = default);

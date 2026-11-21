@@ -266,18 +266,20 @@ public class SubmissionGradingServiceTests
     };
 
     [Fact]
-    public async Task GetHistoriesAsync_BlindRegradeMonitor_HidesRound1ScoresAndShowsParsedAnswers()
+    public async Task GetHistoriesAsync_AnyMonitor_SeesAllHistoriesAndParsedAnswers()
     {
         using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
-        var (subId, _, monitor2Id, _, _, _) = await SeedRound1FinalizedAsync(db);
+        var (subId, _, _, _, _, _) = await SeedRound1FinalizedAsync(db);
         var service = CreateService(db);
 
-        var result = await service.GetHistoriesAsync(subId, monitor2Id);
+        var result = await service.GetHistoriesAsync(subId);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Data);
-        Assert.Empty(result.Data.Histories); // Ẩn toàn bộ lịch sử điểm & feedback của Round 1!
-        Assert.Equal(2, result.Data.ParsedAnswers.Count); // Vẫn thấy đầy đủ bài làm của sinh viên để chấm
+        Assert.Equal(2, result.Data.Histories.Count); // Không còn ẩn lịch sử của đợt trước
+        Assert.Contains(result.Data.Histories, h => h.GradingRound == 1);
+        Assert.Contains(result.Data.Histories, h => h.GradingRound == 2);
+        Assert.Equal(2, result.Data.ParsedAnswers.Count);
     }
 
     [Fact]
@@ -350,11 +352,12 @@ public class SubmissionGradingServiceTests
         Assert.False(monitor1Attempt.IsSuccess);
         Assert.Equal("ALREADY_FINALIZED", monitor1Attempt.ErrorCode);
 
-        // Monitor 2 gọi GetHistoriesAsync chỉ thấy lịch sử chấm của chính đợt 2 (Rounds 3, 4), vẫn ẩn Round 1 & 2!
-        var monitor2Overview = await service.GetHistoriesAsync(subId, monitor2Id);
-        Assert.True(monitor2Overview.IsSuccess);
-        Assert.All(monitor2Overview.Data!.Histories, h => Assert.True(h.GradingRound >= 3));
-        Assert.DoesNotContain(monitor2Overview.Data.Histories, h => h.GradingRound <= 2);
+        // GetHistoriesAsync không còn giới hạn: thấy toàn bộ lịch sử chấm (Rounds 1-4).
+        var overview = await service.GetHistoriesAsync(subId);
+        Assert.True(overview.IsSuccess);
+        Assert.Equal(4, overview.Data!.Histories.Count);
+        Assert.Contains(overview.Data.Histories, h => h.GradingRound == 1);
+        Assert.Contains(overview.Data.Histories, h => h.GradingRound == 4);
     }
 }
 
