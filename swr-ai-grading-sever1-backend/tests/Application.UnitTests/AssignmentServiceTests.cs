@@ -403,4 +403,43 @@ public class AssignmentServiceTests
         Assert.Contains(result.Data, a => a.StaffId == monitor3Id && a.SubmissionId == sub1Id);
         Assert.Contains(result.Data, a => a.StaffId == monitor2Id && a.SubmissionId == sub2Id);
     }
+
+    [Fact]
+    public async Task CreateAsync_MonitorWithPastDeadlineInProgressAssignment_IsAssignable()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+
+        // Create an older grading session whose deadline was yesterday
+        var pastSession = new GradingSession
+        {
+            GradingSessionId = Guid.NewGuid(),
+            Title = "Past Session",
+            Deadline = VietnamTime.Today.AddDays(-1)
+        };
+        db.GradingSessions.Add(pastSession);
+
+        // Assign monitor2 to an IN_PROGRESS assignment in that expired session
+        db.Assignments.Add(new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            StaffId = monitor2Id,
+            SubmissionId = Guid.NewGuid(),
+            GradingSessionId = pastSession.GradingSessionId,
+            GradingSession = pastSession,
+            Status = AssignmentStatus.IN_PROGRESS
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var result = await service.CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 1
+        });
+
+        // Monitor2 should be considered AVAILABLE and assignable
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Data!, a => a.StaffId == monitor2Id && a.GradingSessionId == regradeSessionId);
+    }
 }

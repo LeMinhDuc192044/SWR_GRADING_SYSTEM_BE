@@ -564,15 +564,14 @@ public sealed class AssignmentService : IAssignmentService
         // Vietnam local date: VietnamTime.Now is UTC, so using it here would keep
         // a monitor busy on the day after the deadline until 07:00 local time.
         var today = VietnamTime.Today;
+        var isBusy = MonitorAvailability.IsBusyAssignment(today);
 
         var busy = await _db.Assignments
             .AsNoTracking()
             .Where(a =>
                 a.StaffId == staffId &&
-                a.GradingSessionId != currentGradingSessionId &&
-                a.Status == AssignmentStatus.IN_PROGRESS &&
-                (a.GradingSession.Deadline == null ||
-                 a.GradingSession.Deadline >= today))
+                a.GradingSessionId != currentGradingSessionId)
+            .Where(isBusy)
             .OrderBy(a => a.GradingSession.Deadline)
             .Select(a => new
             {
