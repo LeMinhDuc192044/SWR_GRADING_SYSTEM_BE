@@ -16,11 +16,10 @@ public class SubmissionGradingController : ControllerBase
 
     public SubmissionGradingController(ISubmissionGradingService grading) => _grading = grading;
 
+    // Mọi monitor đã đăng nhập đều xem được toàn bộ lịch sử chấm của bài nộp.
     [HttpGet]
     public async Task<IActionResult> GetHistories(Guid submissionId, CancellationToken ct)
-        => CurrentUserId is { } userId
-            ? ToResponse(await _grading.GetHistoriesAsync(submissionId, userId, ct))
-            : Unauthorized(ApiResponse.Failure(StatusCodes.Status401Unauthorized, "Không xác thực được danh tính người dùng.", "UNAUTHORIZED"));
+        => ToResponse(await _grading.GetHistoriesAsync(submissionId, ct));
 
     [HttpGet("official")]
     public async Task<IActionResult> GetOfficialHistories(Guid submissionId, CancellationToken ct)

@@ -38,31 +38,22 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
 
     // ---------------------------------------------------------------- list
     public async Task<Result<SubmissionGradingOverviewDTO>> GetHistoriesAsync(
-        Guid submissionId, Guid currentUserId, CancellationToken ct = default)
+        Guid submissionId, CancellationToken ct = default)
     {
         if (!await SubmissionExistsAsync(submissionId, ct))
             return Result<SubmissionGradingOverviewDTO>.Failure("Submission not found.", "SUBMISSION_NOT_FOUND");
 
-        var allHistories = await HistoriesWithDetails().AsNoTracking()
+        var histories = await HistoriesWithDetails().AsNoTracking()
             .Where(h => h.SubmissionId == submissionId)
             .OrderBy(h => h.GradingRound)
             .ThenBy(h => h.CreatedAt)
             .ToListAsync(ct);
 
-        // Reading results is open to any signed-in user; the blind-regrade view only applies
-        // to the monitor assigned to the current round.
-        var visibleHistories = allHistories;
-        if (await FindAssignmentAsync(submissionId, currentUserId, ct) is { } assignment)
-        {
-            var cycle = await ResolveCycleContextAsync(submissionId, assignment, allHistories, ct);
-            if (cycle.IsBlindRegrade)
-                visibleHistories = FilterHistoriesForCurrentCycle(allHistories, cycle);
-        }
-
+        // Reading histories is open to any signed-in monitor: no blind-regrade filtering here.
         return Result<SubmissionGradingOverviewDTO>.Success(new SubmissionGradingOverviewDTO
         {
             SubmissionId = submissionId,
-            Histories = visibleHistories.Select(Map).ToList(),
+            Histories = histories.Select(Map).ToList(),
             ParsedAnswers = await LoadParsedAnswersAsync(submissionId, ct)
         });
     }
