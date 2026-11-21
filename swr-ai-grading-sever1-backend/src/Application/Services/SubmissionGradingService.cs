@@ -320,6 +320,17 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var access = await GetAssignmentAsync(submissionId, currentUserId, ct);
         if (!access.IsSuccess) return Fail(access.Error, access.ErrorCode);
 
+        // Same membership rule as ReviewAsync / FinalizeAsync: during a blind regrade a detail of an
+        // earlier round must not be edited (nor returned) through its detail id.
+        var allHistories = await _db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == submissionId)
+            .OrderBy(h => h.GradingRound)
+            .ThenBy(h => h.CreatedAt)
+            .ToListAsync(ct);
+        var cycle = await ResolveCycleContextAsync(submissionId, access.Data!, allHistories, ct);
+        if (cycle.IsBlindRegrade && !IsInCurrentCycle(history, cycle))
+            return Fail("Blind grading does not allow editing a grading result from a prior round.", "FORBIDDEN");
+
         if (history.Status == SubmissionGradingHistoryStatus.OFFICIAL)
             return Fail("An official grading result cannot be edited.", "GRADING_HISTORY_FINALIZED");
 

@@ -406,5 +406,40 @@ public class SubmissionGradingServiceTests
         var finalized = await service.FinalizeAsync(subId, draft.Data!.HistoryId, monitor1Id);
         Assert.True(finalized.IsSuccess);
         Assert.Equal(8m, finalized.Data!.TotalScore);
+
+        // Persisted side effects: the regrade is the only official grade, the appeal is completed
+        // and the reopened assignment is graded again.
+        var officials = await db.SubmissionGradingHistories.AsNoTracking()
+            .Where(h => h.SubmissionId == subId && h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
+            .ToListAsync();
+        Assert.Single(officials);
+        Assert.Equal(draft.Data.HistoryId, officials[0].HistoryId);
+        Assert.Equal(ApplicationStatus.COMPLETED,
+            (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == appeal.Id)).Status);
+        Assert.Equal(AssignmentStatus.GRADED,
+            (await db.Assignments.AsNoTracking().SingleAsync(a => a.AssignmentId == assignment.AssignmentId)).Status);
+    }
+
+    [Fact]
+    public async Task UpdateItemDetailAsync_BlindRegradeRejectsDetailOfPriorRound()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (subId, _, monitor2Id, _, _, _) = await SeedRound1FinalizedAsync(db);
+        var service = CreateService(db);
+
+        // A DRAFT detail from round 1 (AI) belongs to the previous cycle for the regrade monitor.
+        var priorDetail = await db.SubmissionItemDetails.AsNoTracking()
+            .Include(d => d.SubmissionGradingHistory)
+            .FirstAsync(d => d.SubmissionGradingHistory.SubmissionId == subId
+                             && d.SubmissionGradingHistory.EvaluationType == EvaluationType.AI);
+
+        var result = await service.UpdateItemDetailAsync(priorDetail.DetailId,
+            new UpdateGradingItemRequest { Score = 1m, Comment = "edited" }, monitor2Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("FORBIDDEN", result.ErrorCode);
+        var stored = await db.SubmissionItemDetails.AsNoTracking().SingleAsync(d => d.DetailId == priorDetail.DetailId);
+        Assert.Equal(priorDetail.Score, stored.Score);
+        Assert.Equal(priorDetail.Comment, stored.Comment);
     }
 }
