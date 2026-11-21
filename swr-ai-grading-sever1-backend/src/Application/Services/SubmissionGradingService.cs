@@ -629,7 +629,8 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     private sealed record GradingCycleContext(
         Assignment Assignment,
         bool IsBlindRegrade,
-        int? BaselineRound);
+        int? BaselineRound,
+        DateTime? AppealCutoff = null);
 
     private async Task<GradingCycleContext> ResolveCycleContextAsync(
         Guid submissionId,
@@ -644,9 +645,10 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var isRegradeSession = currentGradingSession?.Type == GradingSessionType.ReGrade
             || IsRegradeSessionTitle(currentGradingSession?.Title);
 
-        var hasActiveAppeal = await _db.Applications.AsNoTracking()
-            .AnyAsync(a => a.SubmissionId == submissionId &&
+        var activeAppeal = await _db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.SubmissionId == submissionId &&
                            (a.Status == ApplicationStatus.APPROVED || a.Status == ApplicationStatus.IN_PROGRESS), ct);
+        var hasActiveAppeal = activeAppeal is not null;
 
         if (!isRegradeSession && !hasActiveAppeal)
             return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
@@ -672,6 +674,16 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         var isBlindRegrade = isRegradeByTitle || hasPriorAssignment || hasActiveAppeal;
         if (!isBlindRegrade)
             return new GradingCycleContext(currentAssignment, IsBlindRegrade: false, BaselineRound: null);
+
+        if (hasActiveAppeal && activeAppeal is not null)
+        {
+            var cutoff = activeAppeal.UpdatedDay;
+            var priorHistories = allHistories
+                .Where(h => h.CreatedAt <= cutoff)
+                .ToList();
+            var maxPriorRound = priorHistories.Count > 0 ? priorHistories.Max(h => h.GradingRound) : (int?)null;
+            return new GradingCycleContext(currentAssignment, IsBlindRegrade: true, BaselineRound: maxPriorRound, AppealCutoff: cutoff);
+        }
 
         var officials = allHistories
             .Where(h => h.Status == SubmissionGradingHistoryStatus.OFFICIAL)
@@ -724,6 +736,9 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
     {
         if (!cycle.IsBlindRegrade)
             return true;
+
+        if (cycle.AppealCutoff.HasValue)
+            return history.CreatedAt > cycle.AppealCutoff.Value;
 
         if (cycle.BaselineRound.HasValue)
             return history.GradingRound > cycle.BaselineRound.Value;
