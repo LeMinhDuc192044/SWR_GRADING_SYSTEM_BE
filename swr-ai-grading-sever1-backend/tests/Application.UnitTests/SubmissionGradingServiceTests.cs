@@ -402,7 +402,7 @@ public class SubmissionGradingServiceTests
         appeal.UpdatedDay = DateTime.UtcNow.AddMinutes(5);
         await db.SaveChangesAsync();
 
-        var overview = await service.GetHistoriesAsync(subId, monitor1Id);
+        var overview = await service.GetHistoriesAsync(subId);
         Assert.True(overview.IsSuccess);
         Assert.Contains(overview.Data!.Histories, h => h.HistoryId == draft.Data!.HistoryId);
 

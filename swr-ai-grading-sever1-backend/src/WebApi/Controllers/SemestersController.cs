@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/semesters")]
-[Authorize(Roles = "Admin,Examiner")]
+[Authorize]
 public class SemestersController : ControllerBase
 {
     private readonly ISemesterService _service;
