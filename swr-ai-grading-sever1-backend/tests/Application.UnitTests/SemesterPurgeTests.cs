@@ -210,8 +210,7 @@ public class SemesterPurgeTests
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Data!.Examinations);
         Assert.Equal(1, result.Data.ExaminationSessions);
-        Assert.Equal(1, result.Data.PaperSets);
-        Assert.Equal(1, result.Data.Questions);
+        Assert.Equal(1, result.Data.PaperSetsReleased);
         Assert.Equal(1, result.Data.GradingSessions);
         Assert.Equal(1, result.Data.Assignments);
         Assert.Equal(1, result.Data.Submissions);
@@ -219,14 +218,17 @@ public class SemesterPurgeTests
         Assert.Equal(1, result.Data.GradingHistories);
         Assert.Equal(1, result.Data.Applications);
         Assert.Equal(1, result.Data.StudentSemesters);
-        Assert.Equal(3, result.Data.StoredFilesDeleted);
+        Assert.Equal(2, result.Data.StoredFilesDeleted);
         Assert.Equal(0, result.Data.StoredFilesFailed);
 
-        Assert.Empty(await db.Semesters.ToListAsync());
+        // The semester and its paper sets survive; the paper set returns to Ready and can be reused.
+        Assert.Single(await db.Semesters.ToListAsync());
         Assert.Empty(await db.Examinations.ToListAsync());
         Assert.Empty(await db.ExaminationSessions.ToListAsync());
-        Assert.Empty(await db.PaperSets.ToListAsync());
-        Assert.Empty(await db.Questions.ToListAsync());
+        var remainingPaperSet = Assert.Single(await db.PaperSets.ToListAsync());
+        Assert.Null(remainingPaperSet.ExaminationId);
+        Assert.Equal(PaperSetStatus.Ready, remainingPaperSet.Status);
+        Assert.Single(await db.Questions.ToListAsync());
         Assert.Empty(await db.GradingSessions.ToListAsync());
         Assert.Empty(await db.Assignments.ToListAsync());
         Assert.Empty(await db.StudentSubmissions.ToListAsync());
@@ -237,9 +239,108 @@ public class SemesterPurgeTests
         Assert.Empty(await db.StudentSemesters.ToListAsync());
         Assert.Empty(await db.StudentExaminationSessions.ToListAsync());
 
-        storage.Verify(s => s.DeleteAsync("paper-sets/PS1/EQ/questions.docx", It.IsAny<CancellationToken>()), Times.Once);
+        // Paper set files are kept because the paper set itself is kept.
+        storage.Verify(s => s.DeleteAsync("paper-sets/PS1/EQ/questions.docx", It.IsAny<CancellationToken>()), Times.Never);
         storage.Verify(s => s.DeleteAsync("submissions/s1/answer.zip", It.IsAny<CancellationToken>()), Times.Once);
         storage.Verify(s => s.DeleteAsync("submissions/s1/images/diagram.png", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PurgeAsync_ReleasesPaperSetUsedOnlyByAnExaminationSession()
+    {
+        var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+
+        var semester = new Semester
+        {
+            SemesterId = Guid.NewGuid(),
+            SemesterCode = "SU24",
+            Name = "Summer 2024",
+            StartDate = new DateOnly(2024, 6, 1),
+            EndDate = new DateOnly(2024, 8, 31),
+            Status = SemesterStatus.Active,
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+
+        var examination = new Examination
+        {
+            ExaminationId = Guid.NewGuid(),
+            SemesterId = semester.SemesterId,
+            Name = "SWR Midterm",
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+
+        // Not linked to the examination, only to the session that uses it.
+        var paperSet = new PaperSet
+        {
+            PaperSetId = Guid.NewGuid(),
+            PaperSetCode = "PS2",
+            ExaminationId = null,
+            Status = PaperSetStatus.Used,
+            FileQuestionDocs = "paper-sets/PS2/EQ/questions.docx",
+            TotalQuestions = 1,
+            UploadedById = Guid.NewGuid(),
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+
+        var session = new ExaminationSession
+        {
+            ExaminationSessionId = Guid.NewGuid(),
+            SemesterId = semester.SemesterId,
+            ExaminationId = examination.ExaminationId,
+            PaperSetId = paperSet.PaperSetId,
+            ExaminationCode = "SWR-02",
+            StartDate = new DateOnly(2024, 7, 1),
+            StartTime = new TimeOnly(8, 0),
+            Status = ExaminationSessionStatus.STARTED,
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+
+        db.Semesters.Add(semester);
+        db.Examinations.Add(examination);
+        db.PaperSets.Add(paperSet);
+        db.ExaminationSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        var semesterRepository = new Mock<ISemesterRepository>();
+        semesterRepository
+            .Setup(repository => repository.GetByIdAsync(semester.SemesterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(semester);
+
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork
+            .Setup(work => work.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns((CancellationToken token) => db.SaveChangesAsync(token));
+
+        var storage = new Mock<ISupabaseStorage>();
+        storage
+            .Setup(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SemesterService(
+            semesterRepository.Object,
+            new Mock<IExaminationRepository>().Object,
+            new Mock<IPaperSetRepository>().Object,
+            new Mock<IUserRepository>().Object,
+            db,
+            unitOfWork.Object,
+            storage.Object);
+
+        var result = await service.PurgeAsync(semester.SemesterId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Data!.PaperSetsReleased);
+        Assert.Single(await db.Semesters.ToListAsync());
+        Assert.Empty(await db.ExaminationSessions.ToListAsync());
+
+        var remainingPaperSet = Assert.Single(await db.PaperSets.ToListAsync());
+        Assert.Null(remainingPaperSet.ExaminationId);
+        Assert.Equal(PaperSetStatus.Ready, remainingPaperSet.Status);
+
+        storage.Verify(s => s.DeleteAsync("paper-sets/PS2/EQ/questions.docx", It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -87,8 +87,8 @@ public sealed class SemesterPurgeResultDto
     public string SemesterCode { get; set; } = string.Empty;
     public int Examinations { get; set; }
     public int ExaminationSessions { get; set; }
-    public int PaperSets { get; set; }
-    public int Questions { get; set; }
+    /// <summary>Paper sets detached from the removed examinations and reset to Ready.</summary>
+    public int PaperSetsReleased { get; set; }
     public int GradingSessions { get; set; }
     public int Assignments { get; set; }
     public int Submissions { get; set; }
