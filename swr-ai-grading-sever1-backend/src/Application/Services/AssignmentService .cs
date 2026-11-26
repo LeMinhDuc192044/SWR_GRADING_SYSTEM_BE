@@ -538,6 +538,263 @@ public sealed class AssignmentService : IAssignmentService
     }
 
     // =========================================================
+    // CREATE AUTOMATIC ASSIGNMENTS WITH PER-MONITOR COUNTS
+    // Distributes the unassigned submissions of the grading session
+    // to the given monitors, each one receiving its own number of
+    // submissions (e.g. [{ monitorId, numberSubmission }, ...]).
+    // =========================================================
+
+    public async Task<Result<IReadOnlyList<AssignmentDTO>>> CreateAutoAsync(
+        Guid gradingSessionId,
+        IReadOnlyList<AutoAssignmentMonitorRequest> monitors,
+        CancellationToken ct = default)
+    {
+        var gradingSession = await _db.GradingSessions
+            .AsNoTracking()
+            .Include(g => g.ExaminationSession)
+            .FirstOrDefaultAsync(
+                g => g.GradingSessionId == gradingSessionId,
+                ct);
+
+        if (gradingSession is null)
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "Grading session not found.",
+                "GRADING_SESSION_NOT_FOUND");
+        }
+
+        if (gradingSession.ExaminationSession is null)
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "The grading session is not linked to an examination session.",
+                "EXAMINATION_SESSION_NOT_FOUND");
+        }
+
+        monitors ??= [];
+
+        if (monitors.Count == 0)
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "At least one monitor is required.",
+                "INVALID_MONITORS");
+        }
+
+        if (monitors.Any(m => m.MonitorId == Guid.Empty))
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "Every monitor id must be valid.",
+                "INVALID_MONITORS");
+        }
+
+        var monitorIds = monitors.Select(m => m.MonitorId).ToList();
+
+        if (monitorIds.Distinct().Count() != monitorIds.Count)
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "Each monitor can only appear once.",
+                "INVALID_MONITORS");
+        }
+
+        if (monitors.Any(m => m.NumberSubmission <= 0))
+        {
+            return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                "The number of submissions per monitor must be greater than zero.",
+                "INVALID_SUBMISSIONS_PER_MONITOR");
+        }
+
+        var quotas = monitors.ToDictionary(m => m.MonitorId, m => m.NumberSubmission);
+
+        // Every monitor must be an active monitor who is not busy in another grading session.
+        foreach (var monitorId in monitorIds)
+        {
+            var staffCheck = await ValidateMonitorAsync(monitorId, ct);
+
+            if (!staffCheck.IsSuccess)
+            {
+                return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    staffCheck.Error!,
+                    staffCheck.ErrorCode);
+            }
+
+            var availability = await EnsureMonitorAvailableAsync(
+                monitorId,
+                gradingSessionId,
+                ct);
+
+            if (!availability.IsSuccess)
+            {
+                return Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    availability.Error!,
+                    availability.ErrorCode);
+            }
+        }
+
+        var examinationSessionId = gradingSession.ExaminationSessionId;
+        var semesterId = gradingSession.ExaminationSession.SemesterId;
+
+        // Submissions that already have a monitor in this grading session are ignored.
+        var assignedIds = await _db.Assignments
+            .AsNoTracking()
+            .Where(a => a.GradingSessionId == gradingSessionId)
+            .Select(a => a.SubmissionId)
+            .ToListAsync(ct);
+
+        var candidates = await _db.StudentSubmissions
+            .AsNoTracking()
+            .Where(s => s.ExaminationSessionId == examinationSessionId
+                        && !assignedIds.Contains(s.SubmissionId))
+            .OrderBy(s => s.CreatedDate)
+            .Select(s => new { s.SubmissionId, s.StudentId })
+            .ToListAsync(ct);
+
+        var candidateStudentIds = candidates.Select(c => c.StudentId).Distinct().ToList();
+        var candidateSubmissionIds = candidates.Select(c => c.SubmissionId).ToList();
+
+        // Same rules as the other assignment paths: a monitor never grades a student
+        // they are linked to in this semester, nor a submission they already graded in
+        // another grading session (e.g. round 1 before a regrade).
+        var linkedPairs = (await _db.StudentSemesters
+                .AsNoTracking()
+                .Where(ss => ss.SemesterId == semesterId
+                             && candidateStudentIds.Contains(ss.StudentId)
+                             && monitorIds.Contains(ss.StaffId))
+                .Select(ss => new { ss.StudentId, ss.StaffId })
+                .ToListAsync(ct))
+            .Select(x => (x.StudentId, x.StaffId))
+            .ToHashSet();
+
+        var previousPairs = (await _db.Assignments
+                .AsNoTracking()
+                .Where(a => candidateSubmissionIds.Contains(a.SubmissionId)
+                            && a.GradingSessionId != gradingSessionId
+                            && monitorIds.Contains(a.StaffId))
+                .Select(a => new { a.SubmissionId, a.StaffId })
+                .ToListAsync(ct))
+            .Select(x => (x.SubmissionId, x.StaffId))
+            .ToHashSet();
+
+        bool IsEligible(Guid monitorId, Guid submissionId, Guid studentId)
+            => !linkedPairs.Contains((studentId, monitorId))
+               && !previousPairs.Contains((submissionId, monitorId));
+
+        // Bipartite matching with augmenting paths, so a monitor's tentative choice is
+        // moved when that is the only way for another monitor to receive a submission.
+        var submissionToMonitor = new Dictionary<Guid, Guid>();
+
+        bool TryMatch(Guid monitorId, HashSet<Guid> visited)
+        {
+            foreach (var c in candidates)
+            {
+                if (!IsEligible(monitorId, c.SubmissionId, c.StudentId))
+                    continue;
+
+                if (submissionToMonitor.TryGetValue(c.SubmissionId, out var owner)
+                    && owner == monitorId)
+                    continue;
+
+                if (!visited.Add(c.SubmissionId))
+                    continue;
+
+                if (owner == Guid.Empty || TryMatch(owner, visited))
+                {
+                    submissionToMonitor[c.SubmissionId] = monitorId;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Phase 1: every monitor gets at least one submission when that is feasible.
+        if (candidates.Count >= monitorIds.Count)
+        {
+            foreach (var monitorId in monitorIds)
+            {
+                TryMatch(monitorId, new HashSet<Guid>());
+            }
+        }
+
+        // Phase 2: fill each monitor up to its own requested number of submissions.
+        foreach (var monitorId in monitorIds)
+        {
+            var current = submissionToMonitor.Count(kvp => kvp.Value == monitorId);
+
+            for (var i = current; i < quotas[monitorId]; i++)
+            {
+                if (!TryMatch(monitorId, new HashSet<Guid>()))
+                    break;
+            }
+        }
+
+        var allocation = monitorIds.ToDictionary(id => id, _ => new List<Guid>());
+
+        foreach (var kvp in submissionToMonitor)
+        {
+            allocation[kvp.Value].Add(kvp.Key);
+        }
+
+        // Fewer submissions than requested is fine as long as every monitor still gets at
+        // least one.
+        var emptyMonitorId = monitorIds.FirstOrDefault(id => allocation[id].Count == 0);
+        if (emptyMonitorId != Guid.Empty)
+        {
+            var hasEligible = candidates.Any(c => IsEligible(emptyMonitorId, c.SubmissionId, c.StudentId));
+
+            return hasEligible || candidates.Count < monitorIds.Count
+                ? Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    $"Not enough unassigned submissions in this grading session: " +
+                    $"{monitorIds.Count} monitor(s) need at least one submission each, " +
+                    $"{candidates.Count} available.",
+                    "INSUFFICIENT_SUBMISSIONS")
+                : Result<IReadOnlyList<AssignmentDTO>>.Failure(
+                    "This monitor is linked to every remaining student or already graded " +
+                    "these submissions in another grading session.",
+                    "MONITOR_NO_ELIGIBLE_SUBMISSION");
+        }
+
+        var now = VietnamTime.Now;
+        var created = monitorIds
+            .SelectMany(monitorId => allocation[monitorId].Select(submissionId => new Assignment
+            {
+                GradingSessionId = gradingSessionId,
+                SubmissionId = submissionId,
+                StaffId = monitorId,
+                Status = AssignmentStatus.IN_PROGRESS,
+                AssignedDate = now,
+                UpdatedDate = now
+            }))
+            .ToList();
+
+        _db.Assignments.AddRange(created);
+
+        // An assigned submission is now waiting to be graded.
+        var assignedSubmissionIds = created
+            .Select(a => a.SubmissionId)
+            .Distinct()
+            .ToList();
+
+        var assignedSubmissions = await _db.StudentSubmissions
+            .Where(s => assignedSubmissionIds.Contains(s.SubmissionId))
+            .ToListAsync(ct);
+
+        foreach (var submission in assignedSubmissions)
+        {
+            if (submission.Status >= SubmissionStatus.Grading)
+                continue;
+
+            submission.Status = SubmissionStatus.Grading;
+            submission.UpdatedDate = now;
+        }
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        await SendAssignmentEmailsAsync(gradingSession, created, ct);
+
+        return Result<IReadOnlyList<AssignmentDTO>>.Success(
+            created.Select(Map).ToList());
+    }
+
+    // =========================================================
     // UPDATE ASSIGNMENT
     // =========================================================
 
