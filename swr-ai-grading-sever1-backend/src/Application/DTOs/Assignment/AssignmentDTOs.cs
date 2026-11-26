@@ -64,6 +64,12 @@ public sealed class CreateAssignmentRequest
     public int SubmissionPerMonitor { get; set; }
 }
 
+public sealed class AutoAssignmentMonitorRequest
+{
+    public Guid MonitorId { get; set; }
+    public int NumberSubmission { get; set; }
+}
+
 public sealed class CreateManualAssignmentRequest
 {
     public Guid MonitorId { get; set; }

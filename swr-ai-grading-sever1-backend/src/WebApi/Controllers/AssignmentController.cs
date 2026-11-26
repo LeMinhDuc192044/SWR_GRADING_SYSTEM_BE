@@ -31,6 +31,13 @@ public class AssignmentController : ControllerBase
     public async Task<IActionResult> Create(Guid gradingSessionId, [FromBody] CreateAssignmentRequest request, CancellationToken ct)
         => ToResponse(await _assignments.CreateAsync(gradingSessionId, request, ct));
 
+    // Automatically distributes unassigned submissions of the grading session
+    // using a per-monitor submission count.
+    [HttpPost("auto")]
+    [Authorize(Roles = "Admin,Manager,Examiner")]
+    public async Task<IActionResult> CreateAuto(Guid gradingSessionId, [FromBody] List<AutoAssignmentMonitorRequest> monitors, CancellationToken ct)
+        => ToResponse(await _assignments.CreateAutoAsync(gradingSessionId, monitors, ct));
+
     // Manually assigns an explicit list of submissions to a single monitor.
     [HttpPost("manual")]
     [Authorize(Roles = "Admin,Manager,Examiner")]

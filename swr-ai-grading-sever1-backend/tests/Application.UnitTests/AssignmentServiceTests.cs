@@ -538,4 +538,154 @@ public class AssignmentServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal("MONITOR_DUPLICATE_SUBMISSION", result.ErrorCode);
     }
+
+    private static async Task AddExtraSubmissionsAsync(TestDbContext db, params string[] studentCodes)
+    {
+        var examinationSessionId = (await db.ExaminationSessions.FirstAsync()).ExaminationSessionId;
+        var uploaderId = (await db.Staff.FirstAsync(s => s.Role == UserRole.Examiner)).Id;
+
+        for (var i = 0; i < studentCodes.Length; i++)
+        {
+            var student = CreateStudent(studentCodes[i], $"Extra Student {i}");
+            db.Students.Add(student);
+            db.StudentSubmissions.Add(new StudentSubmission
+            {
+                SubmissionId = Guid.NewGuid(),
+                FileSubmissions = $"extra{i}.docx",
+                StudentId = student.Id,
+                UploadedById = uploaderId,
+                ExaminationSessionId = examinationSessionId,
+                Status = SubmissionStatus.Submitted,
+                CreatedDate = DateTime.UtcNow.AddMinutes(i),
+                UpdatedDate = DateTime.UtcNow.AddMinutes(i)
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_AssignsEachMonitorItsOwnNumberOfSubmissions()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
+        await AddExtraSubmissionsAsync(db, "SE180003", "SE180004");
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 3 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor3Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, result.Data!.Count);
+        Assert.Equal(3, result.Data!.Count(a => a.StaffId == monitor2Id));
+        Assert.Single(result.Data!, a => a.StaffId == monitor3Id);
+        Assert.Equal(4, await db.Assignments.CountAsync(a => a.GradingSessionId == regradeSessionId));
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_QuotaHigherThanAvailable_StillGivesEveryMonitorOne()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 5 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor3Id, NumberSubmission = 5 }
+        ]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.Single(result.Data!, a => a.StaffId == monitor2Id);
+        Assert.Single(result.Data!, a => a.StaffId == monitor3Id);
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_NotEnoughForEveryMonitor_ReturnsInsufficientFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, monitor2Id, monitor3Id, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 1 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor3Id, NumberSubmission = 1 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor1Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("INSUFFICIENT_SUBMISSIONS", result.ErrorCode);
+        Assert.Empty(db.Assignments.Where(a => a.GradingSessionId == regradeSessionId));
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_ZeroNumberSubmission_ReturnsFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 0 }
+        ]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("INVALID_SUBMISSIONS_PER_MONITOR", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_DuplicateMonitor_ReturnsFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 1 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("INVALID_MONITORS", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_FeasibleAllocationWithReassignment_SucceedsInsteadOfDeadlock()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, monitor3Id, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+
+        // monitor2 is eligible for both submissions, monitor3 only for sub1 (linked to sub2's student).
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor3Id);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 1 },
+            new AutoAssignmentMonitorRequest { MonitorId = monitor3Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.Contains(result.Data!, a => a.StaffId == monitor3Id && a.SubmissionId == sub1Id);
+        Assert.Contains(result.Data!, a => a.StaffId == monitor2Id && a.SubmissionId == sub2Id);
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_MonitorWithNoEligibleSubmission_ReturnsSpecificFailure()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, _, _, _, sub2Id) = await SeedScenarioAsync(db);
+        // Sub 1 was graded by Monitor 1 in round 1 and Sub 2's student is linked to Monitor 1.
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor1Id);
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor1Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_NO_ELIGIBLE_SUBMISSION", result.ErrorCode);
+    }
 }
