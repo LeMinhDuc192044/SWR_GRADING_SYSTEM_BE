@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/examinations")]
-[Authorize(Roles = "Admin,Examiner")]
+[Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
 public class ExaminationsController : ControllerBase
 {
     private readonly IExaminationService _service;
@@ -61,7 +61,7 @@ public class ExaminationsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/paper-sets")]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Monitor")]
     public async Task<IActionResult> AddPaperSets(
         Guid id,
         [FromBody] AddPaperSetsToExaminationRequest request,

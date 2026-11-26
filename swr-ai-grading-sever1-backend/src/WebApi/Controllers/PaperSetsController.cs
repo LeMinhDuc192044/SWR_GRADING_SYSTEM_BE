@@ -127,7 +127,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Create(
@@ -144,7 +144,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPost("batch")]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateMany(
@@ -172,7 +172,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/files")]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     [RequestSizeLimit(524_288_000)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> AddFiles(
@@ -192,7 +192,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdatePaperSetRequest request,
@@ -207,7 +207,7 @@ public sealed class PaperSetsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,Examiner")]
+    [Authorize(Roles = "Admin,Examiner,Manager,Monitor")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _service.DeleteAsync(id, ct);
