@@ -64,6 +64,12 @@ public sealed class CreateAssignmentRequest
     public int SubmissionPerMonitor { get; set; }
 }
 
+public sealed class CreateManualAssignmentRequest
+{
+    public Guid MonitorId { get; set; }
+    public List<Guid> SubmissionIds { get; set; } = [];
+}
+
 public sealed class UpdateAssignmentRequest
 {
     public Guid? StaffId { get; set; }
