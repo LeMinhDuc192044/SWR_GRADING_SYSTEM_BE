@@ -18,6 +18,7 @@ public class SemesterService : ISemesterService
 	private readonly IUserRepository _userRepository;
 	private readonly IApplicationDbContext _dbContext;
 	private readonly IUnitOfWork _unitOfWork;
+	private readonly ISupabaseStorage _storage;
 
 	public SemesterService(
 		ISemesterRepository repository,
@@ -25,7 +26,8 @@ public class SemesterService : ISemesterService
 		IPaperSetRepository paperSetRepository,
 		IUserRepository userRepository,
 		IApplicationDbContext dbContext,
-		IUnitOfWork unitOfWork)
+		IUnitOfWork unitOfWork,
+		ISupabaseStorage storage)
 	{
 		_repository = repository;
 		_examinationRepository = examinationRepository;
@@ -33,6 +35,7 @@ public class SemesterService : ISemesterService
 		_userRepository = userRepository;
 		_dbContext = dbContext;
 		_unitOfWork = unitOfWork;
+		_storage = storage;
 	}
 
 	public async Task<PagedResult<SemesterDTO>> GetPagedAsync(PagedRequest request, CancellationToken ct = default)
@@ -158,6 +161,177 @@ public class SemesterService : ISemesterService
 		_repository.Remove(semester);
 		await _unitOfWork.SaveChangesAsync(ct);
 		return Result.Success();
+	}
+
+	/// <summary>
+	/// Hard-deletes the semester together with everything created under it:
+	/// examinations, examination sessions and rosters, paper sets and questions,
+	/// grading sessions and assignments, submissions with their parsed answers and
+	/// grading results, regrade applications and student enrolments. Files stored for
+	/// the removed paper sets and submissions are deleted from storage afterwards.
+	/// </summary>
+	public async Task<Result<SemesterPurgeResultDto>> PurgeAsync(Guid id, CancellationToken ct = default)
+	{
+		var semester = await _repository.GetByIdAsync(id, ct);
+		if (semester is null)
+			return Result<SemesterPurgeResultDto>.Failure("Semester not found.", "SEMESTER_NOT_FOUND");
+
+		var sessionIds = await _dbContext.ExaminationSessions
+			.Where(s => s.SemesterId == id)
+			.Select(s => s.ExaminationSessionId)
+			.ToListAsync(ct);
+
+		var examinationIds = await _dbContext.Examinations
+			.Where(e => e.SemesterId == id)
+			.Select(e => e.ExaminationId)
+			.ToListAsync(ct);
+
+		var paperSetIds = await _dbContext.PaperSets
+			.Where(p => p.ExaminationId != null && examinationIds.Contains(p.ExaminationId.Value))
+			.Select(p => p.PaperSetId)
+			.ToListAsync(ct);
+
+		paperSetIds.AddRange(await _dbContext.ExaminationSessions
+			.Where(s => s.SemesterId == id && s.PaperSetId != null)
+			.Select(s => s.PaperSetId!.Value)
+			.ToListAsync(ct));
+		paperSetIds = paperSetIds.Distinct().ToList();
+
+		var submissionIds = await _dbContext.StudentSubmissions
+			.Where(s => s.ExaminationSessionId != null && sessionIds.Contains(s.ExaminationSessionId.Value))
+			.Select(s => s.SubmissionId)
+			.ToListAsync(ct);
+
+		var gradingSessionIds = await _dbContext.GradingSessions
+			.Where(g => sessionIds.Contains(g.ExaminationSessionId))
+			.Select(g => g.GradingSessionId)
+			.ToListAsync(ct);
+
+		var questions = await _dbContext.Questions
+			.Where(q => paperSetIds.Contains(q.PaperSetId))
+			.ToListAsync(ct);
+		var questionIds = questions.Select(q => q.QuestionId).ToList();
+
+		var histories = await _dbContext.SubmissionGradingHistories
+			.Where(h => submissionIds.Contains(h.SubmissionId))
+			.ToListAsync(ct);
+		var parsedAnswers = await _dbContext.SubmissionParsedAnswers
+			.Where(p => submissionIds.Contains(p.SubmissionId))
+			.ToListAsync(ct);
+
+		var historyIds = histories.Select(h => h.HistoryId).ToList();
+		var parsedAnswerIds = parsedAnswers.Select(p => p.ParsedAnswerId).ToList();
+		var details = await _dbContext.SubmissionItemDetails
+			.Where(d => historyIds.Contains(d.EvaluationId) || parsedAnswerIds.Contains(d.ParsedAnswerId))
+			.ToListAsync(ct);
+
+		var applications = await _dbContext.Applications
+			.Where(a => submissionIds.Contains(a.SubmissionId))
+			.ToListAsync(ct);
+
+		var assignments = await _dbContext.Assignments
+			.Where(a => submissionIds.Contains(a.SubmissionId) || gradingSessionIds.Contains(a.GradingSessionId))
+			.ToListAsync(ct);
+
+		var submissions = await _dbContext.StudentSubmissions
+			.Where(s => submissionIds.Contains(s.SubmissionId))
+			.ToListAsync(ct);
+
+		var gradingSessions = await _dbContext.GradingSessions
+			.Where(g => gradingSessionIds.Contains(g.GradingSessionId))
+			.ToListAsync(ct);
+
+		var roster = await _dbContext.StudentExaminationSessions
+			.Where(x => sessionIds.Contains(x.ExaminationSessionId))
+			.ToListAsync(ct);
+
+		var sessions = await _dbContext.ExaminationSessions
+			.Where(s => sessionIds.Contains(s.ExaminationSessionId))
+			.ToListAsync(ct);
+
+		var criteria = await _dbContext.QuestionCriteria
+			.Where(c => questionIds.Contains(c.QuestionId))
+			.ToListAsync(ct);
+
+		var paperSets = await _dbContext.PaperSets
+			.Where(p => paperSetIds.Contains(p.PaperSetId))
+			.ToListAsync(ct);
+
+		var examinations = await _dbContext.Examinations
+			.Where(e => examinationIds.Contains(e.ExaminationId))
+			.ToListAsync(ct);
+
+		var enrolments = await _dbContext.StudentSemesters
+			.Where(x => x.SemesterId == id)
+			.ToListAsync(ct);
+
+		// Collect storage paths before the rows are removed; http(s) values are external links.
+		var storagePaths = paperSets
+			.SelectMany(p => new[] { p.FileQuestionDocs, p.FileAnswerRubric, p.FileAnswerTemplate })
+			.Concat(submissions.Select(s => s.FileSubmissions))
+			.Concat(parsedAnswers.Select(p => p.ExtractedImageUrl))
+			.Where(path => !string.IsNullOrWhiteSpace(path)
+				&& !path!.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+			.Select(path => path!)
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+
+		var result = new SemesterPurgeResultDto
+		{
+			SemesterId = semester.SemesterId,
+			SemesterCode = semester.SemesterCode,
+			Examinations = examinations.Count,
+			ExaminationSessions = sessions.Count,
+			PaperSets = paperSets.Count,
+			Questions = questions.Count,
+			GradingSessions = gradingSessions.Count,
+			Assignments = assignments.Count,
+			Submissions = submissions.Count,
+			ParsedAnswers = parsedAnswers.Count,
+			GradingHistories = histories.Count,
+			Applications = applications.Count,
+			StudentSemesters = enrolments.Count
+		};
+
+		await using var transaction = await _dbContext.BeginTransactionAsync(ct);
+
+		// Children first so foreign keys never block the delete on a real database.
+		_dbContext.SubmissionItemDetails.RemoveRange(details);
+		_dbContext.SubmissionGradingHistories.RemoveRange(histories);
+		_dbContext.SubmissionParsedAnswers.RemoveRange(parsedAnswers);
+		_dbContext.Applications.RemoveRange(applications);
+		_dbContext.Assignments.RemoveRange(assignments);
+		_dbContext.StudentSubmissions.RemoveRange(submissions);
+		_dbContext.GradingSessions.RemoveRange(gradingSessions);
+		_dbContext.StudentExaminationSessions.RemoveRange(roster);
+		_dbContext.ExaminationSessions.RemoveRange(sessions);
+		_dbContext.QuestionCriteria.RemoveRange(criteria);
+		_dbContext.Questions.RemoveRange(questions);
+		_dbContext.PaperSets.RemoveRange(paperSets);
+		_dbContext.Examinations.RemoveRange(examinations);
+		_dbContext.StudentSemesters.RemoveRange(enrolments);
+		_dbContext.Semesters.Remove(semester);
+
+		await _unitOfWork.SaveChangesAsync(ct);
+		if (transaction is not null)
+			await transaction.CommitAsync(ct);
+
+		// The rows are already gone; a storage failure must not undo the purge.
+		foreach (var path in storagePaths)
+		{
+			try
+			{
+				await _storage.DeleteAsync(path, CancellationToken.None);
+				result.StoredFilesDeleted++;
+			}
+			catch (Exception ex)
+			{
+				result.StoredFilesFailed++;
+				result.StorageErrors.Add($"{path}: {ex.Message}");
+			}
+		}
+
+		return Result<SemesterPurgeResultDto>.Success(result);
 	}
 
 	public async Task<Result<StudentSemesterImportResultDto>> AddStudentsAsync(Guid semesterId, IReadOnlyList<AddStudentToSemesterRequest> requests, CancellationToken ct = default)

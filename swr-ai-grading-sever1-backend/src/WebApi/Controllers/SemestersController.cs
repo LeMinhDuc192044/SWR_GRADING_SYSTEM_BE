@@ -77,6 +77,20 @@ public class SemestersController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
+    // Deletes the semester itself plus every examination, session, paper set, question,
+    // grading session, submission, application and enrolment created under it.
+    [HttpDelete("{semesterId:guid}/purge")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Purge(Guid semesterId, CancellationToken ct)
+    {
+        var result = await _service.PurgeAsync(semesterId, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+    }
+
     [HttpPatch("{id:guid}/status")]
     [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> UpdateStatus(
