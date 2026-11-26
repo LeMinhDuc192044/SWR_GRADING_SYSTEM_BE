@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class RemoveSemesterFromPaperSet : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -208,28 +208,6 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "applications",
-                columns: table => new
-                {
-                    application_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    reason = table.Column<string>(type: "text", nullable: false),
-                    Status = table.Column<int>(type: "integer", nullable: false),
-                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    student_id = table.Column<Guid>(type: "uuid", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_applications", x => x.application_id);
-                    table.ForeignKey(
-                        name: "FK_applications_students_student_id",
-                        column: x => x.student_id,
-                        principalTable: "students",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "student_semester",
                 columns: table => new
                 {
@@ -303,7 +281,7 @@ namespace Infrastructure.Migrations
                 columns: table => new
                 {
                     question_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    title = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     content = table.Column<string>(type: "text", nullable: false),
                     point = table.Column<decimal>(type: "numeric(5,2)", nullable: false),
                     paper_set_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -333,6 +311,7 @@ namespace Infrastructure.Migrations
                 {
                     grading_session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Type = table.Column<int>(type: "integer", nullable: false),
                     created_date = table.Column<DateOnly>(type: "date", nullable: false),
                     updated_date = table.Column<DateOnly>(type: "date", nullable: false),
                     deadline = table.Column<DateOnly>(type: "date", nullable: true),
@@ -432,6 +411,36 @@ namespace Infrastructure.Migrations
                         column: x => x.question_id,
                         principalTable: "questions",
                         principalColumn: "question_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "applications",
+                columns: table => new
+                {
+                    application_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    reason = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
+                    approved_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    created_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    updated_day = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    student_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    submission_id = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_applications", x => x.application_id);
+                    table.ForeignKey(
+                        name: "FK_applications_student_submission_submission_id",
+                        column: x => x.submission_id,
+                        principalTable: "student_submission",
+                        principalColumn: "submission_id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_applications_students_student_id",
+                        column: x => x.student_id,
+                        principalTable: "students",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -557,9 +566,22 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "ix_ai_models_api_key",
+                table: "ai_models",
+                column: "api_key",
+                unique: true,
+                filter: "api_key <> ''");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_applications_student_id",
                 table: "applications",
                 column: "student_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_applications_submission_id",
+                table: "applications",
+                column: "submission_id",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_assignments_grading_session_id",
@@ -684,10 +706,9 @@ namespace Infrastructure.Migrations
                 column: "uploaded_by_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_submission_grading_histories_submission_id_evaluation_type",
+                name: "IX_submission_grading_histories_submission_id",
                 table: "submission_grading_histories",
-                columns: new[] { "submission_id", "evaluation_type" },
-                unique: true);
+                column: "submission_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_submission_item_details_evaluation_id",

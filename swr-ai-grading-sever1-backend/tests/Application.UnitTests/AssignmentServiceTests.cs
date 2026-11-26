@@ -442,4 +442,100 @@ public class AssignmentServiceTests
         Assert.True(result.IsSuccess);
         Assert.Contains(result.Data!, a => a.StaffId == monitor2Id && a.GradingSessionId == regradeSessionId);
     }
+
+    [Fact]
+    public async Task CreateManualAsync_AssignsListedSubmissionsToOneMonitor()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, sub1Id, sub2Id) = await SeedScenarioAsync(db);
+
+        // Seeded submissions are already final; start from "just uploaded" so the
+        // Grading transition is observable.
+        foreach (var seeded in await db.StudentSubmissions.ToListAsync())
+            seeded.Status = SubmissionStatus.Submitted;
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).CreateManualAsync(regradeSessionId, new CreateManualAssignmentRequest
+        {
+            MonitorId = monitor2Id,
+            SubmissionIds = [sub1Id, sub2Id]
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.All(result.Data, a => Assert.Equal(monitor2Id, a.StaffId));
+        Assert.All(result.Data, a => Assert.Equal(AssignmentStatus.IN_PROGRESS, a.Status));
+        Assert.Equal(2, await db.Assignments.CountAsync(a => a.GradingSessionId == regradeSessionId));
+        Assert.All(
+            await db.StudentSubmissions.ToListAsync(),
+            submission => Assert.Equal(SubmissionStatus.Grading, submission.Status));
+    }
+
+    [Fact]
+    public async Task CreateManualAsync_SubmissionNotInGradingSession_ReturnsNotFound()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateManualAsync(regradeSessionId, new CreateManualAssignmentRequest
+        {
+            MonitorId = monitor2Id,
+            SubmissionIds = [Guid.NewGuid()]
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("SUBMISSION_NOT_FOUND", result.ErrorCode);
+        Assert.Empty(db.Assignments.Where(a => a.GradingSessionId == regradeSessionId));
+    }
+
+    [Fact]
+    public async Task CreateManualAsync_SubmissionAlreadyAssigned_ReturnsConflict()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (round1SessionId, _, _, monitor2Id, _, sub1Id, _) = await SeedScenarioAsync(db);
+        var service = CreateService(db);
+
+        // Sub 1 is already monitored in round 1 by monitor 1.
+        var result = await service.CreateManualAsync(round1SessionId, new CreateManualAssignmentRequest
+        {
+            MonitorId = monitor2Id,
+            SubmissionIds = [sub1Id]
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("SUBMISSION_ALREADY_ASSIGNED", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateManualAsync_MonitorLinkedToStudent_IsRejected()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, sub2Id) = await SeedScenarioAsync(db);
+        await LinkMonitorToStudentOfAsync(db, sub2Id, monitor2Id);
+
+        var result = await CreateService(db).CreateManualAsync(regradeSessionId, new CreateManualAssignmentRequest
+        {
+            MonitorId = monitor2Id,
+            SubmissionIds = [sub2Id]
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_LINKED_TO_STUDENT", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateManualAsync_MonitorWhoGradedSubmissionInOtherSession_IsRejected()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, monitor1Id, _, _, sub1Id, _) = await SeedScenarioAsync(db);
+
+        var result = await CreateService(db).CreateManualAsync(regradeSessionId, new CreateManualAssignmentRequest
+        {
+            MonitorId = monitor1Id,
+            SubmissionIds = [sub1Id]
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_DUPLICATE_SUBMISSION", result.ErrorCode);
+    }
 }

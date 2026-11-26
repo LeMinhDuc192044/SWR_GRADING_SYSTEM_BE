@@ -8,7 +8,6 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/semesters")]
-[Authorize]
 public class SemestersController : ControllerBase
 {
     private readonly ISemesterService _service;
@@ -19,12 +18,14 @@ public class SemestersController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> GetAll(
         [FromQuery] PagedRequest request,
         CancellationToken ct)
         => Ok(ApiResponse.Success(await _service.GetPagedAsync(request, ct)));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _service.GetByIdAsync(id, ct);
@@ -77,6 +78,21 @@ public class SemestersController : ControllerBase
         return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
     }
 
+    // Deletes every examination, session, grading session, submission, application and
+    // enrolment created under the semester. The semester and its paper sets are kept;
+    // paper sets used by the removed examinations return to Ready.
+    [HttpDelete("{semesterId:guid}/purge")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> Purge(Guid semesterId, CancellationToken ct)
+    {
+        var result = await _service.PurgeAsync(semesterId, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+        if (result.ErrorCode == "SEMESTER_NOT_FOUND")
+            return NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+        return BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode));
+    }
+
     [HttpPatch("{id:guid}/status")]
     [Authorize(Roles = "Admin,Examiner")]
     public async Task<IActionResult> UpdateStatus(
@@ -108,6 +124,7 @@ public class SemestersController : ControllerBase
     }
 
     [HttpGet("students/import-template")]
+    [Authorize(Roles = "Admin,Examiner")]
     public IActionResult DownloadStudentImportTemplate()
     {
         var content = _service.GenerateStudentImportTemplate();

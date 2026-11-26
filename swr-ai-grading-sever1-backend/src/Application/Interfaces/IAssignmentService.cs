@@ -14,6 +14,9 @@ public interface IAssignmentService
     Task<Result<IReadOnlyList<AssignmentDTO>>> CreateAsync(
         Guid gradingSessionId, CreateAssignmentRequest request, CancellationToken ct = default);
 
+    Task<Result<IReadOnlyList<AssignmentDTO>>> CreateManualAsync(
+        Guid gradingSessionId, CreateManualAssignmentRequest request, CancellationToken ct = default);
+
     Task<Result<AssignmentDTO>> UpdateAsync(
         Guid gradingSessionId, Guid assignmentId, UpdateAssignmentRequest request, CancellationToken ct = default);
 

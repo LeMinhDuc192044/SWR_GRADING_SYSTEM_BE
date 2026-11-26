@@ -81,6 +81,26 @@ public sealed class StudentSemesterDTO
     public string LecturerCode { get; set; } = string.Empty;
 }
 
+public sealed class SemesterPurgeResultDto
+{
+    public Guid SemesterId { get; set; }
+    public string SemesterCode { get; set; } = string.Empty;
+    public int Examinations { get; set; }
+    public int ExaminationSessions { get; set; }
+    /// <summary>Paper sets detached from the removed examinations and reset to Ready.</summary>
+    public int PaperSetsReleased { get; set; }
+    public int GradingSessions { get; set; }
+    public int Assignments { get; set; }
+    public int Submissions { get; set; }
+    public int ParsedAnswers { get; set; }
+    public int GradingHistories { get; set; }
+    public int Applications { get; set; }
+    public int StudentSemesters { get; set; }
+    public int StoredFilesDeleted { get; set; }
+    public int StoredFilesFailed { get; set; }
+    public List<string> StorageErrors { get; set; } = [];
+}
+
 public sealed class StudentSemesterImportResultDto
 {
     public int TotalRows { get; set; }
