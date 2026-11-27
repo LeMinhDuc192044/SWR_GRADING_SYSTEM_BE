@@ -86,6 +86,19 @@ public sealed class SubmissionParsedAnswersController : ControllerBase
         return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
     }
 
+    /// <summary>
+    /// Links this answer to one diagram element of the diagram assigned to its question
+    /// ("elementId": null removes the link).
+    /// </summary>
+    [HttpPut("{id:guid}/element")]
+    public async Task<IActionResult> AssignElement(
+        Guid id, [FromBody] AssignParsedAnswerElementRequest request, CancellationToken ct)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized(ApiResponse.Failure(401, "Unauthorized."));
+        var result = await _service.AssignElementAsync(id, request.ElementId, userId, IsElevatedRole(), ct);
+        return result.IsSuccess ? Ok(ApiResponse.Success(result.Data)) : Failure(result.ErrorCode, result.Error);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

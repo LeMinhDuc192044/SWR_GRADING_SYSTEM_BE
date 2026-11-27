@@ -10,10 +10,6 @@ public class CreateDiagramRequestValidator : AbstractValidator<CreateDiagramRequ
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("Tên diagram không được để trống.")
             .MaximumLength(200).WithMessage("Tên diagram không được vượt quá 200 ký tự.");
-
-        RuleFor(x => x.Description)
-            .MaximumLength(2000).WithMessage("Mô tả diagram không được vượt quá 2000 ký tự.")
-            .When(x => !string.IsNullOrEmpty(x.Description));
     }
 }
 
@@ -24,10 +20,6 @@ public class UpdateDiagramRequestValidator : AbstractValidator<UpdateDiagramRequ
         RuleFor(x => x.Name)
             .MaximumLength(200).WithMessage("Tên diagram không được vượt quá 200 ký tự.")
             .When(x => !string.IsNullOrEmpty(x.Name));
-
-        RuleFor(x => x.Description)
-            .MaximumLength(2000).WithMessage("Mô tả diagram không được vượt quá 2000 ký tự.")
-            .When(x => !string.IsNullOrEmpty(x.Description));
     }
 }
 

@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Diagrams;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -8,7 +9,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/diagrams")]
-[Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Examiner,Admin,Manager")]
 public class DiagramsController : ControllerBase
 {
     private readonly IDiagramService _diagramService;
@@ -52,7 +53,7 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NAME_EXISTS" or "DUPLICATE_ELEMENT_CODE" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            "DIAGRAM_NAME_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
             _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
@@ -97,21 +98,22 @@ public class DiagramsController : ControllerBase
         return Ok(ApiResponse.Success(elements));
     }
 
+    /// <summary>Assigns an existing diagram element to this diagram.</summary>
     [HttpPost("{diagramId:guid}/elements")]
-    public async Task<IActionResult> CreateElement(
+    public async Task<IActionResult> AssignElement(
         Guid diagramId,
-        [FromBody] CreateDiagramElementRequest request,
+        [FromBody] AssignDiagramElementRequest request,
         CancellationToken ct)
     {
-        request.DiagramId = diagramId;
-        var result = await _elementService.CreateAsync(request, ct);
+        var result = await _elementService.AssignToDiagramAsync(diagramId, request, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
-            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            "DIAGRAM_NOT_FOUND" or "ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_CODE_EXISTS" or "ELEMENT_HAS_REFERENCES" or "ELEMENT_IN_USE" =>
+                Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
             _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }

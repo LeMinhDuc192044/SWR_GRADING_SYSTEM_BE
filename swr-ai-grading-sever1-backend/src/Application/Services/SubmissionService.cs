@@ -50,7 +50,11 @@ public sealed class SubmissionService : ISubmissionService
         if (!paperSetId.HasValue)
             return Result<UploadSubmissionsResultDTO>.Failure("An examination session must be linked to a paper set.", "PAPER_SET_NOT_LINKED");
 
+        // The diagram of each question (and its elements) is needed to connect every extracted
+        // answer to the diagram element the question is graded against.
         var questions = await _db.Questions.AsNoTracking()
+            .Include(question => question.Diagram)
+                .ThenInclude(diagram => diagram!.Elements)
             .Where(question => question.PaperSetId == paperSetId.Value)
             .OrderBy(question => question.Title)
             .ToListAsync(ct);
@@ -605,6 +609,7 @@ public sealed class SubmissionService : ISubmissionService
                     ParsedAnswerId = Guid.NewGuid(),
                     SubmissionId = submissionId,
                     QuestionId = question.QuestionId,
+                    ElementId = ResolveDiagramElement(question, answer.Text, answer.Xml, answer.ImageUrl),
                     ExtractedText = string.IsNullOrWhiteSpace(answer.Text) ? null : answer.Text,
                     Extracted_Xml = answer.Xml,
                     ExtractedImageUrl = answer.ImageUrl,
@@ -937,6 +942,16 @@ public sealed class SubmissionService : ISubmissionService
             UpdatedDate = submission.UpdatedDate
         };
     }
+
+    /// <summary>
+    /// Connects an extracted answer to the diagram element of its question's diagram: an element
+    /// whose code or name appears in the answer wins, then the only element of a single-element
+    /// diagram. A multi-element diagram without a textual match stays unlinked because an answer
+    /// can reference one element only.
+    /// </summary>
+    private static Guid? ResolveDiagramElement(
+        Question question, string? text, string? xml, string? imageUrl)
+        => DiagramElementMatcher.Match(question.Diagram?.Elements, text, xml, imageUrl);
 
     private static int ExtractQuestionNumber(string? title)
     {

@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Diagrams;
 using Application.Interfaces;
 using Domain.Entities;
@@ -10,15 +11,18 @@ public class DiagramService : IDiagramService
     private readonly IDiagramRepository _diagramRepository;
     private readonly IDiagramElementRepository _elementRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IImageUrlProvider _imageUrls;
 
     public DiagramService(
         IDiagramRepository diagramRepository,
         IDiagramElementRepository elementRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IImageUrlProvider imageUrls)
     {
         _diagramRepository = diagramRepository;
         _elementRepository = elementRepository;
         _unitOfWork = unitOfWork;
+        _imageUrls = imageUrls;
     }
 
     public async Task<PagedResult<DiagramDTO>> GetPagedAsync(PagedRequest request, string? search = null, CancellationToken ct = default)
@@ -66,7 +70,8 @@ public class DiagramService : IDiagramService
         return Result<DiagramDetailDTO>.Success(ToDetailDto(diagram));
     }
 
-    public async Task<Result<DiagramDetailDTO>> CreateAsync(CreateDiagramRequest request, CancellationToken ct = default)
+    public async Task<Result<DiagramDetailDTO>> CreateAsync(
+        CreateDiagramRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             return Result<DiagramDetailDTO>.Failure("Tên diagram không được để trống.", "INVALID_DIAGRAM_NAME");
@@ -81,35 +86,6 @@ public class DiagramService : IDiagramService
             Name = trimmedName,
             Description = request.Description?.Trim()
         };
-
-        if (request.Elements is { Count: > 0 })
-        {
-            var elementCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var elReq in request.Elements)
-            {
-                if (string.IsNullOrWhiteSpace(elReq.ElementCode) || string.IsNullOrWhiteSpace(elReq.Name))
-                    return Result<DiagramDetailDTO>.Failure("Element code và tên element không được để trống.", "INVALID_ELEMENT_DATA");
-
-                var code = elReq.ElementCode.Trim();
-                if (!elementCodes.Add(code))
-                    return Result<DiagramDetailDTO>.Failure($"Mã element '{code}' bị trùng lặp trong danh sách.", "DUPLICATE_ELEMENT_CODE");
-
-                diagram.Elements.Add(new DiagramElement
-                {
-                    ElementId = Guid.NewGuid(),
-                    DiagramId = diagram.DiagramId,
-                    ElementCode = code,
-                    Name = elReq.Name.Trim(),
-                    ShapeType = elReq.ShapeType?.Trim(),
-                    Description = elReq.Description?.Trim(),
-                    IsRequirement = elReq.IsRequired,
-                    FileTemplateUrl = elReq.FileTemplateUrl?.Trim(),
-                    ElementReferenceId = elReq.ElementReferenceId,
-                    ElementReferenceType = elReq.ElementReferenceType?.Trim(),
-                    SoftwareType = elReq.SoftwareType?.Trim()
-                });
-            }
-        }
 
         await _diagramRepository.AddAsync(diagram, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -160,7 +136,7 @@ public class DiagramService : IDiagramService
         return Result.Success();
     }
 
-    private static DiagramDTO ToDto(Diagram d, int elementCount) => new()
+    private DiagramDTO ToDto(Diagram d, int elementCount) => new()
     {
         DiagramId = d.DiagramId,
         Name = d.Name,
@@ -168,7 +144,7 @@ public class DiagramService : IDiagramService
         ElementCount = elementCount
     };
 
-    private static DiagramDetailDTO ToDetailDto(Diagram d) => new()
+    private DiagramDetailDTO ToDetailDto(Diagram d) => new()
     {
         DiagramId = d.DiagramId,
         Name = d.Name,
@@ -177,7 +153,7 @@ public class DiagramService : IDiagramService
         Elements = d.Elements.OrderBy(e => e.ElementCode).Select(ToElementDto).ToList()
     };
 
-    private static DiagramElementDTO ToElementDto(DiagramElement e) => new()
+    private DiagramElementDTO ToElementDto(DiagramElement e) => new()
     {
         ElementId = e.ElementId,
         DiagramId = e.DiagramId,
@@ -190,6 +166,7 @@ public class DiagramService : IDiagramService
         ElementReferenceId = e.ElementReferenceId,
         ElementReferenceName = e.ReferenceElement?.Name,
         ElementReferenceType = e.ElementReferenceType,
-        SoftwareType = e.SoftwareType
+        SoftwareType = e.SoftwareType,
+        ImageUrl = _imageUrls.BuildDiagramElementImageUrl(e.ElementId, e.FileTemplateUrl)
     };
 }

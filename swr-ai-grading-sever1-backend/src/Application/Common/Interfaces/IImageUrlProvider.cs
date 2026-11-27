@@ -15,4 +15,15 @@ public interface IImageUrlProvider
     /// Validates the signed query string produced by <see cref="BuildParsedAnswerImageUrl"/>.
     /// </summary>
     bool IsValidSignature(Guid parsedAnswerId, long expires, string? signature);
+
+    /// <summary>
+    /// Returns an absolute, directly usable URL for the image of a diagram element,
+    /// or null when the element has no stored image.
+    /// </summary>
+    string? BuildDiagramElementImageUrl(Guid elementId, string? storedImagePath);
+
+    /// <summary>
+    /// Validates the signed query string produced by <see cref="BuildDiagramElementImageUrl"/>.
+    /// </summary>
+    bool IsValidDiagramElementSignature(Guid elementId, long expires, string? signature);
 }

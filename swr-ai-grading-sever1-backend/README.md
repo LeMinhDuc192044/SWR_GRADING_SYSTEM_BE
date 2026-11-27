@@ -240,8 +240,25 @@ dotnet ef database update <PreviousMigrationName> --project src/Infrastructure -
 | ExamMaterials | `/api/examinations/{id}/materials` (upload/list) |
 | Submissions | `/api/submissions` (CRUD, submit) |
 | Gradings | `/api/gradings` (CRUD) |
-| Diagrams | `/api/diagrams` (CRUD, get/create elements) |
+| Diagrams | `/api/diagrams` (CRUD, get elements, gán element) |
 | DiagramElements | `/api/diagram-elements` (CRUD, self-ref) |
+
+### Diagram element image & auto-link
+
+- Ảnh element dùng chung cột `diagram_elements.file_template_url` với link template, lưu ở đường dẫn cố định `diagram-elements/{elementId}/image.{ext}`. Chỉ đường dẫn đúng của element mới được coi là ảnh (`GET/DELETE /api/diagram-elements/{id}/image`); link template không bị stream hay xóa như ảnh.
+- `PUT /api/diagram-elements/{id}` trả `400 ELEMENT_IMAGE_PRESENT` khi element đang có ảnh mà request đổi `FileTemplateUrl`; gọi `DELETE /api/diagram-elements/{id}/image` trước nếu muốn thay bằng link template.
+- `DELETE /api/diagram-elements/{id}` xóa luôn object ảnh trong Supabase Storage, sau khi DB đã commit.
+- Upload submission tự nối parsed answer với element của diagram gán cho question: mã element phải khớp nguyên token (tối thiểu 2 ký tự, `E1` không khớp `E10`), sau đó mới xét tên; diagram chỉ có một element thì luôn nối.
+
+### Tạo diagram & gán element
+
+- `POST /api/diagrams` nhận `application/json`: `name`, `description`. Diagram **không có ảnh và không có `fileTemplateUrl`** (cả entity, DTO lẫn DB đều đã bỏ) — ảnh chỉ tồn tại ở mức element (`/api/diagram-elements/{id}/image`). Request **không nhận `elements`** — element được tạo/gán riêng.
+- Gán một element đã có vào diagram: `POST /api/diagrams/{diagramId}/elements` với body `{ "elementId": "..." }`.
+  - Lỗi: `404 DIAGRAM_NOT_FOUND` / `ELEMENT_NOT_FOUND`; `409 ELEMENT_CODE_EXISTS` (mã element đã có trong diagram đích), `409 ELEMENT_HAS_REFERENCES` / `409 ELEMENT_IN_USE` (element đang được tham chiếu hoặc đã gắn câu trả lời bài thi).
+  - Liên kết chỉ có nghĩa trong cùng diagram: nếu element đang trỏ tới một element ở diagram cũ thì liên kết đó bị xóa khi chuyển. Gán lại vào chính diagram hiện tại là no-op, trả `200`.
+- Tạo element mới: `POST /api/diagram-elements`.
+  - `application/json`: `diagramId`, `elementCode`, `name`, `shapeType`, `description`, `isRequired`; `elementReferenceId`, `elementReferenceType`, `softwareType` đều nullable (không bắt buộc).
+  - `multipart/form-data` (cùng các field trên) + part `image` không bắt buộc (PNG/JPEG/WEBP/GIF, ≤ 5 MB): ảnh được lưu vào Supabase và **`fileTemplateUrl` tự sinh** (`diagram-elements/{elementId}/image.{ext}`) — request **không nhận** `fileTemplateUrl`. Ảnh không hợp lệ trả `400` (`EMPTY_IMAGE_FILE` / `IMAGE_TOO_LARGE` / `UNSUPPORTED_IMAGE_TYPE`) và không tạo element.
 
 ---
 

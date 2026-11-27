@@ -27,6 +27,23 @@ public sealed class QuestionsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
+    /// <summary>Assigns (or clears) the diagram used as the reference model for a question.</summary>
+    [HttpPut("{id:guid}/diagram")]
+    public async Task<IActionResult> AssignDiagram(
+        Guid id, [FromBody] AssignQuestionDiagramRequest request, CancellationToken ct)
+    {
+        var result = await _service.AssignDiagramAsync(id, request.DiagramId, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        return result.ErrorCode switch
+        {
+            "QUESTION_NOT_FOUND" or "DIAGRAM_NOT_FOUND" =>
+                NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
+        };
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetByPaperSetId([FromQuery] Guid? paperSetId, CancellationToken ct)
     {

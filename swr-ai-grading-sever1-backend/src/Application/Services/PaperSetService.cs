@@ -743,6 +743,34 @@ public sealed class PaperSetService : IPaperSetService
         return Result<QuestionDTO>.Success(MapToQuestionDTO(question));
     }
 
+    public async Task<Result<QuestionDTO>> AssignDiagramAsync(
+        Guid questionId, Guid? diagramId, CancellationToken ct = default)
+    {
+        var question = await _dbContext.Questions
+            .Include(q => q.Diagram)
+            .Include(q => q.Criteria)
+            .FirstOrDefaultAsync(q => q.QuestionId == questionId, ct);
+
+        if (question is null)
+            return Result<QuestionDTO>.Failure("Question not found.", "QUESTION_NOT_FOUND");
+
+        Diagram? diagram = null;
+        if (diagramId.HasValue)
+        {
+            diagram = await _dbContext.Diagrams
+                .FirstOrDefaultAsync(d => d.DiagramId == diagramId.Value, ct);
+            if (diagram is null)
+                return Result<QuestionDTO>.Failure("Diagram not found.", "DIAGRAM_NOT_FOUND");
+        }
+
+        question.DiagramId = diagramId;
+        question.Diagram = diagram;
+        question.UpdatedDay = VietnamTime.Now;
+        await _dbContext.SaveChangesAsync(ct);
+
+        return Result<QuestionDTO>.Success(MapToQuestionDTO(question));
+    }
+
 
     private static QuestionDTO MapToQuestionDTO(Question q) => new()
     {

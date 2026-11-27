@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Application.Common;
 using Application.Common.Interfaces;
 
 namespace WebApi.Common;
@@ -41,10 +42,30 @@ public sealed class ParsedAnswerImageUrlProvider : IImageUrlProvider
             return null;
 
         var expires = DateTimeOffset.UtcNow.AddMinutes(UrlLifetimeMinutes).ToUnixTimeSeconds();
-        var signature = Sign(parsedAnswerId, expires);
+        var signature = Sign($"{parsedAnswerId:N}:{expires}");
 
         return $"{request.Scheme}://{request.Host}{request.PathBase}" +
                $"/api/submission-parsed-answers/{parsedAnswerId}/image" +
+               $"?expires={expires}&signature={signature}";
+    }
+
+    public string? BuildDiagramElementImageUrl(Guid elementId, string? storedImagePath)
+    {
+        // A template URL shares the column with the uploaded image and is not servable here.
+        if (_signingKey is null || !DiagramElementImagePath.Matches(elementId, storedImagePath))
+        {
+            return null;
+        }
+
+        var request = _httpContextAccessor.HttpContext?.Request;
+        if (request is null)
+            return null;
+
+        var expires = DateTimeOffset.UtcNow.AddMinutes(UrlLifetimeMinutes).ToUnixTimeSeconds();
+        var signature = Sign(DiagramElementPayload(elementId, expires));
+
+        return $"{request.Scheme}://{request.Host}{request.PathBase}" +
+               $"/api/diagram-elements/{elementId}/image" +
                $"?expires={expires}&signature={signature}";
     }
 
@@ -57,17 +78,31 @@ public sealed class ParsedAnswerImageUrlProvider : IImageUrlProvider
             return false;
         }
 
-        var expected = Sign(parsedAnswerId, expires);
-        var expectedBytes = Encoding.UTF8.GetBytes(expected);
-        var actualBytes = Encoding.UTF8.GetBytes(signature);
-
-        return CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
+        return SignatureMatches(Sign($"{parsedAnswerId:N}:{expires}"), signature);
     }
 
-    private string Sign(Guid parsedAnswerId, long expires)
+    public bool IsValidDiagramElementSignature(Guid elementId, long expires, string? signature)
+    {
+        if (_signingKey is null ||
+            string.IsNullOrWhiteSpace(signature) ||
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expires)
+        {
+            return false;
+        }
+
+        return SignatureMatches(Sign(DiagramElementPayload(elementId, expires)), signature);
+    }
+
+    private static string DiagramElementPayload(Guid elementId, long expires) => $"element:{elementId:N}:{expires}";
+
+    private static bool SignatureMatches(string expected, string actual)
+        => CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(actual));
+
+    private string Sign(string payload)
     {
         using var hmac = new HMACSHA256(_signingKey!);
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes($"{parsedAnswerId:N}:{expires}"));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return Convert.ToBase64String(hash)
             .TrimEnd('=')
             .Replace('+', '-')
