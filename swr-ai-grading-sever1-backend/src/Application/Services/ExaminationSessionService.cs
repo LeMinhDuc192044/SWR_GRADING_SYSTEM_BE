@@ -10,6 +10,10 @@
 
     public sealed class ExaminationSessionService : IExaminationSessionService
     {
+        // Sessions may share a day as long as their start times are far enough apart
+        // (1 hour 30 minutes before or after every other session of the examination).
+        private const int MinimumSessionGapMinutes = 90;
+
         private readonly IApplicationDbContext _db;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IStudentCodeExcelReader _excelReader;
@@ -54,6 +58,11 @@
                 return Result<ExaminationSessionDTO>.Failure("Invalid examination session status.", "INVALID_EXAMINATION_SESSION_STATUS");
             if (request.StartDate < examination.StartDate || request.StartDate > examination.EndDate)
                 return Result<ExaminationSessionDTO>.Failure("Session date must be within the examination dates.", "SESSION_DATE_OUT_OF_EXAMINATION");
+
+            if (await HasSessionTooCloseAsync(examinationId, request.StartDate, request.StartTime, null, ct))
+                return Result<ExaminationSessionDTO>.Failure(
+                    $"Another session starts less than {MinimumSessionGapMinutes} minutes apart on the same day.",
+                    "SESSION_TIME_CONFLICT");
 
             var paperSetId = NormalizeGuid(request.PaperSetId);
             if (paperSetId.HasValue)
@@ -194,9 +203,15 @@
             if (startDate < examination.StartDate || startDate > examination.EndDate)
                 return Result<ExaminationSessionDTO>.Failure("Session date must be within the examination dates.", "SESSION_DATE_OUT_OF_EXAMINATION");
 
+            var startTime = request.StartTime ?? session.StartTime;
+            if (await HasSessionTooCloseAsync(examinationId, startDate, startTime, sessionId, ct))
+                return Result<ExaminationSessionDTO>.Failure(
+                    $"Another session starts less than {MinimumSessionGapMinutes} minutes apart on the same day.",
+                    "SESSION_TIME_CONFLICT");
+
             if (!string.IsNullOrWhiteSpace(code)) session.ExaminationCode = code;
             session.StartDate = startDate;
-            if (request.StartTime.HasValue) session.StartTime = request.StartTime.Value;
+            session.StartTime = startTime;
             if (request.Status.HasValue)
             {
                 if (!Enum.IsDefined(request.Status.Value))
@@ -677,6 +692,28 @@
             PaperSetId = session.PaperSetId,
             StudentIds = studentIds?.ToList() ?? session.StudentExaminationSessions.Select(a => a.StudentId).ToList()
         };
+
+        // Multiple sessions are allowed on one day, but each must start at least
+        // MinimumSessionGapMinutes before or after every other session of the examination that day.
+        private async Task<bool> HasSessionTooCloseAsync(
+            Guid examinationId,
+            DateOnly startDate,
+            TimeOnly startTime,
+            Guid? excludedSessionId,
+            CancellationToken ct)
+        {
+            var query = _db.ExaminationSessions
+                .AsNoTracking()
+                .Where(s => s.ExaminationId == examinationId && s.StartDate == startDate);
+
+            if (excludedSessionId.HasValue)
+                query = query.Where(s => s.ExaminationSessionId != excludedSessionId.Value);
+
+            var startTimes = await query.Select(s => s.StartTime).ToListAsync(ct);
+
+            return startTimes.Any(existing =>
+                Math.Abs(existing.Ticks - startTime.Ticks) < MinimumSessionGapMinutes * TimeSpan.TicksPerMinute);
+        }
 
         private static Guid? NormalizeGuid(Guid? id) => id.HasValue && id.Value != Guid.Empty ? id.Value : null;
     }

@@ -98,6 +98,42 @@ public class MonitorServiceTests
 
         db.Staff.AddRange(m1, m2, inactiveMonitor, deletedMonitor, examiner, admin);
 
+        var student = new Student
+        {
+            Id = Guid.NewGuid(),
+            StudentCode = "SE180001",
+            FullName = "Monitor Workload Student",
+            Email = "se180001@fpt.edu.vn",
+            Birthday = new DateOnly(2004, 1, 1),
+            PasswordHash = "hash",
+            Major = "SE",
+            CreatedDay = DateTime.UtcNow,
+            UpdatedDay = DateTime.UtcNow
+        };
+        var inProgressSubmission = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            FileSubmissions = "in-progress.docx",
+            StudentId = student.Id,
+            UploadedById = examiner.Id,
+            Status = SubmissionStatus.Grading,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+        var completedSubmission = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            FileSubmissions = "completed.docx",
+            StudentId = student.Id,
+            UploadedById = examiner.Id,
+            Status = SubmissionStatus.Final,
+            CreatedDate = DateTime.UtcNow,
+            UpdatedDate = DateTime.UtcNow
+        };
+
+        db.Students.Add(student);
+        db.StudentSubmissions.AddRange(inProgressSubmission, completedSubmission);
+
         var activeSession = new GradingSession
         {
             GradingSessionId = Guid.NewGuid(),
@@ -112,7 +148,7 @@ public class MonitorServiceTests
             {
                 AssignmentId = Guid.NewGuid(),
                 StaffId = m1.Id,
-                SubmissionId = Guid.NewGuid(),
+                SubmissionId = inProgressSubmission.SubmissionId,
                 GradingSessionId = activeSession.GradingSessionId,
                 GradingSession = activeSession,
                 Status = AssignmentStatus.IN_PROGRESS
@@ -121,7 +157,7 @@ public class MonitorServiceTests
             {
                 AssignmentId = Guid.NewGuid(),
                 StaffId = m1.Id,
-                SubmissionId = Guid.NewGuid(),
+                SubmissionId = completedSubmission.SubmissionId,
                 GradingSessionId = activeSession.GradingSessionId,
                 GradingSession = activeSession,
                 Status = AssignmentStatus.COMPLETED
