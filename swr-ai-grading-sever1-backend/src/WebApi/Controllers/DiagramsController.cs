@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Diagrams;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -8,18 +9,21 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/diagrams")]
-[Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Examiner,Admin,Manager")]
 public class DiagramsController : ControllerBase
 {
     private readonly IDiagramService _diagramService;
     private readonly IDiagramElementService _elementService;
+    private readonly ISubmissionDiagramService _submissionDiagramService;
 
     public DiagramsController(
         IDiagramService diagramService,
-        IDiagramElementService elementService)
+        IDiagramElementService elementService,
+        ISubmissionDiagramService submissionDiagramService)
     {
         _diagramService = diagramService;
         _elementService = elementService;
+        _submissionDiagramService = submissionDiagramService;
     }
 
     [HttpGet]
@@ -52,7 +56,7 @@ public class DiagramsController : ControllerBase
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NAME_EXISTS" or "DUPLICATE_ELEMENT_CODE" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            "DIAGRAM_NAME_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
             _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }
@@ -97,21 +101,42 @@ public class DiagramsController : ControllerBase
         return Ok(ApiResponse.Success(elements));
     }
 
-    [HttpPost("{diagramId:guid}/elements")]
-    public async Task<IActionResult> CreateElement(
-        Guid diagramId,
-        [FromBody] CreateDiagramElementRequest request,
-        CancellationToken ct)
+    /// <summary>
+    /// Links a submission's parsed answers to the elements of their questions' diagrams. Each answer
+    /// uses the diagram its question is already connected to (PUT /api/questions/{id}/diagram);
+    /// answers of questions without a diagram are left untouched.
+    /// </summary>
+    [HttpPost("connect-submission/{submissionId:guid}")]
+    [Authorize(Roles = "Examiner,Admin")]
+    public async Task<IActionResult> ConnectSubmission(Guid submissionId, CancellationToken ct = default)
     {
-        request.DiagramId = diagramId;
-        var result = await _elementService.CreateAsync(request, ct);
+        var result = await _submissionDiagramService.ConnectSubmissionAsync(submissionId, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 
         return result.ErrorCode switch
         {
-            "DIAGRAM_NOT_FOUND" or "REFERENCE_ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
-            "ELEMENT_CODE_EXISTS" => Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
+            "SUBMISSION_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
+        };
+    }
+
+    /// <summary>Assigns an existing diagram element to this diagram.</summary>
+    [HttpPost("{diagramId:guid}/elements")]
+    public async Task<IActionResult> AssignElement(
+        Guid diagramId,
+        [FromBody] AssignDiagramElementRequest request,
+        CancellationToken ct)
+    {
+        var result = await _elementService.AssignToDiagramAsync(diagramId, request, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        return result.ErrorCode switch
+        {
+            "DIAGRAM_NOT_FOUND" or "ELEMENT_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            "ELEMENT_CODE_EXISTS" or "ELEMENT_HAS_REFERENCES" or "ELEMENT_IN_USE" =>
+                Conflict(ApiResponse.Failure(409, result.Error!, result.ErrorCode)),
             _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
         };
     }

@@ -295,7 +295,8 @@ public sealed class GeminiAIService : IGeminiAIService
         if (questionAnswers.Count == 0)
             return new GradingResultDto();
 
-        // One entry per question; each entry holds all of that question's answers (text + XML + image flag).
+        // One entry per question; each entry holds the reference diagram of the question and all of
+        // that question's answers (text + XML + the diagram element each answer is connected to).
         var studentAnswersData = questionAnswers
             .GroupBy(qa => qa.Question.QuestionId)
             .Select(g => new
@@ -304,13 +305,23 @@ public sealed class GeminiAIService : IGeminiAIService
                 question_title = g.First().Question.Title,
                 question_content = g.First().Question.Content,
                 max_point = g.First().Question.Point,
+                reference_diagram = BuildReferenceDiagram(g.First().Question),
                 answers = g.Select(qa => new
                 {
                     student_answer_text = string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedText)
                         ? "[Không có nội dung văn bản]" : qa.ParsedAnswer.ExtractedText,
                     diagram_xml_summary = string.IsNullOrWhiteSpace(qa.ParsedAnswer.Extracted_Xml)
                         ? "[Không có XML]" : SummarizeDiagramXml(qa.ParsedAnswer.Extracted_Xml),
-                    image_attached = !string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl)
+                    image_attached = !string.IsNullOrWhiteSpace(qa.ParsedAnswer.ExtractedImageUrl),
+                    matched_element = qa.ParsedAnswer.Element is { } element ? new
+                    {
+                        element_code = element.ElementCode,
+                        name = element.Name,
+                        description = element.Description,
+                        software_type = element.SoftwareType,
+                        reference_image_attached =
+                            DiagramElementImagePath.Matches(element.ElementId, element.FileTemplateUrl)
+                    } : null
                 }).ToList()
             }).ToList();
 
@@ -328,6 +339,12 @@ public sealed class GeminiAIService : IGeminiAIService
             - diagram_xml_summary: XML draw.io đã rút gọn (danh sách đối tượng, nhãn, các kết nối, kiểu mũi tên).
             - Hình ảnh đính kèm sau prompt; mỗi ảnh có một dòng nhãn ghi rõ thuộc câu hỏi nào.
 
+            [SƠ ĐỒ MẪU CỦA CÂU HỎI - reference_diagram]
+            - reference_diagram là sơ đồ chuẩn mà câu hỏi được gắn vào (name, description, elements). elements là danh sách phần tử mẫu của sơ đồ: element_code, name, description, is_required (phần tử bắt buộc), software_type.
+            - Đây là mô hình tham chiếu để đối chiếu bài làm, KHÔNG phải bài làm của sinh viên. Chỉ dùng để biết bài làm có đúng loại sơ đồ, đúng phần tử và đúng quan hệ mà câu hỏi yêu cầu hay không. Không cộng điểm cho phần tử mẫu mà bài làm không thể hiện.
+            - matched_element của mỗi câu trả lời là phần tử của sơ đồ mẫu mà câu trả lời đó được nối tới (đã khớp theo mã hoặc tên). Dùng nó để biết câu trả lời đang mô tả phần tử nào và đối chiếu với description/is_required của phần tử đó; matched_element = null nghĩa là câu trả lời chưa nối được vào phần tử nào.
+            - Khi một ảnh có nhãn "[HÌNH ẢNH MẪU - SƠ ĐỒ ... > Phần tử ...]" thì đó là ảnh mẫu của phần tử (reference_image_attached = true), dùng để so ký hiệu/hình dạng/bố cục, KHÔNG phải hình bài làm và KHÔNG được tính là bằng chứng bài làm đã vẽ đúng. Ảnh có nhãn "[HÌNH ẢNH BÀI LÀM]" mới là hình của sinh viên.
+
             [CÁCH CHẤM - BẮT BUỘC]
             1. Với từng câu, xét lần lượt từng tiêu chí (criterion_no). Với mỗi tiêu chí, đối chiếu CẢ BA nguồn (văn bản, XML, hình ảnh) với yêu cầu của tiêu chí. Một ý được tính nếu xuất hiện ở BẤT KỲ nguồn nào; cùng một ý xuất hiện ở nhiều nguồn chỉ tính MỘT lần. Khi các nguồn mâu thuẫn: XML đúng hơn cho tên/nhãn/quan hệ, hình ảnh dùng để kiểm tra ký hiệu và bố cục.
             2. Tiêu chí dạng "Award X point for each ...": liệt kê trong matched_items MỖI ý đúng (một chuỗi ngắn, ghi nguồn trong ngoặc, ví dụ "Book an appointment (xml)"). Ý trùng lặp, ý sai, ý không phù hợp với kịch bản trong question_content, hoặc ý không đúng loại mà tiêu chí yêu cầu (ví dụ không phải yêu cầu chức năng) KHÔNG được tính: đưa vào rejected_items kèm lý do ngắn. awarded_score = số ý đúng x X, không vượt max_point của tiêu chí.
@@ -339,6 +356,7 @@ public sealed class GeminiAIService : IGeminiAIService
             5. actual_score của câu = tổng awarded_score các tiêu chí và không vượt max_score của câu.
             6. Mỗi question_id chỉ trả về MỘT mục trong criteria_scores (gộp mọi câu trả lời của câu đó).
             7. criterion_no phải dùng đúng số hiệu trong rubric. Tiêu chí con (ví dụ 8.d) phải là chuỗi có ngoặc kép: "8.d". TUYỆT ĐỐI không viết giá trị trần như 8.d vì JSON sẽ không hợp lệ.
+            8. Với câu có reference_diagram, dùng elements làm danh sách phần tử chuẩn để đối chiếu: phần tử is_required = true mà bài làm không thể hiện ở BẤT KỲ nguồn nào phải được nêu đích danh (mã + tên) trong comment của câu và trong missing_items; phần tử bài làm thể hiện thêm ngoài sơ đồ mẫu chỉ được tính khi rubric yêu cầu và phải ghi rõ là ngoài mô hình mẫu. Bước đối chiếu này chỉ dùng để giải thích và phát hiện thiếu sót, KHÔNG được tự tạo điểm ngoài rubric.
 
             [QUY TẮC VIẾT NHẬN XÉT]
             - CẤM mọi lời khen, động viên, đánh giá cảm tính (ví dụ: "tốt", "xuất sắc", "rất đầy đủ", "ấn tượng", "good", "great", "well done").
@@ -616,6 +634,36 @@ public sealed class GeminiAIService : IGeminiAIService
 
     private sealed record DiagramNode(string Id, string Label, string Style, string? Parent,
         string? Source, string? Target, bool IsVertex, bool IsEdge);
+
+    /// <summary>
+    /// The question's reference diagram: its name plus the elements the answer is compared against.
+    /// Null when the question has no diagram attached.
+    /// </summary>
+    private static object? BuildReferenceDiagram(Question question)
+    {
+        var diagram = question.Diagram;
+        if (diagram is null)
+            return null;
+
+        return new
+        {
+            name = diagram.Name,
+            description = diagram.Description,
+            elements = diagram.Elements
+                .OrderBy(element => element.ElementCode)
+                .Select(element => new
+                {
+                    element_code = element.ElementCode,
+                    name = element.Name,
+                    description = element.Description,
+                    is_required = element.IsRequired,
+                    software_type = element.SoftwareType,
+                    reference_image_attached =
+                        DiagramElementImagePath.Matches(element.ElementId, element.FileTemplateUrl)
+                })
+                .ToList()
+        };
+    }
 
     private static string SummarizeDiagramXml(string xml)
     {

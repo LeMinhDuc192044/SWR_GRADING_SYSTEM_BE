@@ -1039,7 +1039,8 @@ public sealed class AssignmentService : IAssignmentService
 
         return Result.Failure(
             $"This monitor is already assigned to grading session '{busy.Title}'{deadlineText}. " +
-            "A monitor can be assigned to another grading session only after that deadline has passed.",
+            "A monitor can be assigned to another grading session only after that deadline has passed " +
+            "or when every submission assigned there already has an official grade.",
             "MONITOR_BUSY_IN_ANOTHER_GRADING_SESSION");
     }
 

@@ -29,23 +29,26 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
             return Result<IReadOnlyList<SubmissionParsedAnswerDTO>>.Failure(submissionResult.Error!, submissionResult.ErrorCode);
 
         var answers = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .Include(answer => answer.Element)
             .Where(answer => answer.SubmissionId == submissionId)
             .OrderBy(answer => answer.CreatedAt)
             .ToListAsync(ct);
-        return Result<IReadOnlyList<SubmissionParsedAnswerDTO>>.Success(answers.Select(ToDto).ToList());
+        return Result<IReadOnlyList<SubmissionParsedAnswerDTO>>.Success(
+            answers.Select(answer => ToDto(answer, answer.Element)).ToList());
     }
 
     public async Task<Result<SubmissionParsedAnswerDTO>> GetByIdAsync(
         Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
     {
         var answer = await _db.SubmissionParsedAnswers.AsNoTracking()
+            .Include(item => item.Element)
             .FirstOrDefaultAsync(item => item.ParsedAnswerId == id, ct);
         if (answer is null)
             return Result<SubmissionParsedAnswerDTO>.Failure("Parsed answer not found.", "PARSED_ANSWER_NOT_FOUND");
 
         var submissionResult = await FindAccessibleSubmissionAsync(answer.SubmissionId, currentUserId, isElevatedRole, ct);
         return submissionResult.IsSuccess
-            ? Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer))
+            ? Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer, answer.Element))
             : Result<SubmissionParsedAnswerDTO>.Failure(submissionResult.Error!, submissionResult.ErrorCode);
     }
 
@@ -92,7 +95,7 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         };
         _db.SubmissionParsedAnswers.Add(answer);
         await _db.SaveChangesAsync(ct);
-        return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer));
+        return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer, await FindElementAsync(answer.ElementId, ct)));
     }
 
     public async Task<Result<SubmissionParsedAnswerDTO>> UpdateAsync(
@@ -122,7 +125,42 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         answer.Extracted_Xml = request.ExtractedXml;
         answer.ExtractedImageUrl = request.ExtractedImageUrl;
         await _db.SaveChangesAsync(ct);
-        return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer));
+        return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer, await FindElementAsync(answer.ElementId, ct)));
+    }
+
+    public async Task<Result<SubmissionParsedAnswerDTO>> AssignElementAsync(
+        Guid id, Guid? elementId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
+    {
+        var answer = await _db.SubmissionParsedAnswers
+            .Include(item => item.Question)
+            .FirstOrDefaultAsync(item => item.ParsedAnswerId == id, ct);
+        if (answer is null)
+            return Result<SubmissionParsedAnswerDTO>.Failure("Parsed answer not found.", "PARSED_ANSWER_NOT_FOUND");
+
+        var access = await FindAccessibleSubmissionAsync(answer.SubmissionId, currentUserId, isElevatedRole, ct);
+        if (!access.IsSuccess)
+            return Result<SubmissionParsedAnswerDTO>.Failure(access.Error!, access.ErrorCode);
+
+        DiagramElement? element = null;
+        if (elementId.HasValue)
+        {
+            if (!answer.Question.DiagramId.HasValue)
+                return Result<SubmissionParsedAnswerDTO>.Failure(
+                    "The question has no diagram assigned, so it has no diagram element.", "QUESTION_HAS_NO_DIAGRAM");
+
+            element = await FindElementAsync(elementId.Value, ct);
+            if (element is null)
+                return Result<SubmissionParsedAnswerDTO>.Failure("Diagram element not found.", "ELEMENT_NOT_FOUND");
+
+            if (element.DiagramId != answer.Question.DiagramId.Value)
+                return Result<SubmissionParsedAnswerDTO>.Failure(
+                    "The diagram element does not belong to the diagram assigned to this question.",
+                    "ELEMENT_NOT_IN_QUESTION_DIAGRAM");
+        }
+
+        answer.ElementId = elementId;
+        await _db.SaveChangesAsync(ct);
+        return Result<SubmissionParsedAnswerDTO>.Success(ToDto(answer, element));
     }
 
     public async Task<Result> DeleteAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default)
@@ -192,12 +230,19 @@ public sealed class SubmissionParsedAnswerService : ISubmissionParsedAnswerServi
         return Result<StudentSubmission>.Failure("You are not allowed to access this submission.", "FORBIDDEN");
     }
 
-    private SubmissionParsedAnswerDTO ToDto(SubmissionParsedAnswer answer) => new()
+    private Task<DiagramElement?> FindElementAsync(Guid? elementId, CancellationToken ct) =>
+        elementId.HasValue
+            ? _db.DiagramElements.AsNoTracking().FirstOrDefaultAsync(element => element.ElementId == elementId.Value, ct)
+            : Task.FromResult<DiagramElement?>(null);
+
+    private SubmissionParsedAnswerDTO ToDto(SubmissionParsedAnswer answer, DiagramElement? element = null) => new()
     {
         ParsedAnswerId = answer.ParsedAnswerId,
         SubmissionId = answer.SubmissionId,
         QuestionId = answer.QuestionId,
         ElementId = answer.ElementId,
+        ElementCode = element?.ElementCode,
+        ElementName = element?.Name,
         ExtractedText = answer.ExtractedText,
         ExtractedImageUrl = _imageUrls.BuildParsedAnswerImageUrl(answer.ParsedAnswerId, answer.ExtractedImageUrl),
         ExtractedXml = answer.Extracted_Xml,

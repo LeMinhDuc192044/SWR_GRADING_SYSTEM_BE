@@ -688,4 +688,136 @@ public class AssignmentServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal("MONITOR_NO_ELIGIBLE_SUBMISSION", result.ErrorCode);
     }
+
+    // Puts the monitor on an in-progress assignment in a different (still open) grading session.
+    // officialAt adds an OFFICIAL grading history for that submission at the given moment.
+    private static async Task AddBusyAssignmentInOtherSessionAsync(
+        TestDbContext db, Guid monitorId, DateTime assignedDate, DateTime? officialAt)
+    {
+        var examinationSessionId = (await db.ExaminationSessions.FirstAsync()).ExaminationSessionId;
+        var uploaderId = (await db.Staff.FirstAsync(s => s.Role == UserRole.Examiner)).Id;
+
+        var student = CreateStudent("SE190001", "Busy Student");
+        var submission = new StudentSubmission
+        {
+            SubmissionId = Guid.NewGuid(),
+            FileSubmissions = "busy.docx",
+            StudentId = student.Id,
+            UploadedById = uploaderId,
+            ExaminationSessionId = examinationSessionId,
+            Status = SubmissionStatus.Grading,
+            CreatedDate = DateTime.UtcNow.AddDays(-1),
+            UpdatedDate = DateTime.UtcNow.AddDays(-1)
+        };
+        var otherSession = new GradingSession
+        {
+            GradingSessionId = Guid.NewGuid(),
+            ExaminationSessionId = examinationSessionId,
+            Title = "Other Session",
+            CreatedDate = VietnamTime.Today,
+            UpdatedDate = VietnamTime.Today,
+            Deadline = VietnamTime.Today.AddDays(5)
+        };
+
+        db.Students.Add(student);
+        db.StudentSubmissions.Add(submission);
+        db.GradingSessions.Add(otherSession);
+        db.Assignments.Add(new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            StaffId = monitorId,
+            SubmissionId = submission.SubmissionId,
+            GradingSessionId = otherSession.GradingSessionId,
+            Status = AssignmentStatus.IN_PROGRESS,
+            AssignedDate = assignedDate,
+            UpdatedDate = assignedDate
+        });
+
+        if (officialAt.HasValue)
+        {
+            db.SubmissionGradingHistories.Add(new SubmissionGradingHistory
+            {
+                HistoryId = Guid.NewGuid(),
+                SubmissionId = submission.SubmissionId,
+                EvaluationType = EvaluationType.Lecturer,
+                GradingRound = 1,
+                TotalScore = 8,
+                Status = SubmissionGradingHistoryStatus.OFFICIAL,
+                CreatedAt = officialAt.Value
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateAsync_MonitorBusyElsewhereWithAllSubmissionsOfficial_IsAssignable()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+        await AddBusyAssignmentInOtherSessionAsync(
+            db, monitor2Id, VietnamTime.Now.AddHours(-2), VietnamTime.Now.AddHours(-1));
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 1
+        });
+
+        Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.Error}");
+        Assert.Single(result.Data!);
+    }
+
+    [Fact]
+    public async Task CreateAsync_MonitorBusyElsewhereWithUnofficialSubmission_IsRejected()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+        await AddBusyAssignmentInOtherSessionAsync(db, monitor2Id, VietnamTime.Now.AddHours(-2), null);
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 1
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_BUSY_IN_ANOTHER_GRADING_SESSION", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateAutoAsync_MonitorBusyElsewhereWithAllSubmissionsOfficial_IsAssignable()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+        await AddBusyAssignmentInOtherSessionAsync(
+            db, monitor2Id, VietnamTime.Now.AddHours(-2), VietnamTime.Now.AddHours(-1));
+
+        var result = await CreateService(db).CreateAutoAsync(regradeSessionId,
+        [
+            new AutoAssignmentMonitorRequest { MonitorId = monitor2Id, NumberSubmission = 1 }
+        ]);
+
+        Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.Error}");
+        Assert.Single(result.Data!);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficialGradeFromBeforeTheAssignment_StillCountsAsBusy()
+    {
+        using var db = TestDbContextFactory.Create(Guid.NewGuid().ToString());
+        var (_, regradeSessionId, _, monitor2Id, _, _, _) = await SeedScenarioAsync(db);
+        var now = VietnamTime.Now;
+        // Official result from an earlier round: the new assignment is still ungraded.
+        await AddBusyAssignmentInOtherSessionAsync(db, monitor2Id, now, now.AddDays(-2));
+
+        var result = await CreateService(db).CreateAsync(regradeSessionId, new CreateAssignmentRequest
+        {
+            Monitors = [monitor2Id],
+            SubmissionPerMonitor = 1
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MONITOR_BUSY_IN_ANOTHER_GRADING_SESSION", result.ErrorCode);
+    }
 }

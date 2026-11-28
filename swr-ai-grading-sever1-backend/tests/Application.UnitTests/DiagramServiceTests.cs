@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Application.Common;
+using Moq;
 using Application.DTOs.Diagrams;
 using Application.Interfaces;
 using Application.Services;
@@ -154,7 +155,11 @@ public class DiagramServiceTests
 
     public DiagramServiceTests()
     {
-        _service = new DiagramService(_diagramRepo, _elementRepo, _uow);
+        _service = new DiagramService(
+            _diagramRepo,
+            _elementRepo,
+            _uow,
+            new Moq.Mock<Application.Common.Interfaces.IImageUrlProvider>().Object);
     }
 
     [Fact]
@@ -163,8 +168,7 @@ public class DiagramServiceTests
         var request = new CreateDiagramRequest
         {
             Name = "Class Diagram",
-            Description = "Standard UML Class Diagram",
-            FileTemplateUrl = "https://example.com/template.png"
+            Description = "Standard UML Class Diagram"
         };
 
         var result = await _service.CreateAsync(request);
@@ -174,6 +178,16 @@ public class DiagramServiceTests
         Assert.Equal("Class Diagram", result.Data.Name);
         Assert.Single(_diagramRepo.Diagrams);
         Assert.Equal(1, _uow.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithoutElements_CreatesDiagramWithoutElements()
+    {
+        var result = await _service.CreateAsync(new CreateDiagramRequest { Name = "Sequence Diagram" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!.Elements);
+        Assert.Single(_diagramRepo.Diagrams);
     }
 
     [Fact]

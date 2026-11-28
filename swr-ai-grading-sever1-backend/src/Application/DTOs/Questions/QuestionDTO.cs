@@ -16,6 +16,12 @@ public class QuestionDTO
     public DateTime UpdatedDay { get; set; }
 }
 
+public sealed class AssignQuestionDiagramRequest
+{
+    /// <summary>Diagram to attach to the question; null removes the current diagram.</summary>
+    public Guid? DiagramId { get; set; }
+}
+
 public sealed class QuestionCriteriaDTO
 {
     public string Criteria { get; set; } = string.Empty;

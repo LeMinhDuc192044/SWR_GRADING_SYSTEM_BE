@@ -86,10 +86,13 @@ public class AppDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(answer => answer.SubmissionId)
             .IsRequired();
 
+        // A diagram element is a template shared by every submission, so many parsed answers
+        // (one per submission) may point at the same element.
         builder.Entity<SubmissionParsedAnswer>()
             .HasOne(answer => answer.Element)
-            .WithOne(element => element.ParsedAnswer)
-            .HasForeignKey<SubmissionParsedAnswer>(answer => answer.ElementId);
+            .WithMany(element => element.ParsedAnswers)
+            .HasForeignKey(answer => answer.ElementId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.Entity<SubmissionGradingHistory>()
             .HasOne(e => e.Submission)

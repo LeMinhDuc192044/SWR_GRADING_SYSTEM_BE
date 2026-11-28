@@ -59,5 +59,6 @@ public class DiagramElement
     [Column("software_type")]
     public string? SoftwareType { get; set; }
 
-    public SubmissionParsedAnswer? ParsedAnswer { get; set; }
+    // One element can be referenced by many parsed answers (one per submission).
+    public ICollection<SubmissionParsedAnswer> ParsedAnswers { get; set; } = [];
 }

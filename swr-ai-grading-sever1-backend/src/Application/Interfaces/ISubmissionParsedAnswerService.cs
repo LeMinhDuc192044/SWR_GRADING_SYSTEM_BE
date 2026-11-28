@@ -21,4 +21,10 @@ public interface ISubmissionParsedAnswerService
         Guid id, SaveSubmissionParsedAnswerRequest request, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
 
     Task<Result> DeleteAsync(Guid id, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
+
+    /// <summary>
+    /// Links the answer to one diagram element of the diagram assigned to its question.
+    /// </summary>
+    Task<Result<SubmissionParsedAnswerDTO>> AssignElementAsync(
+        Guid id, Guid? elementId, Guid currentUserId, bool isElevatedRole, CancellationToken ct = default);
 }

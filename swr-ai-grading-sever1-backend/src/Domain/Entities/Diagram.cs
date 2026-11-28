@@ -10,7 +10,7 @@ public class Diagram
     [Column("diagram_id")]
     public Guid DiagramId { get; set; } = Guid.NewGuid();
 
-    [Required, MaxLength(200)]
+    [Required]
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 

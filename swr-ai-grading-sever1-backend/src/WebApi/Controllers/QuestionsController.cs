@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/questions")]
-[Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Examiner,Admin,Monitor,Manager")]
 public sealed class QuestionsController : ControllerBase
 {
     private readonly IPaperSetService _service;
@@ -25,6 +25,23 @@ public sealed class QuestionsController : ControllerBase
         return result.IsSuccess
             ? Ok(ApiResponse.Success(result.Data))
             : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
+    }
+
+    /// <summary>Assigns (or clears) the diagram used as the reference model for a question.</summary>
+    [HttpPut("{questionId:guid}/diagram")]
+    public async Task<IActionResult> AssignDiagram(
+        Guid questionId, [FromBody] AssignQuestionDiagramRequest request, CancellationToken ct)
+    {
+        var result = await _service.AssignDiagramAsync(questionId, request.DiagramId, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        return result.ErrorCode switch
+        {
+            "QUESTION_NOT_FOUND" or "DIAGRAM_NOT_FOUND" =>
+                NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
+        };
     }
 
     [HttpGet]

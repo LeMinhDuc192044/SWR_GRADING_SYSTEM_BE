@@ -102,8 +102,13 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         if (HasOfficialForCycle(allHistories, cycle))
             return Fail("This submission already has an official grade.", "ALREADY_FINALIZED");
 
+        // The question's reference diagram (with its elements and their images) and the element each
+        // answer is connected to are part of the grading evidence, not just the student's text.
         var parsedAnswers = await _db.SubmissionParsedAnswers.AsNoTracking()
             .Include(p => p.Question)
+                .ThenInclude(q => q.Diagram)
+                    .ThenInclude(d => d!.Elements)
+            .Include(p => p.Element)
             .Where(p => p.SubmissionId == submissionId)
             .ToListAsync(ct);
         if (parsedAnswers.Count == 0)
@@ -817,29 +822,74 @@ public sealed class SubmissionGradingService : ISubmissionGradingService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Attaches the images the AI grades against, each preceded by a label naming its question and
+    /// its role: the student's answer image, and the reference image of the diagram element the
+    /// answer is connected to.
+    /// </summary>
     private async Task<List<DocxImageDto>> LoadImagesAsync(IEnumerable<SubmissionParsedAnswer> answers, CancellationToken ct)
     {
         var images = new List<DocxImageDto>();
-            var paths = answers.OrderBy(a => a.Question.Title)
-            .Select(a => a.ExtractedImageUrl)
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Distinct();
+        var loadedPaths = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var path in paths)
+        foreach (var answer in answers
+                     .OrderBy(a => a.Question.Title)
+                     .ThenBy(a => a.CreatedAt))
         {
-            var file = await _storage.DownloadAsync(path!, Path.GetFileName(path!), ct);
+            var questionLabel = $"{answer.Question.Title} (question_id: {answer.Question.QuestionId})";
+
+            if (!string.IsNullOrWhiteSpace(answer.ExtractedImageUrl) &&
+                loadedPaths.Add(answer.ExtractedImageUrl))
+            {
+                var answerImage = await TryLoadImageAsync(
+                    answer.ExtractedImageUrl,
+                    $"[HÌNH ẢNH BÀI LÀM] Câu {questionLabel}",
+                    ct);
+                if (answerImage is not null)
+                    images.Add(answerImage);
+            }
+
+            var element = answer.Element;
+            var storedPath = element?.FileTemplateUrl;
+            if (element is null ||
+                !DiagramElementImagePath.Matches(element.ElementId, storedPath) ||
+                !loadedPaths.Add(storedPath!) )
+                continue;
+
+            var diagramName = answer.Question.Diagram?.Name ?? "reference";
+            var elementImage = await TryLoadImageAsync(
+                storedPath!,
+                $"[HÌNH ẢNH MẪU - SƠ ĐỒ {diagramName} > Phần tử {element.ElementCode} {element.Name}] Câu {questionLabel}",
+                ct);
+            if (elementImage is not null)
+                images.Add(elementImage);
+        }
+
+        return images;
+    }
+
+    // A missing reference image must not fail the grading run; the text/XML evidence still counts.
+    private async Task<DocxImageDto?> TryLoadImageAsync(string path, string label, CancellationToken ct)
+    {
+        try
+        {
+            var file = await _storage.DownloadAsync(path, Path.GetFileName(path), ct);
             await using var stream = file.Content;
 
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms, ct);
 
-            images.Add(new DocxImageDto
+            return new DocxImageDto
             {
-                MimeType = GetMimeType(path!),
-                Base64Data = Convert.ToBase64String(ms.ToArray())
-            });
+                MimeType = GetMimeType(path),
+                Base64Data = Convert.ToBase64String(ms.ToArray()),
+                Label = label
+            };
         }
-        return images;
+        catch
+        {
+            return null;
+        }
     }
 
     private static string GetMimeType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
