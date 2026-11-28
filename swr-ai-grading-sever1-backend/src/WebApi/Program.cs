@@ -154,6 +154,7 @@ builder.Services.AddScoped<IDiagramRepository, DiagramRepository>();
 builder.Services.AddScoped<IDiagramElementRepository, DiagramElementRepository>();
 builder.Services.AddScoped<IAssignmentService, AssignmentService>();
 builder.Services.AddScoped<IDiagramService, DiagramService>();
+    builder.Services.AddScoped<ISubmissionDiagramService, SubmissionDiagramService>();
 builder.Services.AddScoped<IDiagramElementService, DiagramElementService>();
 builder.Services.AddHttpClient<SupabaseStorage>();
 builder.Services.AddHttpClient<IGeminiAIService, GeminiAIService>(client =>

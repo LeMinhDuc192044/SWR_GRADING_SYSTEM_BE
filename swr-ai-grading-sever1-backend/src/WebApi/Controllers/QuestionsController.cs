@@ -8,7 +8,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/questions")]
-[Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Examiner,Admin,Monitor,Manager")]
 public sealed class QuestionsController : ControllerBase
 {
     private readonly IPaperSetService _service;
@@ -28,11 +28,11 @@ public sealed class QuestionsController : ControllerBase
     }
 
     /// <summary>Assigns (or clears) the diagram used as the reference model for a question.</summary>
-    [HttpPut("{id:guid}/diagram")]
+    [HttpPut("{questionId:guid}/diagram")]
     public async Task<IActionResult> AssignDiagram(
-        Guid id, [FromBody] AssignQuestionDiagramRequest request, CancellationToken ct)
+        Guid questionId, [FromBody] AssignQuestionDiagramRequest request, CancellationToken ct)
     {
-        var result = await _service.AssignDiagramAsync(id, request.DiagramId, ct);
+        var result = await _service.AssignDiagramAsync(questionId, request.DiagramId, ct);
         if (result.IsSuccess)
             return Ok(ApiResponse.Success(result.Data));
 

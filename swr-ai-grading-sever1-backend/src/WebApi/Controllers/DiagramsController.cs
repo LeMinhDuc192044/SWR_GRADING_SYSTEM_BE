@@ -14,13 +14,16 @@ public class DiagramsController : ControllerBase
 {
     private readonly IDiagramService _diagramService;
     private readonly IDiagramElementService _elementService;
+    private readonly ISubmissionDiagramService _submissionDiagramService;
 
     public DiagramsController(
         IDiagramService diagramService,
-        IDiagramElementService elementService)
+        IDiagramElementService elementService,
+        ISubmissionDiagramService submissionDiagramService)
     {
         _diagramService = diagramService;
         _elementService = elementService;
+        _submissionDiagramService = submissionDiagramService;
     }
 
     [HttpGet]
@@ -96,6 +99,26 @@ public class DiagramsController : ControllerBase
     {
         var elements = await _elementService.GetByDiagramIdAsync(diagramId, ct);
         return Ok(ApiResponse.Success(elements));
+    }
+
+    /// <summary>
+    /// Links a submission's parsed answers to the elements of their questions' diagrams. Each answer
+    /// uses the diagram its question is already connected to (PUT /api/questions/{id}/diagram);
+    /// answers of questions without a diagram are left untouched.
+    /// </summary>
+    [HttpPost("connect-submission/{submissionId:guid}")]
+    [Authorize(Roles = "Examiner,Admin")]
+    public async Task<IActionResult> ConnectSubmission(Guid submissionId, CancellationToken ct = default)
+    {
+        var result = await _submissionDiagramService.ConnectSubmissionAsync(submissionId, ct);
+        if (result.IsSuccess)
+            return Ok(ApiResponse.Success(result.Data));
+
+        return result.ErrorCode switch
+        {
+            "SUBMISSION_NOT_FOUND" => NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode)),
+            _ => BadRequest(ApiResponse.Failure(400, result.Error!, result.ErrorCode))
+        };
     }
 
     /// <summary>Assigns an existing diagram element to this diagram.</summary>

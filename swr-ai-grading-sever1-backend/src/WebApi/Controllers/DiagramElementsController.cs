@@ -10,7 +10,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/diagram-elements")]
-[Authorize(Roles = "Examiner,Admin")]
+[Authorize(Roles = "Examiner,Admin,Manager")]
 public class DiagramElementsController : ControllerBase
 {
     private readonly IDiagramElementService _service;
@@ -42,9 +42,14 @@ public class DiagramElementsController : ControllerBase
             : NotFound(ApiResponse.Failure(404, result.Error!, result.ErrorCode));
     }
 
-    /// <summary>Creates an element without an image.</summary>
+    /// <summary>Creates an element from a JSON body, without an image.</summary>
+    /// <remarks>
+    /// Kept for JSON clients, but hidden from Swagger: it shares path and method with the
+    /// multipart action, which Swashbuckle cannot document twice.
+    /// </remarks>
     [HttpPost]
     [Consumes("application/json")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public async Task<IActionResult> Create(
         [FromBody] CreateDiagramElementRequest request,
         CancellationToken ct) =>
@@ -56,7 +61,9 @@ public class DiagramElementsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(5_242_880)]
+    // Slightly above the service's 5 MB limit so an oversized image still gets IMAGE_TOO_LARGE
+    // instead of the server rejecting the whole multipart request.
+    [RequestSizeLimit(6_291_456)]
     public async Task<IActionResult> CreateWithImage(
         [FromForm] CreateDiagramElementRequest request,
         IFormFile? image,

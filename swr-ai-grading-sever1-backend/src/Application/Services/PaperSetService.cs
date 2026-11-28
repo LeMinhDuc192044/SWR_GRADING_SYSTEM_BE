@@ -327,7 +327,7 @@ public sealed class PaperSetService : IPaperSetService
             var qNum = qInput.QuestionNumber > 0 ? qInput.QuestionNumber : (i + 1);
             var qKey = qNum.ToString();
 
-            var diagramId = MatchDiagramId(qInput.DetectedDiagramType, diagrams);
+            var diagramId = MatchDiagramId(qInput.DetectedDiagramType, qInput.Title, qInput.Content, diagrams);
 
             var question = new Question
             {
@@ -416,7 +416,7 @@ public sealed class PaperSetService : IPaperSetService
                 usedRubricKeys.Add(NormalizeQuestionKey(rubrics[i].QuestionNumber));
             }
 
-            var diagramId = MatchDiagramId(q.DetectedDiagramType, diagrams);
+            var diagramId = MatchDiagramId(q.DetectedDiagramType, q.Title, q.Content, diagrams);
 
             var qPreview = new QuestionPreviewDto
             {
@@ -476,17 +476,29 @@ public sealed class PaperSetService : IPaperSetService
         return result;
     }
 
-    private static Guid? MatchDiagramId(string? detectedType, IReadOnlyList<Diagram> diagrams)
+    /// <summary>
+    /// A question is attached to a diagram when its detected diagram type, or failing that the
+    /// diagram name mentioned in its title/content, matches one of the existing diagrams.
+    /// </summary>
+    private static Guid? MatchDiagramId(
+        string? detectedType, string? title, string? content, IReadOnlyList<Diagram> diagrams)
     {
-        if (string.IsNullOrWhiteSpace(detectedType) || diagrams.Count == 0) return null;
-        var lower = detectedType.ToLowerInvariant();
-        var match = diagrams.FirstOrDefault(d =>
-            d.Name.Contains(detectedType, StringComparison.OrdinalIgnoreCase) ||
-            (lower.Contains("context") && d.Name.Contains("context", StringComparison.OrdinalIgnoreCase)) ||
-            (lower.Contains("use case") && d.Name.Contains("use case", StringComparison.OrdinalIgnoreCase)) ||
-            (lower.Contains("erd") && d.Name.Contains("erd", StringComparison.OrdinalIgnoreCase)) ||
-            (lower.Contains("swimlane") && d.Name.Contains("swimlane", StringComparison.OrdinalIgnoreCase)));
-        return match?.DiagramId;
+        if (diagrams.Count == 0) return null;
+
+        if (!string.IsNullOrWhiteSpace(detectedType))
+        {
+            var lower = detectedType.ToLowerInvariant();
+            var match = diagrams.FirstOrDefault(d =>
+                d.Name.Contains(detectedType, StringComparison.OrdinalIgnoreCase) ||
+                (lower.Contains("context") && d.Name.Contains("context", StringComparison.OrdinalIgnoreCase)) ||
+                (lower.Contains("use case") && d.Name.Contains("use case", StringComparison.OrdinalIgnoreCase)) ||
+                (lower.Contains("erd") && d.Name.Contains("erd", StringComparison.OrdinalIgnoreCase)) ||
+                (lower.Contains("swimlane") && d.Name.Contains("swimlane", StringComparison.OrdinalIgnoreCase)));
+            if (match is not null)
+                return match.DiagramId;
+        }
+
+        return DiagramNameMatcher.Match(title, content, diagrams);
     }
 
     private static string NormalizeQuestionKey(string raw)
@@ -770,7 +782,6 @@ public sealed class PaperSetService : IPaperSetService
 
         return Result<QuestionDTO>.Success(MapToQuestionDTO(question));
     }
-
 
     private static QuestionDTO MapToQuestionDTO(Question q) => new()
     {
